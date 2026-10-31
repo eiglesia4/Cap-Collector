@@ -1,0 +1,22 @@
+{
+  "name": "@capcollector/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contracts shared by app and api (zod schemas + TS types). Owned by the architect; filled in by the contracts story.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

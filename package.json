@@ -1,0 +1,44 @@
+{
+  "name": "capcollector",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CapCollector — personal bottle-cap collection app (iPhone + web) with AI-assisted capture and a link to the physical album.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "shared",
+    "app",
+    "api",
+    "infra"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @capcollector/shared",
+    "pretest": "npm run build:shared",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "pretypecheck": "npm run build:shared",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tools/tsconfig.json",
+    "precatalog": "npm run build:shared",
+    "catalog": "tsx tools/catalog/catalog.ts",
+    "synth": "npm run synth -w @capcollector/infra",
+    "catalog:check": "npm run catalog -- --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "happy-dom": "^21.0.4",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

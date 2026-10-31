@@ -1,0 +1,7 @@
+# Copiar a .envrc.local (ignorado). Un fichero por máquina/agente.
+export CAP_AGENT="dev-api"              # architect | dev-app | dev-api | integrator
+export JIRA_EMAIL="tu@naevatec.com"
+export JIRA_TOKEN="..."
+# export AWS_PROFILE="capcollector-dev"
+# export CAP_ACCOUNT_NAEVA_DEV="<12 dígitos>"   # guarda de cuenta para cdk synth (infra/config/README.md)
+# export CAP_ALLOW_DIRECT_PUSH=0                # solo integrador, cierre de hito

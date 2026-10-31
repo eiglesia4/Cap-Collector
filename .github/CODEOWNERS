@@ -1,0 +1,34 @@
+# CODEOWNERS — mechanical version of OWNERSHIP.md (CAP-11).
+# GitHub applies the LAST matching rule: general paths first, architect-owned contracts last.
+# Single-person project: every territory resolves to Edu today; the split is kept so a second reviewer
+# (or a bot account per agent) can be added per path without restructuring.
+
+*                         @eiglesia4
+
+# Dev territories
+/app/                     @eiglesia4
+/api/                     @eiglesia4
+
+# Integrator / Edu: infra, CI, hooks, tooling, generated catalog, changelog and shared dependency/config files
+/infra/                   @eiglesia4
+/tools/                   @eiglesia4
+/.github/                 @eiglesia4
+/.githooks/               @eiglesia4
+/TEST.md                  @eiglesia4
+/CHANGELOG.md             @eiglesia4
+/package.json             @eiglesia4
+/package-lock.json        @eiglesia4
+/app/package.json         @eiglesia4
+/api/package.json         @eiglesia4
+/tsconfig.base.json       @eiglesia4
+/vitest.config.ts         @eiglesia4
+/eslint.config.js         @eiglesia4
+
+# Architect + Edu: method
+/CLAUDE.md                @eiglesia4
+/OWNERSHIP.md             @eiglesia4
+/.claude/                 @eiglesia4
+
+# Architect: contracts (last, so they win over the territory rules above)
+/doc/spec/                @eiglesia4
+/shared/                  @eiglesia4

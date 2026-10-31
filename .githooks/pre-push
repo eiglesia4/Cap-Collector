@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Rechaza cualquier push directo a main. Escotilla: CAP_ALLOW_DIRECT_PUSH=1 (solo integrador, cierre de hito).
+# Activar con: git config core.hooksPath .githooks   (lo hace el .envrc)
+set -euo pipefail
+[[ "${CAP_ALLOW_DIRECT_PUSH:-0}" == "1" ]] && exit 0
+while read -r _ _ remote_ref _; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "pre-push: push directo a main rechazado. Abre un PR (gh pr create --base main)." >&2
+      exit 1 ;;
+  esac
+done
+exit 0
