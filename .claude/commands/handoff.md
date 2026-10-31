@@ -5,8 +5,8 @@ allowed-tools: Bash, Read, Grep, Glob, mcp__atlassian__*, mcp__jira__*
 
 Deja el trabajo en un estado del que cualquiera pueda continuar:
 
-1. `git status` y `git log origin/main..HEAD --oneline` en tu worktree. Si hay cambios sin commit, haz un commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y súbela.
-2. Identifica la historia (rama `CAP-<n>-…` o `$ARGUMENTS`). Comenta en Jira (en inglés):
+1. `git status` y `git log origin/main..HEAD --oneline` en tu worktree. Si hay cambios sin commit, commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y push.
+2. Identifica la historia (rama `CAP-<n>-…` o `$ARGUMENTS`). Comenta en Jira (inglés):
    ```
    [cap-status] agent=$CAP_AGENT ticket=CAP-<n> state=<in_progress|blocked>
    **Status:** what is done and what is not, against the story criteria.

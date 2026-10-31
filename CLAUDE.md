@@ -1,129 +1,101 @@
-# capcollector — colección de chapas con captura asistida por IA (Edu · Naevatec)
+# CapCollector — colección de chapas de Edu (iPhone + Mac, AWS serverless)
 
-Este repositorio implementa **CapCollector**: una app personal para catalogar una colección de chapas de botella (iPhone primero, Mac/web después) con un flujo de captura asistido por IA, detección de duplicados antes de gastar en IA y un vínculo con la colección física (álbum Leuchtturm GRANDE, `A·3·17`). Bundle ID `com.naevatec.collectors`.
+App personal para registrar una colección de chapas de botella: foto → detección de duplicados por dHash → identificación con IA (Bedrock, o cualquier IA externa a mano vía _Exchange_) → revisión obligatoria → registro; y el enlace con la colección física (álbum Leuchtturm GRANDE: `álbum·hoja·bolsillo`, vista de hoja, tarjetas A4 imprimibles).
 
-Se construye contra una especificación que vive **fuera** del repo (carpeta `CapCollector/` en OneDrive) y de la que aquí hay una copia congelada en `doc/spec/`.
+La especificación vive **fuera** del repo (carpeta `CapCollector/` en OneDrive, del arquitecto) y aquí hay una copia congelada en `doc/spec/`.
 
 ## La regla que lo gobierna todo
 
-**El código nunca cambia el contrato.** Si una historia te obliga a cambiar los tipos compartidos (`shared/src/**`: Cap, Location, Exchange v1), el OpenAPI (`doc/spec/openapi.yaml`), el esquema de claves de DynamoDB (`doc/spec/specs/data-model.md`) o el diseño, NO lo hagas en el código: toma la decisión más conservadora, márcala en el código con `// SPEC-GAP CAP-<n>: …`, recógela en la sección **Spec deviations** del comentario de cierre en Jira y sigue con lo que sí está especificado. Los cambios de spec los resuelve el **arquitecto** (sesión de diseño en Cowork), que publica una nueva versión.
+**El código nunca cambia el contrato.** Si una historia te obliga a cambiar `shared/src/**` (esquemas zod y tipos), `doc/spec/openapi.yaml`, el esquema de claves de DynamoDB (`doc/spec/specs/data-model.md`) o el formato `capcollector.exchange`, NO lo hagas en el código: decisión conservadora, `// SPEC-GAP CAP-<n>: …` en el código, sección **Spec deviations** del comentario de cierre en Jira, y sigue con lo especificado. Los cambios de contrato los publica el **arquitecto** (sesión Cowork).
 
-## Dónde está la especificación
+## Dónde está la especificación (orden de precedencia)
 
-Orden de precedencia (si dos documentos se contradicen, gana el de arriba):
-
-1. `shared/src/**` (zod + tipos TS) y `doc/spec/openapi.yaml` — los contratos app ↔ api (los publica el arquitecto en EP-01; hoy `shared/` está vacío y no hay OpenAPI).
-2. `doc/spec/specs/data-model.md` — tabla única de DynamoDB: PK/SK, GSIs, enums. **Nunca inventes claves.**
-3. `doc/spec/decisions/ADR-*.md` — decisiones de arquitectura (ADR-001 Capacitor · 002 serverless · 003 revisión con tres salidas · 004 dHash antes que IA · 005 álbum·hoja·bolsillo · 006 borrado lógico e historial · 007 intercambio con IA externa).
-4. `doc/spec/specs/{features,exchange,physical-link}.md` y `doc/spec/design/SCREENS.md` — funcionalidad, formato `capcollector.exchange`, álbum físico, pantallas y navegación.
-5. `doc/spec/CONVENTIONS.md` — vocabulario, identificadores, reglas de coste.
-6. `doc/spec/method.md` — cómo trabajan el arquitecto, los agentes de desarrollo y el integrador (este fichero es su resumen operativo).
-
-Versión viva, si existe en esta máquina: `$CAP_DOCS` (lo exporta `.envrc` apuntando a `…/MisProyectosOneDrive/CapCollector/docs`). **Lee primero `doc/spec/`; si `$CAP_DOCS` tiene una versión más nueva, anótalo en el comentario de Jira antes de usarla.** `doc/spec/README.md` dice cuándo se copió.
+1. `shared/src/**` (zod + tipos) · `doc/spec/openapi.yaml` — contratos.
+2. `doc/spec/specs/data-model.md` — tabla única DynamoDB, GSIs, TTL.
+3. `doc/spec/specs/*.md` — features, physical-link, exchange.
+4. `doc/spec/design/SCREENS.md` — pantallas y navegación (canvas de diseño enlazado).
+5. `doc/spec/decisions/ADR-*.md` — decisiones; `doc/spec/method.md` — este método.
 
 ## Arquitectura en una pantalla
 
-- **Cliente** (`app/`): un único bundle Vite + TypeScript; en iPhone envuelto con Capacitor (App Store), en Mac servido estático desde S3 (+ CloudFront opcional). En escritorio «Scan» pasa a «Upload photo» (ADR-001).
-- **Captura** (ADR-003/004): foto → recorte → **dHash de 64 bits en el cliente** → Lambda compara con todos los hashes guardados (Hamming ≤ umbral) → si hay casi-coincidencia, «Already in collection» **sin llamar a la IA**; si no, Bedrock (visión, clase Haiku) → segunda comprobación por `brand + variant` normalizados. Toda captura termina en una de tres pantallas antes de guardar: **AI review · Already in collection · Manual entry** (un mismo formulario, modos `ai-prefilled | empty | edit`).
-- **API** (`api/`): Lambda (Node 22, TS) detrás de API Gateway HTTP API; un handler por ruta, `lib/` compartida; URLs prefirmadas para subir imágenes WebP ≤ 1024 px; auth con Sign in with Apple + PKCE (sin Cognito).
-- **Datos** (`infra/`, stack `CollectorsData`): S3 (imágenes + web) y **DynamoDB de tabla única** on-demand; historial append-only `HIST#<ts>`; borrado lógico con tombstones; GSI de ubicación `LOC#<albumId>#<sheet>` y de marca `BRAND#<normalised>`.
-- **Intercambio** (ADR-007): paquete `request.zip` (fotos + `request.json`, `format = capcollector.exchange`, `version` entero) para cualquier IA externa a mano; la respuesta subida se valida y entra en la misma revisión con `source = external:<provider>`.
-- **Físico** (ADR-005): `location = { kind: album|box|frame, album, sheet?, pocket? }`, código `A·3·17`, hoja 6 × 7, tarjetas insertables en PDF generadas en cliente.
+- **Un bundle** Vite + TypeScript + Capacitor (`app/`): iPhone nativo (cámara, share sheet) y la misma web servida desde S3 para el Mac (Scan → "Upload photo"). Adaptador `app/src/platform/` para lo que depende del dispositivo.
+- **API** (`api/`): Lambdas Node 22 detrás de HTTP API; un handler fino por ruta, lógica en `api/src/lib/`; DynamoDB tabla única on-demand; S3 con URLs prefirmadas (WebP ≤ 1024 px, redimensionado en el cliente); Sign in with Apple + PKCE; Bedrock detrás de `VisionAdapter` con fake de fixtures.
+- **Infra** (`infra/`): CDK v2, dos stacks `CollectorsData` y `CollectorsApi`; `installation`/`stage` por contexto; sin cuentas ni ARNs en código; guarda de cuenta en `synth`. Sin VPC, sin NAT, sin cómputo permanente. Objetivo < 5 €/mes.
+- **Flujo de captura** (ADR-003/004): dHash en el cliente → `POST /scans/analyse` compara con la colección (Hamming ≤ umbral) → si no hay match, IA → siempre una de tres pantallas antes de guardar: _AI review_ · _Already in collection_ (diff opt-in) · _Manual entry_.
+- **Exchange** (ADR-007): bundle `photo + request.json` para una IA externa; la respuesta se valida y entra por la misma revisión con `source = external:<proveedor>`.
+- **Físico** (ADR-005): `location = {kind, album, sheet, pocket}`, código `A·3·17`; un chapa por bolsillo; tarjetas insertables A4 con `pdf-lib` en el cliente.
 
-## Invariantes que no se negocian
+## Invariantes
 
-- Nada se guarda sin pasar por una de las tres pantallas de revisión; nada de un registro existente se sobrescribe sin un tick explícito.
-- La IA (Bedrock) se llama **solo** si la comprobación local de dHash no encuentra casi-coincidencia.
-- Todo cambio en un registro escribe historial (quién/qué/cuándo/`source`). Borrado = tombstone, nunca físico.
-- `capId` es ULID y nunca se reutiliza. El importador de exchange acepta **todas** las versiones emitidas.
-- Nunca se guardan claves de API de IAs de terceros: el camino externo es manual y gratuito.
-- Serverless y barato (≈ 2–5 €/mes): sin VPC, sin NAT, sin cómputo siempre encendido.
-- Las claves de DynamoDB son las de `data-model.md`; los contratos son los de `shared/`. Un cambio incompatible es una versión nueva del arquitecto.
+- Nada se guarda sin pasar por la revisión; ningún campo del registro se sobrescribe sin un tick explícito.
+- Todo cambio escribe historia (`HIST#<ts>`, con `source`). Borrado = tombstone.
+- La IA se llama solo si el dHash no encontró duplicado; con IA apagada, el flujo sigue funcionando (manual / Exchange).
+- Un bolsillo, una chapa. Mover o intercambiar son operaciones explícitas con historia.
+- El importador de `capcollector.exchange` acepta toda versión emitida alguna vez.
+- Sin claves de IA de terceros en el servidor; sin datos personales en logs.
+- Los tests nunca tocan la nube: DynamoDB Local + mock S3 (compose), Bedrock fake.
 
-## Estructura del repositorio y propiedad
+## Estructura y propiedad
 
 ```
 capcollector/
 ├── CLAUDE.md · OWNERSHIP.md · README.md · CHANGELOG.md · TEST.md (generado)
-├── doc/spec/ (copia congelada) · doc/plans/ (historias grandes) · doc/adr/
-├── shared/   contratos: zod + tipos (Cap, Location, Exchange v1)   → arquitecto
-├── app/      Vite + TS (+ Capacitor) · UI, dHash cliente, PDF       → dev-app
-├── api/      Lambdas TS · DynamoDB · Bedrock · prefirmadas · auth   → dev-api
-├── infra/    CDK v2: CollectorsData · CollectorsApi                 → integrador / Edu
-├── tools/    catálogo de tests (TEST.md)                            → integrador
-├── .claude/commands/ next · revise · handoff · integrate
-└── .github/ CI · CODEOWNERS      .githooks/ pre-commit · pre-push
+├── doc/spec/ (copia congelada) · doc/plans/ · doc/adr/
+├── shared/   zod + tipos (contratos)                 → arquitecto
+├── app/      Vite + Capacitor                         → dev-app
+├── api/      Lambdas                                  → dev-api
+├── infra/    CDK · deploy/ compose local · .github/   → integrador
+└── .claude/commands/ next · revise · handoff · integrate
 ```
 
-**`OWNERSHIP.md` manda:** cada agente escribe solo en sus rutas. `shared/src/**` y `doc/spec/**` son del arquitecto; nadie más los edita. Un cambio que necesite dos territorios se parte en dos historias.
+**`OWNERSHIP.md` manda.** Un cambio que necesite dos territorios se parte en dos historias.
 
-## Stack y convenciones de código
+## Stack y convenciones
 
-- **Un solo lenguaje, npm workspaces** (`shared`, `app`, `api`, `infra`): Node 22, TypeScript estricto (`tsconfig.base.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESM. Una dependencia nueva la añade el integrador (el `package.json` raíz y los de cada workspace son suyos); el dev la **pide** en _Pending_.
-- `eslint` (flat config raíz, `typescript-eslint`) + `prettier` + `tsc --noEmit` por workspace. `vitest` en la raíz con un proyecto por workspace (+ `tools`).
-- `app/`: componentes en PascalCase, ficheros en kebab-case; código solo-Capacitor detrás de un adaptador fino `platform/` para que el build web lo pruebe; claves i18n desde el día uno (copy en inglés primero).
-- `api/`: un handler por ruta en `src/handlers/`, lógica en `src/lib/`; DynamoDB detrás de un repositorio con interfaz; Bedrock detrás de un adaptador.
-- `infra/`: CDK v2 TS; `installation` y `stage` por contexto; región en `infra/config/<installation>.<stage>.json`; **ninguna cuenta, ARN ni región en código**; guarda de cuenta en `synth` como en CCS_MRV (`CAP_ACCOUNT_<INST>_<STAGE>` en `.envrc.local`).
-- Cada fichero fuente empieza con un comentario breve de para qué sirve. Los comentarios citan la spec (`ADR-004`, `exchange.md § Flow`) y decisiones (`decidido en CAP-<n>, 2026-11-02`).
-- Sin valores de entorno hardcodeados: config validada al cargar, overridable por variables.
-- Mientras no haya producción: cambios limpios, sin shims ni compatibilidad temporal.
-- Secretos y datos personales fuera de los logs.
-
-## Herramientas locales (sin Docker)
-
-Proyecto de un solo lenguaje y una sola persona: todo corre con el toolchain local (`npm ci` en la raíz). Docker solo como respaldo del hook de `gitleaks` si el binario no está instalado. Los tests no tocan la nube: DynamoDB Local o repositorio en memoria detrás de una interfaz, S3 simulado, Bedrock con fixtures.
+- TypeScript estricto en todo; Node 22; npm workspaces; `eslint` + `prettier` + `tsc --noEmit`; `vitest` (proyectos por workspace) con cobertura ≥ 80 % por paquete.
+- Cada fichero empieza con un comentario de para qué sirve y cita la spec (`specs/exchange.md §Flow`, `ADR-004`).
+- Config validada al cargar; sin valores de entorno hardcodeados. Sin shims ni compatibilidad temporal mientras no haya producción.
+- Idioma: commits, PR, código, README, Jira en **inglés**; `CLAUDE.md`, `OWNERSHIP.md`, planes y `doc/spec/` como estén (inglés hoy).
 
 ## Tests
 
-- Todo test lleva ID al inicio del título: `[T-<comp>-nnn] <qué comprueba>`, con `<comp>` ∈ `app · api · shared · infra · vision · print · exchange`. Numeración correlativa por componente, **nunca se reutiliza** un ID.
-- `TEST.md` es **generado** (`npm run catalog`, que recorre `vitest list`), no se edita a mano; se regenera en el mismo commit que añade o quita tests. El catálogo falla si un test no lleva ID, usa un componente desconocido o repite un ID; la CI ejecuta `npm run catalog:check`.
-- Los criterios de aceptación de la historia son tests o comprobaciones explícitas. Incluye los rechazos (duplicado → sin llamada a IA, exchange con `format` desconocido → rechazado…).
-- Cobertura mínima 80 % (líneas, ramas, funciones); una ejecución por debajo falla.
-- Tests nunca tocan la nube ni Internet.
+- Título con ID: `[T-<COMP>-nnn] <qué comprueba>`, `<COMP>` ∈ `shared · app · api · infra · vision · print · exchange`. Correlativo, **nunca se reutiliza**.
+- `TEST.md` es generado (`npm run catalog`), se regenera en el mismo commit. Los criterios de aceptación son tests o comprobaciones explícitas.
 
-## Git y ramas (Kanban, sin sprints)
+## Git y ramas (Kanban)
 
-| Elemento      | Convención                                                                                                                                                                                                           |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rama          | `CAP-<n>-<slug-corto>` **desde `main`**: `git fetch origin && git switch -c CAP-<n>-<slug> --no-track origin/main && git push -u origin CAP-<n>-<slug>`                                                              |
-| Worktree      | **Un worktree por agente**, nunca dos sesiones sobre el mismo directorio: `git worktree add ../capcollector-wt/CAP-<n> CAP-<n>-<slug>`                                                                               |
-| Commit        | Inglés, imperativo: `CAP-<n>: <what>`; el cuerpo cita secciones de spec e IDs de test. Una historia = un PR; sin mezclar historias. **Autor = Edu** (`git config` de la máquina); sin líneas de coautoría del agente |
-| Commit sin OK | El agente commitea y abre el PR por su cuenta; **el GO lo da la revisión del PR** (Edu). Nunca commit directo en `main`                                                                                              |
-| PR            | `gh pr create --base main`; título = commit; **cuerpo en inglés**: Done · Tests · Spec covered · Deviations. Un PR por historia. Squash merge solo por el integrador                                                 |
-| Hooks         | `.githooks/pre-push` rechaza push directo a `main` (`CAP_ALLOW_DIRECT_PUSH=1` como escotilla, solo integrador); pre-commit con `gitleaks`. Nunca `--no-verify`                                                       |
-| Releases      | Tag en `main` por hito: `v0.1.0-v0`, `v0.2.0-v1`, `v0.5.0-v2`, `v0.8.0-v3`, `v1.0.0-v4` + `CHANGELOG.md` (lo cierra el integrador)                                                                                   |
+| Elemento | Convención                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Rama     | `CAP-<n>-<slug>` desde `main`: `git fetch origin && git worktree add -b CAP-<n>-<slug> ../capcollector-wt/CAP-<n> origin/main`    |
+| Worktree | Uno por agente; nunca dos sesiones en el mismo directorio                                                                         |
+| Commit   | Inglés, imperativo: `CAP-<n>: <what>`. Autor = Edu (git config); **sin líneas de coautoría del agente**                           |
+| PR       | `gh pr create --base main`; cuerpo: Done · Tests · Spec covered · Deviations. Una historia = un PR. Squash solo por el integrador |
+| Hooks    | `.githooks/pre-push` rechaza push a `main` (`CAP_ALLOW_DIRECT_PUSH=1` escotilla); `pre-commit` con gitleaks. Nunca `--no-verify`  |
+| Releases | Tag por hito: `v0.1.0-v0` · `v0.2.0-v1` · `v0.5.0-v2` · `v0.8.0-v3` · `v1.0.0-v4` + `CHANGELOG.md`                                |
 
-## Cómo se trabaja aquí (Cowork → Jira → agentes Code → integrador)
+## Cómo se trabaja (Cowork → Jira → agentes Code → integrador)
 
-- **Fuente de estado: Jira `CAP`** (site `naevatec.atlassian.net`). Columnas Backlog · **Ready** · In Progress · In Review · Blocked · Done. Un agente solo coge historias en **Ready** (el arquitecto las pone ahí con spec referenciada, rutas permitidas, IDs de test y criterios). Rank = orden.
-- **Ready significa «puede empezar ahora»**: una historia con dependencias pendientes se queda en Backlog con enlaces _is blocked by_; `/integrate` pasa a Ready las bloqueadas cuyo último bloqueador acaba de entrar en `main`. `/next` comprueba los enlaces antes de coger nada.
-- **Territorio → etiqueta**: `CAP_AGENT=dev-app` → `area-app` · `dev-api` → `area-api` · `integrator` → `area-infra`. `/next` solo mira la etiqueta de su territorio.
-- `/next` coge la siguiente historia Ready de su territorio, la pasa a In Progress, crea rama + worktree, implementa contra la spec, tests, PR, comenta en Jira y la deja en In Review. `/revise CAP-<n>` aplica a un PR abierto lo que pide el último comentario del arquitecto o del integrador. `/handoff` cierra una sesión a medias. `/integrate` (integrador) rebasea, pasa los checks completos, mergea lo verde con el GO de Edu y desbloquea las historias enlazadas.
-- **Orden de arranque de una tanda**: primero el integrador (`/next` de su historia `area-infra` si la hay, luego `/integrate`), y los devs solo cuando `/integrate` haya informado de qué historias ha desbloqueado.
-- **Comentario de cierre en Jira** (en inglés) con secciones fijas (las lee el dashboard): primera línea `[cap-status] agent=<nombre> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>`, y después **Done · Tests · Spec deviations · Pending · PR · Needs human** (yes/no + why). La etiqueta `needs-human` es lo que aparece en el dashboard de Edu.
-- WIP: 2 devs activos + 1 en revisión (una sola persona revisa).
-- Historias grandes (>1 día o con decisiones): plan en `doc/plans/CAP-<n>-<slug>.md` (plantilla `_PLANTILLA.md`). Las pequeñas, solo el comentario Jira.
-- Idioma: commits, PR, código, README y Jira en **inglés**; `CLAUDE.md`, `OWNERSHIP.md`, `.claude/commands/` y `doc/plans/` en **español**; `doc/spec/` tal como lo publica el arquitecto (inglés).
+- **Fuente de estado: Jira `CAP`.** Columnas Backlog · **Ready** · In Progress · In Review · Blocked · Done. Un agente solo coge historias en Ready de su territorio (`labels = area-<agente sin dev->`). Ready = puede empezar ahora; las dependencias van en enlaces _is blocked by_ y las comprueba `/next`; `/integrate` pasa a Ready las desbloqueadas.
+- `/next` · `/revise CAP-<n>` · `/handoff` · `/integrate [--auto] [--release <tag>]`.
+- Comentario de cierre (inglés, lo lee el dashboard): `[cap-status] agent=<nombre> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>` + **Done · Tests · Spec deviations · Pending · PR · Needs human**. Etiqueta `needs-human` cuando espera a Edu.
+- Orden de arranque: integrador primero (`/next` de su historia `area-infra`, luego `/integrate`); los devs cuando el informe diga qué quedó Ready. WIP: 2 devs + 1 en revisión.
+- Historias grandes: plan en `doc/plans/CAP-<n>-<slug>.md`.
 
 ## Comandos habituales
 
 ```bash
-npm ci                    # instala todos los workspaces
-npm test                  # vitest de todos los workspaces + cobertura ≥ 80 %
-npm run lint              # eslint + prettier --check
-npm run typecheck         # tsc --noEmit por workspace (+ tools)
-npm run catalog           # regenera TEST.md   (catalog:check en CI)
-npm run synth             # cdk synth naeva/dev, sin credenciales
-npm run dev -w @capcollector/app    # servidor Vite local
-# despliegue: lo hace Edu, nunca un agente
-cd infra && npx cdk deploy --all --context installation=naeva --context stage=dev
+npm ci && npm test && npm run lint && npm run catalog
+docker compose -f deploy/docker-compose.yaml up -d      # DynamoDB Local + S3 mock
+npm run db:create                                        # tabla local desde la definición compartida
+npm -w app run dev                                       # web en el navegador
+npm -w app run ios                                       # cap sync + abre Xcode
+cd infra && npx cdk synth --context installation=naeva --context stage=dev   # despliega Edu, nunca un agente
 ```
 
 ## Configuración de Claude Code (una vez)
 
 ```bash
 claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp
-brew install direnv gitleaks && echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
-cd <repo> && cp .envrc.local.example .envrc.local   # JIRA_TOKEN, CAP_AGENT
+brew install direnv && cp .envrc.local.example .envrc.local   # CAP_AGENT, JIRA_*
 direnv allow && git config core.hooksPath .githooks
 ```

@@ -1,27 +1,10 @@
-# doc/spec — frozen copy of the specification
+# doc/spec — frozen copy of the architect's documents
 
-Live source: OneDrive `MisProyectosOneDrive/CapCollector/docs/` (`$CAP_DOCS`), plus `CapCollector/CONVENTIONS.md`.
-It is copied here **only at milestones**, byte for byte (never reformatted), and this table records when. Agents read
-this folder; if `$CAP_DOCS` has a newer version, they note it in the Jira comment before using it.
+Source of truth: OneDrive `MisProyectosOneDrive/CapCollector/` (architect, Cowork). This folder is a copy
+refreshed by an `area-infra` story whenever the architect publishes a new version.
 
-**Copied: 2026-10-31** (CAP-11, V0 skeleton).
-
-| Document | Status at copy | Code release |
+| Copied on | From | Covers |
 |---|---|---|
-| `method.md` | Agreed 2026-10-31 | V0 |
-| `CONVENTIONS.md` (from the OneDrive root) | — | V0 |
-| `jira-epics.md` | Draft | V0 |
-| `specs/features.md` | Agreed 2026-10-18 | V0 |
-| `specs/exchange.md` | Agreed 2026-10-18 | V0 |
-| `specs/physical-link.md` | Agreed 2026-10-12 | V0 |
-| `specs/data-model.md` | Draft — key schema to be finalised before coding | V0 |
-| `design/SCREENS.md` | Proposed 2026-10-18 | V0 |
-| `decisions/ADR-000…007` | ADR-001…007 Accepted | V0 |
+| 2026-10-31 | CapCollector/docs + CONVENTIONS.md | specs (features, data-model Draft, physical-link, exchange), ADR-000…007, SCREENS.md, method.md, jira-epics.md |
 
-## Contracts (owned by the architect, `OWNERSHIP.md`)
-
-Not yet published; they arrive with the EP-01 contracts story:
-
-- `shared/src/**` — zod schemas + TS types: Cap, Location, Exchange v1.
-- `doc/spec/openapi.yaml` — the HTTP API.
-- DynamoDB key schema — final version of `specs/data-model.md`.
+Precedence when documents disagree: `shared/src/**` (zod) and `openapi.yaml` > `specs/data-model.md` > `specs/*.md` > `design/SCREENS.md` > `decisions/ADR-*.md` > `method.md`.
