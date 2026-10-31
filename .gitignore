@@ -1,12 +1,10 @@
-.envrc.local
 node_modules/
 dist/
-cdk.out/
 coverage/
-*.tsbuildinfo
+.out/
+cdk.out/
+.envrc.local
+.env
 .DS_Store
-.idea/
-.vscode/
-.claude/settings.local.json
-# Versioned on purpose (no secrets; it is the repo contract for direnv) — overrides a global ignore.
-!.envrc
+app/ios/App/Pods/
+*.local
