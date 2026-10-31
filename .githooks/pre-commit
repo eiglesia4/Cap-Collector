@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Escaneo de secretos antes de cada commit con gitleaks: binario local (brew install gitleaks) o, si no está,
+# la imagen Docker. Sin ninguno de los dos el commit se rechaza: un escaneo que no corre no protege.
+# Marca falsos positivos de tests con "gitleaks:allow" en la misma línea.
+# En Docker monta el árbol y el directorio git común en sus rutas reales para que funcione también en worktrees.
+set -euo pipefail
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks protect --staged --redact --no-banner
+elif command -v docker >/dev/null 2>&1; then
+  top="$(git rev-parse --show-toplevel)"
+  common="$(cd "$(git rev-parse --git-common-dir)" && pwd)"
+  exec docker run --rm -v "$top:$top" -v "$common:$common" -w "$top" \
+    ghcr.io/gitleaks/gitleaks:v8.21.2 protect --staged --redact --no-banner
+else
+  echo "pre-commit: ni gitleaks ni docker disponibles; instala gitleaks (brew install gitleaks)" >&2
+  exit 1
+fi

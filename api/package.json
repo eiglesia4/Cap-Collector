@@ -1,0 +1,16 @@
+{
+  "name": "@capcollector/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CapCollector API — one Lambda handler per route behind API Gateway (HTTP API). Territory: dev-api.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@capcollector/shared": "0.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164"
+  }
+}

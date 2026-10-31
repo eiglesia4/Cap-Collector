@@ -1,0 +1,19 @@
+{
+  "name": "@capcollector/app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CapCollector app — Vite + TypeScript bundle (Capacitor iOS shell added by the app-shell story). Territory: dev-app.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@capcollector/shared": "0.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}
