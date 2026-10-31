@@ -1,0 +1,41 @@
+{
+  "format": "capcollector.exchange",
+  "version": 1,
+  "kind": "request",
+  "requestId": "01JBF70A1B2C3D4E5F6G7H8J9K",
+  "createdAt": "2026-10-18T10:14:00Z",
+  "scanId": "01JBF70A1B2C3D4E5F6G7H8J9M",
+  "photos": [{ "file": "top.webp", "side": "top", "dhash": "a3f0c81e7b2d9f44" }],
+  "instructions": "You are helping identify a bottle cap. Look at the attached photo(s). Fill the `response` object below. Use null when unsure and give a confidence 0–1 per field. Country is ISO 3166-1 alpha-2. Return ONLY the JSON of `response`.",
+  "schema": {
+    "brand": "string",
+    "variant": "string|null",
+    "producer": "string|null",
+    "country": "ISO 3166-1 alpha-2|null",
+    "type": "beer|soft drink|water|cider|wine|other|null",
+    "material": "steel|aluminium|plastic|null",
+    "closure": "pry-off|twist-off|null",
+    "year": "integer|null",
+    "description": "string|null",
+    "textOnCap": "string|null"
+  },
+  "known": { "brand": "Asahi", "country": "JP" },
+  "response": {
+    "provider": null,
+    "model": null,
+    "fields": {
+      "brand": null,
+      "variant": null,
+      "producer": null,
+      "country": null,
+      "type": null,
+      "material": null,
+      "closure": null,
+      "year": null,
+      "description": null,
+      "textOnCap": null
+    },
+    "confidence": { "brand": null, "variant": null, "year": null },
+    "notes": null
+  }
+}
