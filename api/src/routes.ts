@@ -52,4 +52,10 @@ export const ROUTES: readonly RouteDef[] = [
     auth: false,
     load: async () => (await import('./handlers/auth-refresh.js')).handler,
   },
+  {
+    method: 'POST',
+    path: '/uploads',
+    auth: true,
+    load: async () => (await import('./handlers/uploads-create.js')).handler,
+  },
 ];

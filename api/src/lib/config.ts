@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   CAP_STAGE: z.string().regex(/^[a-z][a-z0-9-]{0,19}$/, 'lower-case stage name expected'),
   /** Local only: DynamoDB Local endpoint (deploy/docker-compose.yaml). Unset in AWS. */
   CAP_DYNAMODB_ENDPOINT: z.url().optional(),
+  /** Local only: S3 mock endpoint (deploy/docker-compose.yaml, path-style). Unset in AWS. */
+  CAP_S3_ENDPOINT: z.url().optional(),
 });
 
 export interface Config {
@@ -15,6 +17,7 @@ export interface Config {
   readonly imagesBucket: string;
   readonly stage: string;
   readonly dynamodbEndpoint?: string;
+  readonly s3Endpoint?: string;
 }
 
 /** Parses `env`; throws one error naming every invalid variable (never their values). */
@@ -24,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     CAP_IMAGES_BUCKET: env.CAP_IMAGES_BUCKET,
     CAP_STAGE: env.CAP_STAGE,
     CAP_DYNAMODB_ENDPOINT: env.CAP_DYNAMODB_ENDPOINT || undefined,
+    CAP_S3_ENDPOINT: env.CAP_S3_ENDPOINT || undefined,
   });
   if (!parsed.success) {
     const vars = parsed.error.issues.map((i) => `${i.path.join('.')} (${i.message})`).join(', ');
@@ -35,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     imagesBucket: e.CAP_IMAGES_BUCKET,
     stage: e.CAP_STAGE,
     ...(e.CAP_DYNAMODB_ENDPOINT ? { dynamodbEndpoint: e.CAP_DYNAMODB_ENDPOINT } : {}),
+    ...(e.CAP_S3_ENDPOINT ? { s3Endpoint: e.CAP_S3_ENDPOINT } : {}),
   };
 }
 
