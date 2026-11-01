@@ -38,7 +38,8 @@ npm run dev -w @capcollector/app
 
 ## Repository setup (once, by Edu)
 
-1. Create the private GitHub repo `capcollector` (Naevatec org or personal account) and push the first commit to
+1. Create the GitHub repo `capcollector` (public on a free personal account — required status checks and CODEOWNERS
+   need it; private only with GitHub Pro — see CAP-11 review) and push the first commit to
    `main` with `CAP_ALLOW_DIRECT_PUSH=1 git push -u origin main`.
 2. Local hooks: `git config core.hooksPath .githooks` (done by `.envrc` via direnv); `brew install gitleaks`.
 3. Branch protection on `main` (Settings → Branches → Add rule, or Rulesets):

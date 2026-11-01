@@ -1,0 +1,19 @@
+{
+  "provider": "chatgpt",
+  "model": "gpt-5",
+  "fields": {
+    "brand": "Asahi",
+    "variant": "Super Dry",
+    "producer": "Asahi Breweries",
+    "country": "Japan",
+    "type": "lager",
+    "material": "Aluminum",
+    "closure": "pry off",
+    "year": "2019?",
+    "description": "Silver cap with black Asahi wordmark",
+    "textOnCap": "ASAHI SUPER DRY",
+    "price": "2 EUR"
+  },
+  "confidence": { "brand": 0.97, "variant": 0.9, "year": 0.3 },
+  "notes": "Year read from the underside is uncertain."
+}

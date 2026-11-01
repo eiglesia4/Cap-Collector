@@ -2,7 +2,7 @@
   "name": "@capcollector/shared",
   "version": "0.0.0",
   "private": true,
-  "description": "Contracts shared by app and api (zod schemas + TS types). Owned by the architect; filled in by the contracts story.",
+  "description": "Contracts shared by app and api: zod schemas + TS types (Cap, Location, Exchange v1, DynamoDB keys). Owned by the architect (OWNERSHIP.md).",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,5 +18,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "yaml": "^2.8.2"
   }
 }

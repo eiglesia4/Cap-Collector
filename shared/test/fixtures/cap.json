@@ -1,0 +1,32 @@
+{
+  "capId": "01JBF6Z3Q8K2M4N6P8R0S2T4V6",
+  "status": "complete",
+  "images": {
+    "top": { "key": "u1/01JBF6Z3Q8K2M4N6P8R0S2T4V6/top.webp", "width": 1024, "height": 1024, "bytes": 182044 },
+    "underside": { "key": "u1/01JBF6Z3Q8K2M4N6P8R0S2T4V6/underside.webp", "width": 1024, "height": 1024 }
+  },
+  "createdAt": "2023-03-14T18:22:10.000Z",
+  "updatedAt": "2026-10-12T09:15:00.000+02:00",
+  "brand": "Mahou",
+  "variant": "Clásica",
+  "producer": "Mahou San Miguel",
+  "country": "ES",
+  "type": "beer",
+  "material": "steel",
+  "closure": "pry-off",
+  "year": 2023,
+  "description": "Red crown cap, gold star and white Mahou wordmark on red ground; standard 26 mm pry-off.",
+  "textOnCap": "MAHOU",
+  "condition": "mint",
+  "acquiredWhere": "Bar Casa Paco, Madrid",
+  "acquiredOn": "2023-03-14",
+  "tags": ["spain", "lager"],
+  "notes": "First cap of the collection.",
+  "quantity": 3,
+  "forTrade": 2,
+  "location": { "kind": "album", "album": "A", "sheet": 3, "pocket": 17 },
+  "source": "bedrock:anthropic.claude-haiku",
+  "dhash": "a3f0c81e7b2d9f44",
+  "aiModel": "anthropic.claude-haiku",
+  "aiConfidence": 0.92
+}

@@ -1,0 +1,333 @@
+openapi: 3.1.0
+info:
+  title: CapCollector API
+  version: 0.1.0
+  description: |
+    Contract between `app/` and `api/` (CAP-12, contracts v0.1). Owned by the architect; changes are new versions.
+    Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name
+    them and describe shape; the zod schema is authoritative when both exist (CLAUDE.md § precedence).
+    All routes except `/auth/*` and `/healthz` require `Authorization: Bearer <session JWT>` (Sign in with Apple + PKCE, ADR-008).
+servers:
+  - url: https://{apiHost}
+    variables:
+      apiHost:
+        default: api.example.invalid
+        description: HTTP API endpoint output of the CollectorsApi stack; custom domain decided in EP-09.
+tags:
+  - name: caps
+  - name: scans
+  - name: albums
+  - name: exchange
+  - name: uploads
+  - name: auth
+  - name: system
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      summary: Liveness; no auth
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: object, properties: { status: { const: ok } } } } } }
+
+  /auth/apple:
+    post:
+      tags: [auth]
+      summary: Exchange an Apple identity token (PKCE flow) for a session JWT + refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identityToken, codeVerifier]
+              properties:
+                identityToken: { type: string }
+                authorizationCode: { type: string }
+                codeVerifier: { type: string }
+      responses:
+        '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
+        '403': { description: Apple `sub` not in the allow-list (single user) }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the session JWT with the refresh token
+      responses:
+        '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
+        '401': { description: refresh token invalid or revoked }
+
+  /uploads:
+    post:
+      tags: [uploads]
+      summary: Presigned S3 PUT for one image (WebP, long edge ≤ 1024 px, ≤ 1 MiB)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [side, contentType, bytes]
+              properties:
+                side: { type: string, enum: [top, underside] }
+                contentType: { const: image/webp }
+                bytes: { type: integer, maximum: 1048576 }
+      responses:
+        '200':
+          description: where to PUT and the key to reference in `images`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, url, expiresAt]
+                properties:
+                  key: { type: string, description: object key relative to the images bucket }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+
+  /caps:
+    get:
+      tags: [caps]
+      summary: List / search caps (tombstoned excluded unless `includeDeleted`)
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: 'free text over brand, variant, producer, textOnCap, tags; a location code `A·3·17` matches by location' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/CapStatus' } }
+        - { name: country, in: query, schema: { type: string, pattern: '^[A-Z]{2}$' } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/CapType' } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: forTrade, in: query, schema: { type: boolean }, description: only caps with forTrade > 0 }
+        - { name: sort, in: query, schema: { type: string, enum: [brand, newest, country, year], default: brand } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
+        - { name: includeDeleted, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: page, content: { application/json: { schema: { $ref: '#/components/schemas/CapPage' } } } }
+    post:
+      tags: [caps]
+      summary: Create a cap (always after one of the three review screens, ADR-003)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CapInput' } } } }
+      responses:
+        '201': { description: created, content: { application/json: { schema: { $ref: '#/components/schemas/Cap' } } } }
+        '409': { description: 'the requested `location` pocket is occupied (one cap per pocket, ADR-005)', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '422': { description: validation error, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+
+  /caps/{capId}:
+    parameters: [{ $ref: '#/components/parameters/capId' }]
+    get:
+      tags: [caps]
+      responses:
+        '200': { description: cap, content: { application/json: { schema: { $ref: '#/components/schemas/Cap' } } } }
+        '404': { description: unknown or tombstoned }
+    patch:
+      tags: [caps]
+      summary: Partial update; every changed field becomes a history entry
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CapPatch' } } } }
+      responses:
+        '200': { description: updated, content: { application/json: { schema: { $ref: '#/components/schemas/Cap' } } } }
+        '409': { description: pocket occupied }
+        '422': { description: validation error }
+    delete:
+      tags: [caps]
+      summary: Soft delete (tombstone); frees its pocket
+      responses:
+        '204': { description: deleted }
+
+  /caps/{capId}/history:
+    parameters: [{ $ref: '#/components/parameters/capId' }]
+    get:
+      tags: [caps]
+      responses:
+        '200': { description: newest first, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/CapHistory' } } } } }
+
+  /caps/{capId}/location:
+    parameters: [{ $ref: '#/components/parameters/capId' }]
+    put:
+      tags: [caps]
+      summary: Move a cap to a pocket / box / frame, or swap with the cap already there
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [location]
+              properties:
+                location: { $ref: '#/components/schemas/Location' }
+                swap: { type: boolean, default: false, description: 'if the target pocket is occupied, exchange locations with that cap instead of failing' }
+      responses:
+        '200': { description: this cap (and the swapped one, if any), content: { application/json: { schema: { type: object, properties: { cap: { $ref: '#/components/schemas/Cap' }, swapped: { $ref: '#/components/schemas/Cap' } } } } } }
+        '409': { description: pocket occupied and `swap` false }
+    delete:
+      tags: [caps]
+      summary: Clear the location (cap is out of any storage)
+      responses:
+        '204': { description: cleared }
+
+  /scans/analyse:
+    post:
+      tags: [scans]
+      summary: Duplicate check by dHash, then (optionally) AI identification — ADR-004
+      description: |
+        Step 1 compares `dhash` with every stored cap (Hamming ≤ threshold) → `duplicate`, no AI call.
+        Step 2 (when `useAi`) calls the vision model → `identified` or `unidentified`.
+        Step 3 re-checks normalised brand+variant → may still return `duplicate` with `match.by = brand`.
+        Nothing is saved: the client follows with `POST /caps` or `PATCH /caps/{id}` after the review screen.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnalyseRequest' } } } }
+      responses:
+        '200': { description: outcome, content: { application/json: { schema: { $ref: '#/components/schemas/AnalyseResponse' } } } }
+        '422': { description: validation error }
+        '503': { description: AI unavailable — client falls back to manual / exchange }
+
+  /scans:
+    get:
+      tags: [scans]
+      summary: Recent scans (threshold tuning, AI cost)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: page, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Scan' } }, cursor: { type: string } } } } } }
+
+  /albums:
+    get:
+      tags: [albums]
+      responses:
+        '200': { description: all albums/boxes/frames, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Album' } } } } }
+    post:
+      tags: [albums]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AlbumInput' } } } }
+      responses:
+        '201': { description: created, content: { application/json: { schema: { $ref: '#/components/schemas/Album' } } } }
+        '409': { description: letter already used }
+
+  /albums/{albumId}:
+    parameters: [{ $ref: '#/components/parameters/albumId' }]
+    patch:
+      tags: [albums]
+      summary: Rename, resize (sheets/cols/rows) or set pocketMm/pitchMm
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AlbumInput' } } } }
+      responses:
+        '200': { description: updated, content: { application/json: { schema: { $ref: '#/components/schemas/Album' } } } }
+        '409': { description: shrinking below an occupied pocket }
+
+  /albums/{albumId}/sheets/{sheet}:
+    parameters:
+      - { $ref: '#/components/parameters/albumId' }
+      - { name: sheet, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    get:
+      tags: [albums]
+      summary: One sheet with its occupied pockets (GSI1, one query)
+      responses:
+        '200': { description: sheet, content: { application/json: { schema: { $ref: '#/components/schemas/SheetView' } } } }
+
+  /albums/{albumId}/next-free:
+    parameters: [{ $ref: '#/components/parameters/albumId' }]
+    get:
+      tags: [albums]
+      summary: First empty pocket in row-major order; proposed on save
+      responses:
+        '200': { description: location or null when full, content: { application/json: { schema: { $ref: '#/components/schemas/NextFree' } } } }
+
+  /exchange/requests:
+    get:
+      tags: [exchange]
+      summary: Pending / answered exchange requests (30-day TTL)
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ExchangeStatus' } }
+      responses:
+        '200': { description: list, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ExchangeRequestItem' } } } } }
+    post:
+      tags: [exchange]
+      summary: Register a downloaded request bundle (the zip itself is built on the client)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, dhash]
+              properties:
+                requestId: { $ref: '#/components/schemas/Ulid' }
+                dhash: { $ref: '#/components/schemas/DHash' }
+                capId: { $ref: '#/components/schemas/Ulid' }
+                scanId: { $ref: '#/components/schemas/Ulid' }
+      responses:
+        '201': { description: registered, content: { application/json: { schema: { $ref: '#/components/schemas/ExchangeRequestItem' } } } }
+
+  /exchange/requests/{requestId}:
+    parameters: [{ name: requestId, in: path, required: true, schema: { $ref: '#/components/schemas/Ulid' } }]
+    patch:
+      tags: [exchange]
+      summary: Mark answered (provider) or reviewed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ExchangeStatus' }
+                provider: { type: string }
+      responses:
+        '200': { description: updated, content: { application/json: { schema: { $ref: '#/components/schemas/ExchangeRequestItem' } } } }
+
+components:
+  parameters:
+    capId: { name: capId, in: path, required: true, schema: { $ref: '#/components/schemas/Ulid' } }
+    albumId: { name: albumId, in: path, required: true, schema: { $ref: '#/components/schemas/Ulid' } }
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    # Scalars — zod: shared/src/schemas/enums.ts
+    Ulid: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
+    DHash: { type: string, pattern: '^[0-9a-f]{16}$' }
+    CapStatus: { type: string, enum: [complete, needsReview, unidentified] }
+    CapType: { type: string, enum: [beer, soft drink, water, cider, wine, other] }
+    LocationKind: { type: string, enum: [album, box, frame] }
+    ExchangeStatus: { type: string, enum: [waiting, answered, reviewed, expired] }
+    Source: { type: string, pattern: '^(manual|import|bedrock:.+|external:.+)$' }
+
+    Session:
+      type: object
+      required: [accessToken, refreshToken, expiresAt]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    Problem:
+      description: RFC 9457 problem details
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors: { type: array, items: { type: object, properties: { path: { type: string }, message: { type: string } } } }
+
+    # Entities — zod: shared/src/schemas/*.ts (authoritative)
+    Location: { description: 'zod `Location` (location.ts): `{kind: album, album, sheet, pocket}` or `{kind: box|frame, album}`', type: object }
+    ImageRef: { description: 'zod `ImageRef` (cap.ts)', type: object }
+    Cap: { description: 'zod `Cap` (cap.ts)', type: object }
+    CapInput: { description: 'zod `CapInput` (cap.ts)', type: object }
+    CapPatch: { description: 'zod `CapPatch` (cap.ts)', type: object }
+    CapHistory: { description: 'zod `CapHistory` (cap.ts)', type: object }
+    CapPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Cap' } }
+        cursor: { type: string }
+        total: { type: integer }
+    AnalyseRequest: { description: 'zod `AnalyseRequest` (scan.ts)', type: object }
+    AnalyseResponse: { description: 'zod `AnalyseResponse` (scan.ts)', type: object }
+    Scan: { description: 'zod `Scan` (scan.ts)', type: object }
+    Album: { description: 'zod `Album` (album.ts)', type: object }
+    AlbumInput: { description: 'zod `AlbumInput` (album.ts)', type: object }
+    SheetView: { description: 'zod `SheetView` (album.ts)', type: object }
+    NextFree: { description: 'zod `NextFree` (album.ts)', type: object }
+    ExchangeRequestItem: { description: 'zod `ExchangeRequestItem` (exchange.ts)', type: object }
+
+security:
+  - bearer: []
