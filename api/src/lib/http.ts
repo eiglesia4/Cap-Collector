@@ -107,7 +107,8 @@ function validate<S extends z.ZodType | undefined>(schema: S, value: unknown, wh
   return r.data as Parsed<S>;
 }
 
-class ValidationError extends Error {
+/** Throw to answer 422 for a schema checked inside a handler (e.g. the merged record), reported under `where`. */
+export class ValidationError extends Error {
   constructor(
     readonly zod: ZodError,
     readonly where: string,
