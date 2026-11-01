@@ -45,6 +45,8 @@ type Parsed<S> = S extends z.ZodType ? z.output<S> : undefined;
 
 export interface Request<B, Q, P, A extends boolean> {
   body: B;
+  /** The JSON body before zod (defaults not applied): which keys the client actually sent (CAP-18 PATCH). */
+  rawBody: unknown;
   query: Q;
   path: P;
   /** Caller id (Apple `sub`, data-model.md); always set when `auth: true`. */
@@ -107,7 +109,8 @@ function validate<S extends z.ZodType | undefined>(schema: S, value: unknown, wh
   return r.data as Parsed<S>;
 }
 
-class ValidationError extends Error {
+/** Throw to answer 422 for a schema checked inside a handler (e.g. the merged record), reported under `where`. */
+export class ValidationError extends Error {
   constructor(
     readonly zod: ZodError,
     readonly where: string,
@@ -151,8 +154,10 @@ export function defineHandler<
     try {
       const uid = authorizerUid(event);
       if (spec.auth && !uid) throw new Unauthorized('Missing or invalid credentials');
+      const rawBody = spec.body ? readBody(event) : undefined;
       const req = {
-        body: validate(spec.body, spec.body ? readBody(event) : undefined, 'body'),
+        body: validate(spec.body, rawBody, 'body'),
+        rawBody,
         query: validate(spec.query, event.queryStringParameters ?? {}, 'query'),
         path: validate(spec.path, event.pathParameters ?? {}, 'path'),
         uid,

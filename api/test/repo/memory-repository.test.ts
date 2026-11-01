@@ -5,11 +5,15 @@ import { BadRequest, Conflict } from '../../src/lib/errors.js';
 import { newId } from '../../src/lib/ids.js';
 import { InMemoryCapRepository, MemoryTable, createMemoryRepositories } from '../../src/lib/repo/memory.js';
 import { makeCap, makeHistory, nextTs, uniq } from '../support/fixtures.js';
-import { runCapRepositoryContract } from './cap-contract.js';
+import { runCapRepositoryContract, runGsi2Contract } from './cap-contract.js';
 
 describe('in-memory repositories', () => {
   it('[T-api-003] InMemoryCapRepository passes the CapRepository contract suite', async () => {
     await runCapRepositoryContract(new InMemoryCapRepository());
+  });
+
+  it('[T-api-020] InMemoryCapRepository keeps GSI2 in step with brand/variant and tombstones; listAll pages it all', async () => {
+    await runGsi2Contract(new InMemoryCapRepository());
   });
 
   it('[T-api-008] memory table: transactions are all-or-nothing and stored items are copies', async () => {
