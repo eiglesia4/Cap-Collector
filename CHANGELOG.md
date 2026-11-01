@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-17: API foundation — `defineHandler` (zod in, RFC 9457 Problem out, authorizer `uid`, no-store JSON, no bodies
+  in logs), env config validated at cold start, ULID ids, `CapRepository` with an in-memory single-table emulator and
+  a DynamoDB implementation (one `TransactWriteItems` plan for cap + `HIST#` + `LOCK#`, keys only from `shared`),
+  Album/Scan/Exchange interfaces, `npm run api:local`; contract suite on both repositories (DynamoDB Local opt-in).
 - CAP-16: the web build is served over HTTPS by CloudFront (default `*.cloudfront.net` domain, Origin Access Control,
   price class 100, HTTP/2+3, SPA fallback 403/404 → `/index.html`); the web bucket is private again (no website
   hosting, TLS only); images CORS allows the CloudFront origin; outputs `WebUrl` and `DistributionId` replace
