@@ -3,14 +3,27 @@
  * data-model.md. Everything is on-demand / pay-per-use: no VPC, no NAT, no always-on compute (CONVENTIONS § Cost).
  * The table comes from table-definition.ts, the same definition `npm run db:create` uses locally.
  * Removal policy: DESTROY only for stage `dev`; any other stage RETAINs data (story: RETAIN for prod).
+ * The web build is served by CloudFront over HTTPS (CAP-16): Sign in with Apple needs an HTTPS return URL.
+ * CloudFront lives here, not in a stack of its own, because the images bucket CORS needs the distribution's domain
+ * and the distribution needs the web bucket — two stacks would reference each other.
  */
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import {
+  AllowedMethods,
+  CachePolicy,
+  Distribution,
+  HttpVersion,
+  PriceClass,
+  ViewerProtocolPolicy,
+} from 'aws-cdk-lib/aws-cloudfront';
+import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import {
   BlockPublicAccess,
   Bucket,
   BucketEncryption,
   HttpMethods,
+  type IBucket,
   ObjectOwnership,
   StorageClass,
 } from 'aws-cdk-lib/aws-s3';
@@ -29,6 +42,9 @@ export type CollectorsDataStackProps = StackProps & {
 /** Only the throwaway stage may be deleted with its data. */
 export const isDisposableStage = (deployment: Deployment): boolean => deployment.stage === 'dev';
 
+/** SPA routing (CAP-16): S3 answers 403 (no ListBucket for OAC) or 404 for a deep path; CloudFront serves the app. */
+export const SPA_FALLBACK_STATUSES = [403, 404] as const;
+
 /** Images move to Standard-IA after this many days (story CAP-13). */
 export const IMAGES_IA_AFTER_DAYS = 90;
 
@@ -46,6 +62,9 @@ export class CollectorsDataStack extends Stack {
   readonly imagesBucket: Bucket;
   readonly webBucket: Bucket;
   readonly settings: Readonly<Record<SecretName, StringParameter>>;
+  readonly distribution: Distribution;
+  /** `https://<id>.cloudfront.net` — the web origin until the real domain exists (ADR-008 §5, EP-09). */
+  readonly webUrl: string;
 
   constructor(scope: Construct, id: string, props: CollectorsDataStackProps) {
     super(scope, id, props);
@@ -53,27 +72,44 @@ export class CollectorsDataStack extends Stack {
     const disposable = isDisposableStage(deployment);
     const removalPolicy = disposable ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
 
-    // Static web for the Mac (ADR-001). V1: plain S3 website hosting, public read; CloudFront + private bucket later.
-    // No enforceSSL: the S3 website endpoint is HTTP only and would be denied by a SecureTransport policy.
+    // Static web for the Mac (ADR-001, ADR-008 §3): a private bucket read only by CloudFront through Origin Access
+    // Control (CAP-16). No website hosting, no public policy.
     this.webBucket = new Bucket(this, 'Web', {
-      websiteIndexDocument: 'index.html',
-      websiteErrorDocument: 'index.html',
-      publicReadAccess: true,
-      blockPublicAccess: new BlockPublicAccess({
-        blockPublicAcls: true,
-        ignorePublicAcls: true,
-        blockPublicPolicy: false,
-        restrictPublicBuckets: false,
-      }),
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
       encryption: BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
       removalPolicy,
       autoDeleteObjects: disposable,
     });
 
+    // HTTPS on the default *.cloudfront.net domain; price class 100 (EU + North America), compression, HTTP/2+3.
+    // Deep paths (/cap/<id>) reach S3 as missing keys → the SPA's index.html with 200, so the client router decides.
+    this.distribution = new Distribution(this, 'WebDistribution', {
+      comment: `${resourceName(deployment, 'web')} — CapCollector web build`,
+      defaultRootObject: 'index.html',
+      priceClass: PriceClass.PRICE_CLASS_100,
+      httpVersion: HttpVersion.HTTP2_AND_3,
+      defaultBehavior: {
+        // CDK's IBucket declares `isWebsite?: boolean`, which exactOptionalPropertyTypes rejects for a concrete Bucket.
+        origin: S3BucketOrigin.withOriginAccessControl(this.webBucket as IBucket),
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+        compress: true,
+      },
+      errorResponses: SPA_FALLBACK_STATUSES.map((httpStatus) => ({
+        httpStatus,
+        responseHttpStatus: 200,
+        responsePagePath: '/index.html',
+        ttl: Duration.seconds(0),
+      })),
+    });
+    this.webUrl = `https://${this.distribution.distributionDomainName}`;
+
     // Cap photos (WebP ≤ 1024 px, uploaded with presigned PUT from the app). Private, versioned, IA after 90 days.
     // SPEC-GAP CAP-13: the web domain is not chosen yet (ADR-008), so CORS allows the origins declared in
-    // infra/config/<installation>.<stage>.json plus this stack's own website endpoint.
+    // infra/config/<installation>.<stage>.json plus this stack's own CloudFront origin (CAP-16).
     this.imagesBucket = new Bucket(this, 'Images', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
@@ -95,7 +131,7 @@ export class CollectorsDataStack extends Stack {
       cors: [
         {
           allowedMethods: [HttpMethods.PUT, HttpMethods.GET, HttpMethods.HEAD],
-          allowedOrigins: [...config.app_origins, this.webBucket.bucketWebsiteUrl],
+          allowedOrigins: [...config.app_origins, this.webUrl],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],
           maxAge: 3000,
@@ -149,6 +185,7 @@ export class CollectorsDataStack extends Stack {
     out('TableArn', this.table.tableArn, 'DynamoDB single table ARN');
     out('ImagesBucketName', this.imagesBucket.bucketName, 'S3 bucket for cap images (presigned PUT/GET)');
     out('WebBucketName', this.webBucket.bucketName, 'S3 bucket for the static web build');
-    out('WebsiteUrl', this.webBucket.bucketWebsiteUrl, 'S3 website endpoint of the web build');
+    out('WebUrl', this.webUrl, 'HTTPS URL of the web build (app_origins, Apple return URL until EP-09)');
+    out('DistributionId', this.distribution.distributionId, 'CloudFront distribution of the web build');
   }
 }

@@ -79,7 +79,7 @@ describe('CollectorsData stack', () => {
     expect(table.Properties).toMatchSnapshot();
   });
 
-  it('[T-infra-010] buckets: private versioned images with IA lifecycle and CORS, public website; outputs exported', () => {
+  it('[T-infra-010] buckets: private versioned images with IA lifecycle and CORS, private web bucket; outputs exported', () => {
     const template = devTemplate();
     template.hasResourceProperties('AWS::S3::Bucket', {
       PublicAccessBlockConfiguration: {
@@ -106,18 +106,28 @@ describe('CollectorsData stack', () => {
         ],
       },
     });
-    template.hasResourceProperties('AWS::S3::Bucket', {
-      WebsiteConfiguration: { IndexDocument: 'index.html', ErrorDocument: 'index.html' },
+    // Since CAP-16 both buckets are private (the web one is read by CloudFront only) and neither hosts a website.
+    template.allResourcesProperties('AWS::S3::Bucket', {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      WebsiteConfiguration: Match.absent(),
     });
-    // TLS is enforced on the images bucket only (the website endpoint is HTTP).
-    template.hasResourceProperties('AWS::S3::BucketPolicy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({ Effect: 'Deny', Condition: { Bool: { 'aws:SecureTransport': 'false' } } }),
-        ]),
+    // TLS is enforced on both buckets.
+    const tlsDeny = template.findResources('AWS::S3::BucketPolicy', {
+      Properties: {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({ Effect: 'Deny', Condition: { Bool: { 'aws:SecureTransport': 'false' } } }),
+          ]),
+        },
       },
     });
-    for (const key of ['TableName', 'TableArn', 'ImagesBucketName', 'WebBucketName', 'WebsiteUrl']) {
+    expect(Object.keys(tlsDeny)).toHaveLength(2);
+    for (const key of ['TableName', 'TableArn', 'ImagesBucketName', 'WebBucketName', 'WebUrl', 'DistributionId']) {
       template.hasOutput(key, { Export: { Name: `cap-naeva-dev-data-${key}` } });
     }
   });

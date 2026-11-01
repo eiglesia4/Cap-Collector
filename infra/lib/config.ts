@@ -56,8 +56,15 @@ function fromContext(app: App, key: string, envVar: string): string | undefined 
 
 /** Reads `installation` and `stage` from CDK context or env. Neither is ever guessed. */
 export function resolveDeployment(app: App): Deployment {
-  const installation = fromContext(app, 'installation', 'CAP_INSTALLATION');
-  if (installation === undefined) {
+  return validateDeployment(
+    fromContext(app, 'installation', 'CAP_INSTALLATION'),
+    fromContext(app, 'stage', 'CAP_STAGE'),
+  );
+}
+
+/** Validates an installation/stage pair from any source (CDK context, env, a script's own variables). */
+export function validateDeployment(installation: string | undefined, stage: string | undefined): Deployment {
+  if (installation === undefined || installation === '') {
     throw new Error('Missing installation: pass --context installation=<id> or set CAP_INSTALLATION');
   }
   if (!INSTALLATION_RE.test(installation)) {
@@ -66,8 +73,7 @@ export function resolveDeployment(app: App): Deployment {
         'not starting or ending with a hyphen (it goes into resource names)',
     );
   }
-  const stage = fromContext(app, 'stage', 'CAP_STAGE');
-  if (stage === undefined) {
+  if (stage === undefined || stage === '') {
     throw new Error('Missing stage: pass --context stage=<id> or set CAP_STAGE');
   }
   if (!STAGE_RE.test(stage)) {
