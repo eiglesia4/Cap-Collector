@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-15: `CollectorsApi` stack — HTTP API routed by `infra/lib/routes.ts` (identical to `openapi.yaml`), one arm64
+  Node 22 Lambda per handler file (256 MB, 10 s, JSON logs 30 d), a shared 501 stub for routes not merged yet, Lambda
+  authorizer (deny-all stub until CAP-19), per-function IAM, CORS from `app_origins`, throttling 10 rps; SSM settings
+  (`allowed-apple-subs`, `apple-client-ids`, `session-secret`) created `unset` in `CollectorsData`; `infra/README.md`.
 - CAP-14: V1 dependency batch — Capacitor 8 (core, cli, ios, camera, share, filesystem, preferences) and
   `@testing-library/dom` for `app`; AWS SDK v3 (DynamoDB, lib-dynamodb, S3, presigner), `jose`, `ulid` and
   `aws-sdk-client-mock` for `api`; root `diff` / `deploy` / `api:local` scripts; T-infra-015 checks that every declared
