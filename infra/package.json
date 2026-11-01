@@ -9,13 +9,16 @@
     "synth": "cdk synth --quiet --context installation=\"${CAP_INSTALLATION:-naeva}\" --context stage=\"${CAP_STAGE:-dev}\"",
     "diff": "cdk diff --context installation=\"$CAP_INSTALLATION\" --context stage=\"$CAP_STAGE\"",
     "deploy": "cdk deploy --all --context installation=\"$CAP_INSTALLATION\" --context stage=\"$CAP_STAGE\"",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "db:create": "tsx scripts/db-create.ts"
   },
   "dependencies": {
+    "@capcollector/shared": "0.0.0",
     "aws-cdk-lib": "^2.275.0",
     "constructs": "^10.8.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1161.0",
     "aws-cdk": "^2.1147.0",
     "tsx": "^4.23.15"
   }

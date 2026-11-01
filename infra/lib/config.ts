@@ -13,6 +13,8 @@ import { App, Tags } from 'aws-cdk-lib';
 
 /** Lowercase, digits, hyphens: it goes into bucket and table names. */
 const INSTALLATION_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+/** scheme://host[:port], no path — what a browser sends in `Origin`. */
+const ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/;
 /** Free text (dev, prod, test…); only its shape is checked. */
 const STAGE_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
 
@@ -33,6 +35,8 @@ export interface Deployment {
 export interface InstallationConfig {
   readonly config_version: string;
   readonly region: string;
+  /** Origins allowed to PUT images with a presigned URL (CORS on the images bucket, CAP-13). Optional, default none. */
+  readonly app_origins: readonly string[];
 }
 
 function fromContext(app: App, key: string, envVar: string): string | undefined {
@@ -81,7 +85,13 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
   if (typeof raw.config_version !== 'string' || raw.config_version === '') {
     throw new Error(`${file}: "config_version" is required`);
   }
-  return { region: raw.region, config_version: raw.config_version };
+  const origins = raw.app_origins ?? [];
+  if (!Array.isArray(origins) || origins.some((o) => typeof o !== 'string' || !ORIGIN_RE.test(o))) {
+    throw new Error(
+      `${file}: "app_origins" must be a list of origins like "https://example.org" or "capacitor://localhost"`,
+    );
+  }
+  return { region: raw.region, config_version: raw.config_version, app_origins: origins };
 }
 
 /** `CAP_ACCOUNT_<INSTALLATION>_<STAGE>`, uppercase, hyphens → underscores. The account belongs to the pair. */

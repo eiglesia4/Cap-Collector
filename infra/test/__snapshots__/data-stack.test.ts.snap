@@ -1,0 +1,120 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CollectorsData stack > [T-infra-008] synthesised table matches data-model.md: keys, GSI1/GSI2 projections, TTL, PITR, on-demand 1`] = `
+{
+  "AttributeDefinitions": [
+    {
+      "AttributeName": "pk",
+      "AttributeType": "S",
+    },
+    {
+      "AttributeName": "sk",
+      "AttributeType": "S",
+    },
+    {
+      "AttributeName": "gsi1pk",
+      "AttributeType": "S",
+    },
+    {
+      "AttributeName": "gsi1sk",
+      "AttributeType": "S",
+    },
+    {
+      "AttributeName": "gsi2pk",
+      "AttributeType": "S",
+    },
+    {
+      "AttributeName": "gsi2sk",
+      "AttributeType": "S",
+    },
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "DeletionProtectionEnabled": false,
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "GSI1",
+      "KeySchema": [
+        {
+          "AttributeName": "gsi1pk",
+          "KeyType": "HASH",
+        },
+        {
+          "AttributeName": "gsi1sk",
+          "KeyType": "RANGE",
+        },
+      ],
+      "Projection": {
+        "NonKeyAttributes": [
+          "capId",
+          "brand",
+          "variant",
+          "images",
+          "status",
+          "deletedAt",
+        ],
+        "ProjectionType": "INCLUDE",
+      },
+    },
+    {
+      "IndexName": "GSI2",
+      "KeySchema": [
+        {
+          "AttributeName": "gsi2pk",
+          "KeyType": "HASH",
+        },
+        {
+          "AttributeName": "gsi2sk",
+          "KeyType": "RANGE",
+        },
+      ],
+      "Projection": {
+        "NonKeyAttributes": [
+          "capId",
+          "brand",
+          "variant",
+          "images",
+          "status",
+          "deletedAt",
+        ],
+        "ProjectionType": "INCLUDE",
+      },
+    },
+  ],
+  "KeySchema": [
+    {
+      "AttributeName": "pk",
+      "KeyType": "HASH",
+    },
+    {
+      "AttributeName": "sk",
+      "KeyType": "RANGE",
+    },
+  ],
+  "PointInTimeRecoverySpecification": {
+    "PointInTimeRecoveryEnabled": true,
+  },
+  "TableName": "cap-naeva-dev-table",
+  "Tags": [
+    {
+      "Key": "cap:config_version",
+      "Value": "2026-11-01",
+    },
+    {
+      "Key": "cap:installation",
+      "Value": "naeva",
+    },
+    {
+      "Key": "cap:project",
+      "Value": "capcollector",
+    },
+    {
+      "Key": "cap:stage",
+      "Value": "dev",
+    },
+  ],
+  "TimeToLiveSpecification": {
+    "AttributeName": "ttl",
+    "Enabled": true,
+  },
+}
+`;
