@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`web distribution > [T-infra-019] snapshot: CloudFront with OAC over a private bucket, HTTPS redirect, SPA error responses 1`] = `
+{
+  "Comment": "cap-naeva-dev-web — CapCollector web build",
+  "CustomErrorResponses": [
+    {
+      "ErrorCachingMinTTL": 0,
+      "ErrorCode": 403,
+      "ResponseCode": 200,
+      "ResponsePagePath": "/index.html",
+    },
+    {
+      "ErrorCachingMinTTL": 0,
+      "ErrorCode": 404,
+      "ResponseCode": 200,
+      "ResponsePagePath": "/index.html",
+    },
+  ],
+  "DefaultCacheBehavior": {
+    "AllowedMethods": [
+      "GET",
+      "HEAD",
+    ],
+    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+    "Compress": true,
+    "ViewerProtocolPolicy": "redirect-to-https",
+  },
+  "DefaultRootObject": "index.html",
+  "Enabled": true,
+  "HttpVersion": "http2and3",
+  "IPV6Enabled": true,
+  "PriceClass": "PriceClass_100",
+  "originCount": 1,
+}
+`;

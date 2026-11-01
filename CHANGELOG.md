@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-16: the web build is served over HTTPS by CloudFront (default `*.cloudfront.net` domain, Origin Access Control,
+  price class 100, HTTP/2+3, SPA fallback 403/404 → `/index.html`); the web bucket is private again (no website
+  hosting, TLS only); images CORS allows the CloudFront origin; outputs `WebUrl` and `DistributionId` replace
+  `WebsiteUrl`; `npm run deploy:web [-- --dry-run]` builds, syncs and invalidates from the stack outputs.
 - CAP-15: `CollectorsApi` stack — HTTP API routed by `infra/lib/routes.ts` (identical to `openapi.yaml`), one arm64
   Node 22 Lambda per handler file (256 MB, 10 s, JSON logs 30 d), a shared 501 stub for routes not merged yet, Lambda
   authorizer (deny-all stub until CAP-19), per-function IAM, CORS from `app_origins`, throttling 10 rps; SSM settings

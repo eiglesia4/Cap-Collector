@@ -30,6 +30,7 @@
     "diff": "npm run diff -w @capcollector/infra",
     "predeploy": "npm run build:shared",
     "deploy": "npm run deploy -w @capcollector/infra",
+    "deploy:web": "tsx infra/scripts/deploy-web.ts",
     "db:create": "npm run build:shared && npm run db:create -w @capcollector/infra",
     "api:local": "npm run build:shared && tsx api/scripts/local-server.ts",
     "catalog:check": "npm run catalog -- --check"
