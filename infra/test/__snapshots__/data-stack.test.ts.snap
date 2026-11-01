@@ -100,16 +100,20 @@ exports[`CollectorsData stack > [T-infra-008] synthesised table matches data-mod
       "Value": "2026-11-01",
     },
     {
-      "Key": "cap:installation",
+      "Key": "installation",
       "Value": "naeva",
     },
     {
-      "Key": "cap:project",
-      "Value": "capcollector",
+      "Key": "project",
+      "Value": "EIM_CAP",
     },
     {
-      "Key": "cap:stage",
+      "Key": "stage",
       "Value": "dev",
+    },
+    {
+      "Key": "UserName",
+      "Value": "eiglesia4",
     },
   ],
   "TimeToLiveSpecification": {

@@ -1,16 +1,18 @@
 /**
  * Composition of the CDK app, separate from bin/app.ts so tests synthesize exactly what the CLI does.
- * Order: resolve deployment → require its config file → account guard → stacks.
+ * Order: resolve deployment → require its config file → account guard → stacks → app-level tags.
  */
-import { App } from 'aws-cdk-lib';
+import { App, Tags } from 'aws-cdk-lib';
 
 import {
-  applyGlobalTags,
   assertAccountMatchesDeployment,
   type Deployment,
   loadInstallationConfig,
+  PROJECT_TAG_VALUE,
   resolveDeployment,
   resourceName,
+  TAG_KEYS,
+  USER_NAME_TAG_VALUE,
 } from './config.js';
 import { CollectorsDataStack } from './collectors-data-stack.js';
 import { CollectorsApiStack } from './stacks.js';
@@ -44,6 +46,12 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
   });
   api.addStackDependency(data);
 
-  applyGlobalTags(app, deployment, config);
+  // AWS tagging (CONVENTIONS.md § AWS tagging): once, at app level, so every current and future stack and every
+  // taggable construct inherits the tags — never per construct.
+  Tags.of(app).add(TAG_KEYS.project, PROJECT_TAG_VALUE);
+  Tags.of(app).add(TAG_KEYS.userName, USER_NAME_TAG_VALUE);
+  Tags.of(app).add(TAG_KEYS.installation, deployment.installation);
+  Tags.of(app).add(TAG_KEYS.stage, deployment.stage);
+  Tags.of(app).add(TAG_KEYS.configVersion, config.config_version);
   return { app, deployment, data, api };
 }

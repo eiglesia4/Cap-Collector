@@ -10,6 +10,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 - CAP-13: `CollectorsData` stack — private versioned images bucket (IA after 90 d, CORS for presigned PUT), public
   S3 website bucket for V1, single DynamoDB table (on-demand, PITR, TTL, GSI1/GSI2) from one table definition shared
   with `npm run db:create`; `deploy/docker-compose.yaml` with DynamoDB Local + S3 mock; optional `app_origins` config.
+- CAP-13 (architect revision): AWS tags `project=EIM_CAP`, `UserName=eiglesia4`, `installation`, `stage` applied once
+  at CDK app level, so every stack and taggable resource inherits them (CONVENTIONS.md § AWS tagging); they replace the
+  `cap:project` / `cap:installation` / `cap:stage` tags (`cap:config_version` stays).
 - CAP-12: contracts v0.1 — `@capcollector/shared` zod schemas and types (enums, Location + `A·3·17` parser, Cap /
   CapInput / CapPatch / CapHistory, Scan / Analyse, Album / SheetView / NextFree, `capcollector.exchange` v1 with upload
   parser and field normalisation), `keys.ts` as the single source of DynamoDB keys; `doc/spec/openapi.yaml` 0.1.0;

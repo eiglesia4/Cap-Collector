@@ -137,6 +137,27 @@ describe('CollectorsData stack', () => {
     }
   });
 
+  it('[T-infra-014] every stack carries project, UserName, installation and stage on the table and both buckets', () => {
+    const built = buildApp(new App({ context: { installation: 'naeva', stage: 'dev' } }));
+    const expected = [
+      { Key: 'project', Value: 'EIM_CAP' },
+      { Key: 'UserName', Value: 'eiglesia4' },
+      { Key: 'installation', Value: 'naeva' },
+      { Key: 'stage', Value: 'dev' },
+    ];
+    const data = Template.fromStack(built.data);
+    data.resourceCountIs('AWS::S3::Bucket', 2);
+    for (const tag of expected) {
+      data.allResourcesProperties('AWS::S3::Bucket', { Tags: Match.arrayWith([tag]) });
+      data.allResourcesProperties('AWS::DynamoDB::Table', { Tags: Match.arrayWith([tag]) });
+    }
+    // Applied at app level, so the (still empty) API stack inherits them too: checked on the stack's own tags.
+    for (const stack of [built.data, built.api]) {
+      const tags = stack.tags.tagValues();
+      expect(tags).toMatchObject({ project: 'EIM_CAP', UserName: 'eiglesia4', installation: 'naeva', stage: 'dev' });
+    }
+  });
+
   it('[T-infra-012] app_origins in config/ is optional and must be a list of bare origins', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
     const target = { installation: 'naeva', stage: 'dev' };
