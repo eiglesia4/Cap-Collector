@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-21: app foundation — Capacitor iOS project (`com.naevatec.collectors`), vanilla-TS shell with history router
+  (10 routes) and tab bar Collection · Scan · Wishlist · Stats, `platform/` adapter (web + Capacitor, Capacitor imports
+  fenced by lint), design tokens with self-hosted fonts, typed i18n, typed API client (401 → refresh → retry once),
+  session store, Settings skeleton.
 - CAP-17: API foundation — `defineHandler` (zod in, RFC 9457 Problem out, authorizer `uid`, no-store JSON, no bodies
   in logs), env config validated at cold start, ULID ids, `CapRepository` with an in-memory single-table emulator and
   a DynamoDB implementation (one `TransactWriteItems` plan for cap + `HIST#` + `LOCK#`, keys only from `shared`),

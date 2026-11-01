@@ -1,0 +1,44 @@
+/* Design tokens (SCREENS.md § Visual system, CAP-21): palette, type, 44 px touch targets, safe-area insets.
+   Fonts are self-hosted (latin subset, SIL OFL 1.1 — see public/fonts/LICENSE.md); no runtime Google Fonts. */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-700-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+}
+
+:root {
+  --color-ground: #fafaf7;
+  --color-ink: #1b1a17;
+  --color-accent: #b8651b;
+  --color-muted: #5c5a55;
+  --color-line: #dedbd2;
+
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+
+  --touch: 44px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --radius: 12px;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  --tab-bar-height: 56px;
+}
