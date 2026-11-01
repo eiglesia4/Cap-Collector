@@ -19,6 +19,13 @@ export class Unauthorized extends ApiError {
   override readonly name = 'Unauthorized';
 }
 
+/** Authenticated but not allowed (Apple `sub` outside the single-user allow-list, ADR-008 §4). */
+export class Forbidden extends ApiError {
+  readonly status = 403;
+  readonly title = 'Forbidden';
+  override readonly name = 'Forbidden';
+}
+
 export class NotFound extends ApiError {
   readonly status = 404;
   readonly title = 'Not found';

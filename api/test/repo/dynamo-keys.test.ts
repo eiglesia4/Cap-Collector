@@ -19,6 +19,7 @@ import { Conflict, NotImplemented } from '../../src/lib/errors.js';
 import { encodeCursor } from '../../src/lib/repo/items.js';
 import {
   DynamoCapRepository,
+  DynamoRefreshTokenRepository,
   createDocumentClient,
   createDynamoRepositories,
   type DocSender,
@@ -190,5 +191,38 @@ describe('DynamoCapRepository keys', () => {
       repos.exchange.list(UID),
     ];
     for (const c of calls) await expect(c).rejects.toBeInstanceOf(NotImplemented);
+  });
+
+  it('[T-api-032] refresh tokens: USER#/REFRESH#<hash> keys, single-use rotation conditioned on existence and ttl', async () => {
+    const { sent, doc } = recorder();
+    const repo = new DynamoRefreshTokenRepository(doc, TABLE);
+    const item = { tokenHash: 'abc', createdAt: '2026-11-01T10:00:00.000Z', ttl: 2_000_000_000 };
+    await repo.create(UID, item);
+    expect(transactItems(sent[0])[0]?.Put).toEqual({
+      TableName: TABLE,
+      Item: { pk: userPk(UID), sk: 'REFRESH#abc', ...item },
+      ConditionExpression: 'attribute_not_exists(pk)',
+    });
+    expect(await repo.rotate(UID, 'abc', { ...item, tokenHash: 'def' }, 1_700_000_000)).toBe(true);
+    const [del, put] = transactItems(sent[1]);
+    expect(del?.Delete).toEqual({
+      TableName: TABLE,
+      Key: { pk: userPk(UID), sk: 'REFRESH#abc' },
+      ConditionExpression: 'attribute_exists(pk) AND #ttl > :now',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: { ':now': 1_700_000_000 },
+    });
+    expect(put?.Put?.Item).toMatchObject({ sk: 'REFRESH#def' });
+
+    const cancelled = Object.assign(new Error('x'), { name: 'TransactionCanceledException' });
+    const failing = new DynamoRefreshTokenRepository(recorder(() => cancelled).doc, TABLE);
+    expect(await failing.rotate(UID, 'abc', item, 1)).toBe(false);
+    await expect(failing.create(UID, item)).rejects.toBeInstanceOf(Conflict);
+    const broken = new DynamoRefreshTokenRepository(
+      recorder(() => Object.assign(new Error('down'), { name: 'InternalServerError' })).doc,
+      TABLE,
+    );
+    await expect(broken.rotate(UID, 'abc', item, 1)).rejects.toThrow('down');
+    await expect(broken.create(UID, item)).rejects.toThrow('down');
   });
 });

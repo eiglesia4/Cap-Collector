@@ -8,7 +8,7 @@ import { getRepositories, setRepositories } from '../src/lib/repo/index.js';
 import { InMemoryCapRepository } from '../src/lib/repo/memory.js';
 import type { RouteDef } from '../src/routes.js';
 
-const server = createLocalServer('local-user');
+const server = createLocalServer({ mode: 'fake', defaultUid: 'local-user' });
 let base = '';
 
 beforeAll(async () => {

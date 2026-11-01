@@ -107,9 +107,27 @@ export interface ExchangeRepository {
   list(uid: string): Promise<ExchangeRequestItem[]>;
 }
 
+/** A stored refresh token: only its SHA-256 hash is kept (CAP-19, ADR-008 §4). */
+export interface RefreshTokenItem {
+  tokenHash: string;
+  createdAt: string;
+  /** Expiry, epoch seconds (DynamoDB TTL attribute). */
+  ttl: number;
+}
+
+export interface RefreshTokenRepository {
+  create(uid: string, item: RefreshTokenItem): Promise<void>;
+  /**
+   * Atomically deletes `oldHash` and stores `next`; false when the old token is unknown, already used or expired at
+   * `nowEpoch` (replay → the caller answers 401).
+   */
+  rotate(uid: string, oldHash: string, next: RefreshTokenItem, nowEpoch: number): Promise<boolean>;
+}
+
 export interface Repositories {
   caps: CapRepository;
   albums: AlbumRepository;
   scans: ScanRepository;
   exchange: ExchangeRepository;
+  refreshTokens: RefreshTokenRepository;
 }

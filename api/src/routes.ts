@@ -14,4 +14,16 @@ export interface RouteDef {
 
 export const ROUTES: readonly RouteDef[] = [
   { method: 'GET', path: '/healthz', auth: false, load: async () => (await import('./handlers/healthz.js')).handler },
+  {
+    method: 'POST',
+    path: '/auth/apple',
+    auth: false,
+    load: async () => (await import('./handlers/auth-apple.js')).handler,
+  },
+  {
+    method: 'POST',
+    path: '/auth/refresh',
+    auth: false,
+    load: async () => (await import('./handlers/auth-refresh.js')).handler,
+  },
 ];
