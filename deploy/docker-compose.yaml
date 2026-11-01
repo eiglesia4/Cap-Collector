@@ -1,0 +1,22 @@
+# Local stand-ins for the CollectorsData resources (CAP-13, method.md § Tests: no cloud in tests).
+#   docker compose -f deploy/docker-compose.yaml up -d
+#   npm run db:create        # table + GSI1/GSI2 + TTL, from infra/lib/table-definition.ts
+# Endpoints for api/ tests and local runs: CAP_DYNAMODB_ENDPOINT=http://localhost:8000 · S3 http://localhost:9090
+# (path-style). Both run in memory: `down` wipes the data. Optional tooling: unit tests use in-memory fakes and CI
+# does not start these containers.
+name: capcollector-local
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.1.0
+    command: ['-jar', 'DynamoDBLocal.jar', '-inMemory', '-sharedDb']
+    ports:
+      - '127.0.0.1:8000:8000'
+
+  s3:
+    # S3 mock that needs no admin API: buckets are created at start-up from the env list.
+    image: adobe/s3mock:4.9.1
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: cap-local-images,cap-local-web
+    ports:
+      - '127.0.0.1:9090:9090'

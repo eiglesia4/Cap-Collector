@@ -24,7 +24,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tools/tsconfig.json",
     "precatalog": "npm run build:shared",
     "catalog": "tsx tools/catalog/catalog.ts",
+    "presynth": "npm run build:shared",
     "synth": "npm run synth -w @capcollector/infra",
+    "db:create": "npm run build:shared && npm run db:create -w @capcollector/infra",
     "catalog:check": "npm run catalog -- --check"
   },
   "devDependencies": {

@@ -12,7 +12,8 @@ import {
   resolveDeployment,
   resourceName,
 } from './config.js';
-import { CollectorsApiStack, CollectorsDataStack } from './stacks.js';
+import { CollectorsDataStack } from './collectors-data-stack.js';
+import { CollectorsApiStack } from './stacks.js';
 
 export interface BuiltApp {
   readonly app: App;
@@ -33,6 +34,7 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
     description: 'CapCollector — data: S3 images/web and the DynamoDB single table',
     env,
     deployment,
+    config,
   });
   const api = new CollectorsApiStack(app, 'CollectorsApi', {
     stackName: resourceName(deployment, 'api'),
