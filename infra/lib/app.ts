@@ -15,7 +15,7 @@ import {
   USER_NAME_TAG_VALUE,
 } from './config.js';
 import { CollectorsDataStack } from './collectors-data-stack.js';
-import { CollectorsApiStack } from './stacks.js';
+import { CollectorsApiStack } from './collectors-api-stack.js';
 
 export interface BuiltApp {
   readonly app: App;
@@ -43,7 +43,11 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
     description: 'CapCollector — API: Lambda handlers, HTTP API, auth',
     env,
     deployment,
+    config,
+    table: data.table,
+    imagesBucket: data.imagesBucket,
   });
+  // The API resolves the SSM settings CollectorsData creates, so data must be deployed first.
   api.addStackDependency(data);
 
   // AWS tagging (CONVENTIONS.md § AWS tagging): once, at app level, so every current and future stack and every

@@ -14,9 +14,11 @@ import {
   ObjectOwnership,
   StorageClass,
 } from 'aws-cdk-lib/aws-s3';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
+import { SECRET_ENV, type SecretName } from './routes.js';
 import { TABLE_DEFINITION } from './table-definition.js';
 
 export type CollectorsDataStackProps = StackProps & {
@@ -32,10 +34,18 @@ export const IMAGES_IA_AFTER_DAYS = 90;
 
 const str = (name: string) => ({ name, type: AttributeType.STRING });
 
+/** Value the stack writes once; Edu overwrites it (`aws ssm put-parameter --overwrite`). The API must refuse it. */
+export const UNSET_PARAMETER_VALUE = 'unset';
+
+/** `/cap/<installation>/<stage>/<setting>`, e.g. `/cap/naeva/dev/session-secret`. */
+export const settingParameterName = (deployment: Deployment, name: SecretName): string =>
+  `/cap/${deployment.installation}/${deployment.stage}/${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+
 export class CollectorsDataStack extends Stack {
   readonly table: Table;
   readonly imagesBucket: Bucket;
   readonly webBucket: Bucket;
+  readonly settings: Readonly<Record<SecretName, StringParameter>>;
 
   constructor(scope: Construct, id: string, props: CollectorsDataStackProps) {
     super(scope, id, props);
@@ -116,6 +126,21 @@ export class CollectorsDataStack extends Stack {
         nonKeyAttributes: [...gsi.nonKeyAttributes],
       });
     }
+
+    // API settings filled by hand (CAP-15): created here, not in CollectorsApi, so they exist before the API stack
+    // resolves them at deploy time. SPEC-GAP CAP-15: plain String parameters, because CloudFormation cannot create a
+    // SecureString and Lambda env cannot resolve one; the values end up in the functions' (encrypted) environment.
+    const setting = (name: SecretName) =>
+      new StringParameter(this, `Setting${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`, {
+        parameterName: settingParameterName(deployment, name),
+        stringValue: UNSET_PARAMETER_VALUE,
+        description: `CapCollector ${SECRET_ENV[name]} — filled by Edu, never committed`,
+      });
+    this.settings = {
+      allowedAppleSubs: setting('allowedAppleSubs'),
+      appleClientIds: setting('appleClientIds'),
+      sessionSecret: setting('sessionSecret'),
+    };
 
     // Exported for CollectorsApi (and for Edu's console checks after deploy).
     const out = (key: string, value: string, description: string) =>
