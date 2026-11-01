@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createLocalServer, matchRoute, toEvent, useLocalRepositories } from '../scripts/local-server.js';
 import { getRepositories, setRepositories } from '../src/lib/repo/index.js';
-import { InMemoryCapRepository } from '../src/lib/repo/memory.js';
+import { InMemoryCapRepository, createMemoryRepositories } from '../src/lib/repo/memory.js';
 import type { RouteDef } from '../src/routes.js';
 
 const server = createLocalServer('local-user');
@@ -68,5 +68,35 @@ describe('api:local', () => {
     expect(pub.requestContext).not.toHaveProperty('authorizer');
     expect(pub).not.toHaveProperty('queryStringParameters');
     expect(pub).not.toHaveProperty('body');
+  });
+
+  it('[T-api-024] every /caps* route answers over HTTP on api:local: create, list, get, patch, history, delete, per-user 404', async () => {
+    setRepositories(createMemoryRepositories());
+    const call = async (method: string, path: string, body?: unknown, uid?: string) => {
+      const res = await fetch(`${base}${path}`, {
+        method,
+        headers: { 'content-type': 'application/json', ...(uid ? { 'x-cap-uid': uid } : {}) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : undefined };
+    };
+    const images = { top: { key: 'local-user/x/top.webp', width: 640, height: 640 } };
+    const made = await call('POST', '/caps', { brand: 'Mahou', variant: 'Clásica', images });
+    expect(made.status).toBe(201);
+    const capId = String(made.body?.capId);
+
+    const page = await call('GET', '/caps?q=clasica&sort=newest&limit=5');
+    expect(page).toMatchObject({ status: 200, body: { total: 1, items: [{ capId }] } });
+    expect((await call('GET', `/caps/${capId}`)).body).toMatchObject({ brand: 'Mahou' });
+    expect((await call('PATCH', `/caps/${capId}`, { year: 2021 })).body).toMatchObject({ year: 2021 });
+    const hist = await call('GET', `/caps/${capId}/history`);
+    expect((hist.body as unknown as { action: string }[]).map((h) => h.action)).toEqual(['updated', 'created']);
+    expect((await call('GET', `/caps/${capId}`, undefined, 'someone-else')).status).toBe(404);
+    expect((await call('DELETE', `/caps/${capId}`)).status).toBe(204);
+    expect((await call('GET', `/caps/${capId}`)).status).toBe(404);
+    expect((await call('POST', '/caps', { brand: 'X', images, location: { kind: 'box', album: 'B' } })).status).toBe(
+      422,
+    );
   });
 });

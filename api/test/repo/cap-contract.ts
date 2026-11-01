@@ -133,3 +133,34 @@ export async function runCapRepositoryContract(repo: CapRepository): Promise<voi
   await expect(repo.list(pager, { limit: 0 })).rejects.toBeInstanceOf(BadRequest);
   await expect(repo.list(pager, { limit: 101 })).rejects.toBeInstanceOf(BadRequest);
 }
+
+/**
+ * GSI2 maintenance and listAll (CAP-18, data-model.md § Indexes): brand attributes present after create, recomputed
+ * when brand/variant change, removed by the tombstone; listAll follows every page and hides tombstones by default.
+ */
+export async function runGsi2Contract(repo: CapRepository): Promise<void> {
+  const uid = uniq('user');
+  const brand = uniq('Galicia');
+  const renamed = uniq('Estrella');
+  const cap = makeCap({ brand, variant: '1906', location: undefined });
+  await repo.put(uid, { cap, history: makeHistory(cap.capId, 'created') });
+  expect((await repo.listGsi2(brand)).map((e) => e.capId)).toEqual([cap.capId]);
+  expect((await repo.listGsi2(brand, '1906')).map((e) => e.capId)).toEqual([cap.capId]);
+
+  const v2 = { ...cap, brand: renamed, variant: 'Especial', updatedAt: nextTs() };
+  await repo.patch(uid, { cap }, { cap: v2, history: makeHistory(cap.capId, 'updated') });
+  expect(await repo.listGsi2(brand)).toEqual([]);
+  expect(await repo.listGsi2(renamed, '1906')).toEqual([]);
+  expect((await repo.listGsi2(renamed, 'especial')).map((e) => e.capId)).toEqual([cap.capId]);
+
+  const other = makeCap({ brand: renamed, location: undefined });
+  await repo.put(uid, { cap: other, history: makeHistory(other.capId, 'created') });
+  expect((await repo.listAll(uid)).map((c) => c.capId).sort()).toEqual([cap.capId, other.capId].sort());
+
+  await repo.softDelete(uid, { cap: v2 }, makeHistory(cap.capId, 'deleted'));
+  expect((await repo.listGsi2(renamed)).map((e) => e.capId)).toEqual([other.capId]);
+  expect((await repo.listAll(uid)).map((c) => c.capId)).toEqual([other.capId]);
+  const withDeleted = await repo.listAll(uid, { includeDeleted: true });
+  expect(withDeleted.find((c) => c.capId === cap.capId)?.deletedAt).toBeDefined();
+  expect(await repo.listAll(uniq('nobody'))).toEqual([]);
+}

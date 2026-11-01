@@ -4,7 +4,7 @@
 import { describe, it } from 'vitest';
 
 import { createDocumentClient, DynamoCapRepository } from '../../src/lib/repo/dynamo.js';
-import { runCapRepositoryContract } from './cap-contract.js';
+import { runCapRepositoryContract, runGsi2Contract } from './cap-contract.js';
 
 const endpoint = process.env.CAP_DYNAMODB_ENDPOINT;
 const isLocal = !!endpoint && !/amazonaws\.com/.test(endpoint);
@@ -16,5 +16,10 @@ describe('DynamoDB repositories (DynamoDB Local)', () => {
     if (!isLocal) ctx.skip('CAP_DYNAMODB_ENDPOINT is not set to a local endpoint');
     const doc = createDocumentClient({ dynamodbEndpoint: endpoint! });
     await runCapRepositoryContract(new DynamoCapRepository(doc, table));
+  }, 30_000);
+
+  it('[T-api-021] DynamoCapRepository keeps GSI2 in step and lists everything on DynamoDB Local (skipped without CAP_DYNAMODB_ENDPOINT)', async (ctx) => {
+    if (!isLocal) ctx.skip('CAP_DYNAMODB_ENDPOINT is not set to a local endpoint');
+    await runGsi2Contract(new DynamoCapRepository(createDocumentClient({ dynamodbEndpoint: endpoint! }), table));
   }, 30_000);
 });

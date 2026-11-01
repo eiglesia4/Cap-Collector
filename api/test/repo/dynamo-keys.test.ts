@@ -163,6 +163,17 @@ describe('DynamoCapRepository keys', () => {
     expect(await repo.history(FIXTURE_CAP.capId)).toHaveLength(1);
     expect((sent[8] as QueryCommand).input.ExpressionAttributeValues).toEqual({ ':pk': capPk(FIXTURE_CAP.capId) });
 
+    pages = 1;
+    expect(await repo.listAll(UID)).toEqual([FIXTURE_CAP]);
+    expect((sent[9] as QueryCommand).input).toMatchObject({
+      ExpressionAttributeValues: { ':pk': userPk(UID), ':prefix': SK_PREFIX.cap },
+      FilterExpression: 'attribute_not_exists(deletedAt)',
+    });
+    expect((sent[9] as QueryCommand).input.Limit).toBeUndefined();
+    pages = 1;
+    await repo.listAll(UID, { includeDeleted: true });
+    expect((sent[10] as QueryCommand).input.FilterExpression).toBeUndefined();
+
     // Write errors: cancelled transaction → Conflict; anything else propagates.
     const cancelled = Object.assign(new Error('cancelled'), { name: 'TransactionCanceledException' });
     const failing = recorder(() => cancelled).repo;
