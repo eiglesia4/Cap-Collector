@@ -4,7 +4,7 @@ import { expect } from 'vitest';
 
 import { BadRequest, Conflict } from '../../src/lib/errors.js';
 import { encodeCursor } from '../../src/lib/repo/items.js';
-import type { CapRepository } from '../../src/lib/repo/types.js';
+import type { CapRepository, RefreshTokenRepository } from '../../src/lib/repo/types.js';
 import { makeCap, makeHistory, nextTs, pocket, uniq } from '../support/fixtures.js';
 
 export async function runCapRepositoryContract(repo: CapRepository): Promise<void> {
@@ -132,4 +132,21 @@ export async function runCapRepositoryContract(repo: CapRepository): Promise<voi
   ).rejects.toBeInstanceOf(BadRequest);
   await expect(repo.list(pager, { limit: 0 })).rejects.toBeInstanceOf(BadRequest);
   await expect(repo.list(pager, { limit: 101 })).rejects.toBeInstanceOf(BadRequest);
+}
+
+/** RefreshTokenRepository contract (CAP-19): duplicates refused, rotation single-use, per user, expiry honoured. */
+export async function runRefreshContract(repo: RefreshTokenRepository): Promise<void> {
+  const uid = uniq('user');
+  const h = () => uniq('hash');
+  const item = (tokenHash: string, ttl = 2_000_000_000) => ({ tokenHash, createdAt: nextTs(), ttl });
+  const [a, b, c, d] = [h(), h(), h(), h()];
+  await repo.create(uid, item(a));
+  await expect(repo.create(uid, item(a))).rejects.toBeInstanceOf(Conflict);
+  expect(await repo.rotate(uid, a, item(b), 1_000)).toBe(true);
+  expect(await repo.rotate(uid, a, item(c), 1_000)).toBe(false); // replay
+  expect(await repo.rotate(uniq('other'), b, item(c), 1_000)).toBe(false); // another user's partition
+  await repo.create(uid, item(d));
+  expect(await repo.rotate(uid, b, item(d), 1_000)).toBe(false); // target collides, old kept
+  expect(await repo.rotate(uid, b, item(c), 2_000_000_000)).toBe(false); // expired at now
+  expect(await repo.rotate(uid, b, item(c), 1_999_999_999)).toBe(true);
 }

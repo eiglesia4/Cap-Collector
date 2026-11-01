@@ -1,12 +1,15 @@
 // `npm run api:local` (CAP-17): a plain Node http server that turns requests into API Gateway HTTP API v2 events and
 // runs the Lambda handlers of src/routes.ts in-process. Repositories: in memory, or DynamoDB Local when
-// CAP_DYNAMODB_ENDPOINT is set (deploy/docker-compose.yaml + `npm run db:create`). Auth is faked: the `x-cap-uid`
-// header (default CAP_LOCAL_UID or "local-user") stands in for the Lambda authorizer context. Never deployed.
+// CAP_DYNAMODB_ENDPOINT is set (deploy/docker-compose.yaml + `npm run db:create`). Auth: with CAP_STAGE=local the
+// `x-cap-uid` header (default CAP_LOCAL_UID or "local-user") stands in for the authorizer; otherwise the real
+// authorizer checks the session JWT (CAP-19). Never deployed.
 import { randomUUID } from 'node:crypto';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 
-import type { APIGatewayProxyEventV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
+
+import { handler as authorizer } from '../src/auth/authorizer.js';
 
 import { AUTHORIZER_UID_KEY, problem } from '../src/lib/http.js';
 import { createMemoryRepositories } from '../src/lib/repo/memory.js';
@@ -85,28 +88,47 @@ export function toEvent(
   };
 }
 
-export function createLocalServer(defaultUid: string | undefined = process.env.CAP_LOCAL_UID || 'local-user'): Server {
+export type LocalAuth = { mode: 'fake'; defaultUid?: string } | { mode: 'authorizer' };
+
+/**
+ * Auth for protected routes (CAP-19): `fake` takes the uid from `x-cap-uid` (or `defaultUid`) and is only chosen when
+ * CAP_STAGE=local; `authorizer` runs the real Lambda authorizer on `Authorization: Bearer …`, answering like API
+ * Gateway does (no header → 401, denied → 403).
+ */
+async function resolveUid(
+  auth: LocalAuth,
+  headers: Record<string, string>,
+): Promise<{ uid?: string; deny?: APIGatewayProxyStructuredResultV2 }> {
+  if (auth.mode === 'fake') {
+    const uid = headers[LOCAL_UID_HEADER] ?? auth.defaultUid;
+    return uid ? { uid } : {};
+  }
+  if (!headers.authorization) return { deny: problem({ title: 'Unauthorized', status: 401 }, 'local') };
+  const r = await authorizer({ headers });
+  return r.isAuthorized ? { uid: r.context.uid } : { deny: problem({ title: 'Forbidden', status: 403 }, 'local') };
+}
+
+export function localAuthFor(env: NodeJS.ProcessEnv = process.env): LocalAuth {
+  return env.CAP_STAGE === 'local'
+    ? { mode: 'fake', defaultUid: env.CAP_LOCAL_UID || 'local-user' }
+    : { mode: 'authorizer' };
+}
+
+export function createLocalServer(auth: LocalAuth = localAuthFor(), routes: readonly RouteDef[] = ROUTES): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost');
       const method = (req.method ?? 'GET').toUpperCase();
-      const m = matchRoute(method, url.pathname);
-      const result = m
-        ? await (
-            await m.route.load()
-          )(
-            toEvent(
-              {
-                method,
-                url,
-                headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)])),
-                body: await readBody(req),
-              },
-              m,
-              (req.headers[LOCAL_UID_HEADER] as string | undefined) ?? defaultUid,
-            ),
-          )
-        : problem({ title: 'Not found', status: 404, detail: `No route ${method} ${url.pathname}` }, 'local');
+      const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)]));
+      const body = await readBody(req);
+      const m = matchRoute(method, url.pathname, routes);
+      let result: APIGatewayProxyStructuredResultV2;
+      if (!m) {
+        result = problem({ title: 'Not found', status: 404, detail: `No route ${method} ${url.pathname}` }, 'local');
+      } else {
+        const who = m.route.auth ? await resolveUid(auth, headers) : {};
+        result = who.deny ?? (await (await m.route.load())(toEvent({ method, url, headers, body }, m, who.uid)));
+      }
       res.writeHead(result.statusCode ?? 200, result.headers as Record<string, string>);
       res.end(result.body ?? '');
     })();
@@ -122,9 +144,12 @@ export function useLocalRepositories(env: NodeJS.ProcessEnv = process.env): 'dyn
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 3000);
+  // The local server defaults to the `local` stage (fake auth); set CAP_STAGE to anything else to use real sessions.
+  process.env.CAP_STAGE ??= 'local';
   const repos = useLocalRepositories();
-  createLocalServer().listen(port, '127.0.0.1', () => {
-    console.log(`api:local on http://127.0.0.1:${port} (repositories: ${repos}); routes:`);
+  const auth = localAuthFor();
+  createLocalServer(auth).listen(port, '127.0.0.1', () => {
+    console.log(`api:local on http://127.0.0.1:${port} (repositories: ${repos}, auth: ${auth.mode}); routes:`);
     for (const r of ROUTES) console.log(`  ${r.method} ${r.path}${r.auth ? '' : ' (public)'}`);
   });
 }

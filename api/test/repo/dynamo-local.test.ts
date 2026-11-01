@@ -3,8 +3,8 @@
 // tests never touch the cloud (CLAUDE.md § Tests), so CI without the container skips it.
 import { describe, it } from 'vitest';
 
-import { createDocumentClient, DynamoCapRepository } from '../../src/lib/repo/dynamo.js';
-import { runCapRepositoryContract } from './cap-contract.js';
+import { createDocumentClient, DynamoCapRepository, DynamoRefreshTokenRepository } from '../../src/lib/repo/dynamo.js';
+import { runCapRepositoryContract, runRefreshContract } from './cap-contract.js';
 
 const endpoint = process.env.CAP_DYNAMODB_ENDPOINT;
 const isLocal = !!endpoint && !/amazonaws\.com/.test(endpoint);
@@ -16,5 +16,11 @@ describe('DynamoDB repositories (DynamoDB Local)', () => {
     if (!isLocal) ctx.skip('CAP_DYNAMODB_ENDPOINT is not set to a local endpoint');
     const doc = createDocumentClient({ dynamodbEndpoint: endpoint! });
     await runCapRepositoryContract(new DynamoCapRepository(doc, table));
+  }, 30_000);
+
+  it('[T-api-033] DynamoRefreshTokenRepository passes the refresh contract on DynamoDB Local (skipped without CAP_DYNAMODB_ENDPOINT)', async (ctx) => {
+    if (!isLocal) ctx.skip('CAP_DYNAMODB_ENDPOINT is not set to a local endpoint');
+    const doc = createDocumentClient({ dynamodbEndpoint: endpoint! });
+    await runRefreshContract(new DynamoRefreshTokenRepository(doc, table));
   }, 30_000);
 });

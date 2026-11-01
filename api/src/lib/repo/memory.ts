@@ -16,6 +16,7 @@ import {
   userPk,
 } from '@capcollector/shared';
 
+import { refreshKey } from '../../auth/keys.js';
 import { Conflict } from '../errors.js';
 import {
   type Item,
@@ -47,6 +48,8 @@ import {
   MAX_PAGE_SIZE,
   type Page,
   type PageOptions,
+  type RefreshTokenItem,
+  type RefreshTokenRepository,
   type Repositories,
   type ScanRepository,
   type SheetEntry,
@@ -72,6 +75,10 @@ export class MemoryTable {
 
   put(item: Item): void {
     this.items.set(id(item), clone(item));
+  }
+
+  delete(key: Key): void {
+    this.items.delete(id(key));
   }
 
   /** All-or-nothing: every condition is checked before any write (TransactWriteItems semantics). */
@@ -243,6 +250,26 @@ export class InMemoryExchangeRepository implements ExchangeRepository {
   }
 }
 
+export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
+  constructor(readonly table: MemoryTable = new MemoryTable()) {}
+
+  async create(uid: string, item: RefreshTokenItem): Promise<void> {
+    const key = refreshKey(uid, item.tokenHash);
+    if (this.table.get(key)) throw new Conflict('refresh token collision');
+    this.table.put({ ...key, ...item });
+  }
+
+  async rotate(uid: string, oldHash: string, next: RefreshTokenItem, nowEpoch: number): Promise<boolean> {
+    const oldKey = refreshKey(uid, oldHash);
+    const old = this.table.get(oldKey);
+    if (!old || Number(old.ttl) <= nowEpoch) return false;
+    if (this.table.get(refreshKey(uid, next.tokenHash))) return false;
+    this.table.delete(oldKey);
+    this.table.put({ ...refreshKey(uid, next.tokenHash), ...next });
+    return true;
+  }
+}
+
 /** Every repository over one shared in-memory table (as in DynamoDB, one table holds all entities). */
 export function createMemoryRepositories(table: MemoryTable = new MemoryTable()): Repositories {
   return {
@@ -250,5 +277,6 @@ export function createMemoryRepositories(table: MemoryTable = new MemoryTable())
     albums: new InMemoryAlbumRepository(table),
     scans: new InMemoryScanRepository(table),
     exchange: new InMemoryExchangeRepository(table),
+    refreshTokens: new InMemoryRefreshTokenRepository(table),
   };
 }

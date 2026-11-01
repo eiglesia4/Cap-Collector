@@ -23,6 +23,7 @@ import {
   userPk,
 } from '@capcollector/shared';
 
+import { refreshKey } from '../../auth/keys.js';
 import type { Config } from '../config.js';
 import { Conflict, NotImplemented } from '../errors.js';
 import {
@@ -53,6 +54,8 @@ import {
   type ExchangeRepository,
   MAX_PAGE_SIZE,
   type Page,
+  type RefreshTokenItem,
+  type RefreshTokenRepository,
   type Repositories,
   type ScanRepository,
   type SheetEntry,
@@ -260,11 +263,72 @@ export class DynamoExchangeRepository implements ExchangeRepository {
   }
 }
 
+export class DynamoRefreshTokenRepository implements RefreshTokenRepository {
+  constructor(
+    private readonly doc: DocSender,
+    private readonly tableName: string,
+  ) {}
+
+  async create(uid: string, item: RefreshTokenItem): Promise<void> {
+    try {
+      await this.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: { ...refreshKey(uid, item.tokenHash), ...item },
+                ConditionExpression: 'attribute_not_exists(pk)',
+              },
+            },
+          ],
+        }),
+      );
+    } catch (e) {
+      if (errorName(e) === 'TransactionCanceledException') throw new Conflict('refresh token collision');
+      throw e;
+    }
+  }
+
+  async rotate(uid: string, oldHash: string, next: RefreshTokenItem, nowEpoch: number): Promise<boolean> {
+    try {
+      await this.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              // TTL deletion is lazy (up to days): an expired item may still exist, so the condition checks `ttl`.
+              Delete: {
+                TableName: this.tableName,
+                Key: refreshKey(uid, oldHash),
+                ConditionExpression: 'attribute_exists(pk) AND #ttl > :now',
+                ExpressionAttributeNames: { '#ttl': 'ttl' },
+                ExpressionAttributeValues: { ':now': nowEpoch },
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: { ...refreshKey(uid, next.tokenHash), ...next },
+                ConditionExpression: 'attribute_not_exists(pk)',
+              },
+            },
+          ],
+        }),
+      );
+      return true;
+    } catch (e) {
+      if (errorName(e) === 'TransactionCanceledException') return false;
+      throw e;
+    }
+  }
+}
+
 export function createDynamoRepositories(doc: DocSender, tableName: string): Repositories {
   return {
     caps: new DynamoCapRepository(doc, tableName),
     albums: new DynamoAlbumRepository(),
     scans: new DynamoScanRepository(),
     exchange: new DynamoExchangeRepository(),
+    refreshTokens: new DynamoRefreshTokenRepository(doc, tableName),
   };
 }
