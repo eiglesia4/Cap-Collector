@@ -26,7 +26,12 @@
     "catalog": "tsx tools/catalog/catalog.ts",
     "presynth": "npm run build:shared",
     "synth": "npm run synth -w @capcollector/infra",
+    "prediff": "npm run build:shared",
+    "diff": "npm run diff -w @capcollector/infra",
+    "predeploy": "npm run build:shared",
+    "deploy": "npm run deploy -w @capcollector/infra",
     "db:create": "npm run build:shared && npm run db:create -w @capcollector/infra",
+    "api:local": "npm run build:shared && tsx api/scripts/local-server.ts",
     "catalog:check": "npm run catalog -- --check"
   },
   "devDependencies": {

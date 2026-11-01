@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-14: V1 dependency batch — Capacitor 8 (core, cli, ios, camera, share, filesystem, preferences) and
+  `@testing-library/dom` for `app`; AWS SDK v3 (DynamoDB, lib-dynamodb, S3, presigner), `jose`, `ulid` and
+  `aws-sdk-client-mock` for `api`; root `diff` / `deploy` / `api:local` scripts; T-infra-015 checks that every declared
+  dependency resolves and that workspaces only share code through `@capcollector/shared`.
 - CAP-13: `CollectorsData` stack — private versioned images bucket (IA after 90 d, CORS for presigned PUT), public
   S3 website bucket for V1, single DynamoDB table (on-demand, PITR, TTL, GSI1/GSI2) from one table definition shared
   with `npm run db:create`; `deploy/docker-compose.yaml` with DynamoDB Local + S3 mock; optional `app_origins` config.
