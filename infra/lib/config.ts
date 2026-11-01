@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { App, Tags } from 'aws-cdk-lib';
+import type { App } from 'aws-cdk-lib';
 
 /** Lowercase, digits, hyphens: it goes into bucket and table names. */
 const INSTALLATION_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -18,11 +18,21 @@ const ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/;
 /** Free text (dev, prod, test…); only its shape is checked. */
 const STAGE_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
 
-export const PROJECT = 'capcollector';
-export const PROJECT_TAG = 'cap:project';
-export const INSTALLATION_TAG = 'cap:installation';
-export const STAGE_TAG = 'cap:stage';
-export const CONFIG_VERSION_TAG = 'cap:config_version';
+/**
+ * AWS tagging (CONVENTIONS.md § AWS tagging, decided in CAP-13 revision, 2026-11-01): every taggable resource carries
+ * `project`, `UserName`, `installation` and `stage`, applied once at app level in app.ts. `project` and `UserName`
+ * never vary per installation/stage, so they are constants here and not in config/*.json. Cost Explorer filters on
+ * `project = EIM_CAP`. `cap:config_version` is kept as well (which config file a resource came from).
+ */
+export const TAG_KEYS = {
+  project: 'project',
+  userName: 'UserName',
+  installation: 'installation',
+  stage: 'stage',
+  configVersion: 'cap:config_version',
+} as const;
+export const PROJECT_TAG_VALUE = 'EIM_CAP';
+export const USER_NAME_TAG_VALUE = 'eiglesia4';
 
 /** Directory holding `<installation>.<stage>.json` files. */
 export const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'config');
@@ -122,11 +132,4 @@ export function assertAccountMatchesDeployment(deployment: Deployment): void {
 /** Resource / stack name: `cap-<installation>-<stage>-<resource>`. */
 export function resourceName(deployment: Deployment, resource: string): string {
   return `cap-${deployment.installation}-${deployment.stage}-${resource}`;
-}
-
-export function applyGlobalTags(app: App, deployment: Deployment, config: InstallationConfig): void {
-  Tags.of(app).add(PROJECT_TAG, PROJECT);
-  Tags.of(app).add(INSTALLATION_TAG, deployment.installation);
-  Tags.of(app).add(STAGE_TAG, deployment.stage);
-  Tags.of(app).add(CONFIG_VERSION_TAG, config.config_version);
 }
