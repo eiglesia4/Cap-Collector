@@ -1,5 +1,6 @@
 // Settings skeleton (CAP-21): API URL override (development builds only), app version, AI on/off placeholder,
-// and a connection check against GET /healthz.
+// a connection check against GET /healthz, and Sign out (CAP-22: clears the stored session; the shell then shows
+// the sign-in screen).
 import { ScreenHeader } from '../components/screen-header.js';
 import { ConfigError } from '../config.js';
 import type { Screen } from '../context.js';
@@ -76,5 +77,15 @@ export const SettingsScreen: Screen = (ctx) => {
     ),
     h('small', { class: 'muted' }, t('settings.aiHint')),
     h('dl', { class: 'meta' }, h('dt', {}, t('settings.version')), h('dd', {}, ctx.config.version)),
+    ctx.session.signedIn() &&
+      h(
+        'button',
+        {
+          class: 'button button--secondary',
+          attrs: { type: 'button', name: 'sign-out' },
+          on: { click: () => void ctx.session.signOut() },
+        },
+        t('settings.signOut'),
+      ),
   );
 };

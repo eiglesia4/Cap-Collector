@@ -6,11 +6,14 @@ import { NetworkError } from '../src/api/errors';
 import { matchRoute } from '../src/router/routes';
 import { SettingsScreen } from '../src/screens/settings-screen';
 import { t } from '../src/i18n/i18n';
-import { flush, shellContext, TEST_CONFIG } from './support/fakes';
+import { fakeApi, flush, shellContext, TEST_CONFIG } from './support/fakes';
 
-function render(config = TEST_CONFIG, healthz: ApiClient['healthz'] = vi.fn(async () => ({ status: 'ok' as const }))) {
-  const api: ApiClient = { request: vi.fn(), healthz };
-  const ctx = { ...shellContext({ config, api }), navigate: vi.fn() };
+async function render(
+  config = TEST_CONFIG,
+  healthz: ApiClient['healthz'] = vi.fn(async () => ({ status: 'ok' as const })),
+) {
+  const api = fakeApi({ healthz });
+  const ctx = { ...(await shellContext({ config, api })), navigate: vi.fn(), skipSignIn: vi.fn() };
   const route = matchRoute('/settings');
   if (!route) throw new Error('no route');
   const el = SettingsScreen(ctx, route);
@@ -20,7 +23,7 @@ function render(config = TEST_CONFIG, healthz: ApiClient['healthz'] = vi.fn(asyn
 
 describe('settings screen', () => {
   it('[T-app-013] saves a valid API URL override in development, rejects invalid ones, checks /healthz and shows the version', async () => {
-    const { el, ctx, status } = render();
+    const { el, ctx, status } = await render();
     expect(el.querySelector('h1')?.textContent).toBe(t('settings.title'));
     expect(el.querySelector('dd')?.textContent).toBe('1.2.3');
     expect(el.querySelector<HTMLInputElement>('input[name="ai"]')?.disabled).toBe(true);
@@ -46,7 +49,7 @@ describe('settings screen', () => {
     expect(ctx.api.healthz).toHaveBeenCalled();
     expect(status()).toBe(t('settings.apiOk'));
 
-    const failing = render(
+    const failing = await render(
       TEST_CONFIG,
       vi.fn(async () => Promise.reject(new NetworkError('offline'))),
     );
@@ -55,7 +58,7 @@ describe('settings screen', () => {
     expect(failing.status()).toBe(t('settings.apiFailed'));
 
     // Production build: no override field; without an API URL the check says so instead of calling.
-    const prod = render({ apiUrl: null, version: '0.2.0', dev: false });
+    const prod = await render({ apiUrl: null, version: '0.2.0', dev: false, apple: null });
     expect(prod.el.querySelector('#api-url')).toBeNull();
     prod.el.querySelector<HTMLButtonElement>('button[type="button"]')?.click();
     expect(prod.status()).toBe(t('settings.apiNotConfigured'));

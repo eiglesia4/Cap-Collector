@@ -5,6 +5,7 @@ import { CollectionScreen } from './collection-screen.js';
 import { placeholderScreen } from './placeholder-screen.js';
 import { ScanScreen } from './scan-screen.js';
 import { SettingsScreen } from './settings-screen.js';
+import { SignInScreen } from './sign-in-screen.js';
 
 export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   collection: CollectionScreen,
@@ -17,4 +18,5 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   albums: placeholderScreen('albums.title', 'albums.placeholder', 'collection'),
   exchange: placeholderScreen('exchange.title', 'exchange.placeholder', 'collection'),
   settings: SettingsScreen,
+  signIn: SignInScreen,
 };

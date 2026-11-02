@@ -39,5 +39,13 @@
   "settings.apiOk": "API reachable.",
   "settings.apiFailed": "API not reachable.",
   "settings.ai": "AI identification",
-  "settings.aiHint": "Coming with the capture flow."
+  "settings.aiHint": "Coming with the capture flow.",
+  "settings.signOut": "Sign out",
+  "signIn.tagline": "Your bottle cap collection, catalogued.",
+  "signIn.button": "Sign in with Apple",
+  "signIn.notAllowed": "This Apple ID is not allowed.",
+  "signIn.network": "Can't reach the server. Check your connection and try again.",
+  "signIn.unavailable": "Sign in with Apple is not set up for this build.",
+  "signIn.failed": "Sign in didn't work. Try again.",
+  "signIn.skip": "Continue without signing in (development)"
 }

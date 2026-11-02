@@ -1,13 +1,15 @@
 // App shell (CAP-21, SCREENS.md § Navigation logic): the view outlet plus the bottom tab bar, driven by the
-// history router. Modal routes (cap form) cover the tabs.
+// history router. Modal routes (cap form, sign-in) cover the tabs. Signed out, every route leads to the sign-in
+// screen; signing in lands on Collection, signing out (Settings, or a refused refresh) returns to sign-in (CAP-22).
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
 import { t } from './i18n/i18n.js';
 import { createRouter, type Router } from './router/router.js';
+import { pathFor } from './router/routes.js';
 import { SCREENS } from './screens/index.js';
 import { h } from './ui/dom.js';
 
-export type ShellContext = Omit<AppContext, 'navigate'>;
+export type ShellContext = Omit<AppContext, 'navigate' | 'skipSignIn'>;
 
 export interface AppHandle {
   readonly router: Router;
@@ -21,16 +23,39 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
   root.replaceChildren(shell);
   win.document.title = t('app.name');
 
+  let skipped = false;
+  const allowed = () => skipped || ctx.session.signedIn();
+
   const router = createRouter({
     window: win,
     onRoute: (match) => {
+      const onSignIn = match.route.name === 'signIn';
+      if (!allowed() && !onSignIn) return router.navigate(pathFor('signIn'), { replace: true });
+      if (allowed() && onSignIn) return router.navigate(pathFor('collection'), { replace: true });
       view.replaceChildren(SCREENS[match.route.name](full, match));
       tabs.setActive(match.route.tab);
       tabs.el.hidden = match.route.modal === true;
       shell.dataset.route = match.route.name;
     },
   });
-  const full: AppContext = { ...ctx, navigate: (path) => router.navigate(path) };
+  // Re-run the guard on the current path whenever the session appears or goes away.
+  const reroute = () => router.navigate(router.current().path, { replace: true });
+  const full: AppContext = {
+    ...ctx,
+    navigate: (path) => router.navigate(path),
+    // Only offered by the sign-in screen in development builds.
+    skipSignIn: () => {
+      skipped = true;
+      reroute();
+    },
+  };
   router.start();
-  return { router, destroy: () => router.stop() };
+  const unsubscribe = ctx.session.subscribe(reroute);
+  return {
+    router,
+    destroy: () => {
+      unsubscribe();
+      router.stop();
+    },
+  };
 }

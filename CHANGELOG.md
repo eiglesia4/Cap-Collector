@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-22: Sign in with Apple screen — PKCE verifier per attempt with `nonce = base64url(SHA-256(verifier))`, Apple JS
+  popup flow on web (and for now on iOS), state check, 403/network/cancel/not-configured states, route guard, silent
+  session restore at start, Sign out in Settings; `VITE_APPLE_SERVICE_ID` / `VITE_APPLE_REDIRECT_URI` config.
 - CAP-20: uploads API — `POST /uploads` returns a 5-minute presigned S3 PUT for `<uid>/<uploadId>/<side>.webp`
   (`image/webp`, ≤ 1 MiB, signed Content-Type/Length, SSE-S3); ownership helpers for image keys and 15-minute presigned
   GET links (`_links.images`) ready for the caps handlers.
