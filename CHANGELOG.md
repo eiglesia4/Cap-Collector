@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-19: auth API — `POST /auth/apple` (Apple JWKS verification, `aud` allow-list, PKCE nonce = S256(codeVerifier),
+  single-user `sub` allow-list → 403), HS256 session JWT (1 h), hashed refresh tokens (`REFRESH#<hash>`, ttl 90 d)
+  rotated on every `POST /auth/refresh` with replay → 401, simple-response Lambda authorizer emitting `uid`; refuses the
+  `unset` SSM placeholder and short secrets.
 - CAP-18: caps API — `POST/GET/PATCH/DELETE /caps`, `/caps/{capId}/history` and `GET /caps` (filters, accent-insensitive
   `q`, location-code search, sort brand/newest/country/year, cursor, `total` up to 5 000); history `HIST#` written in
   the same transaction, GSI2 kept in step, tombstone delete, PATCH applies only the fields sent.
