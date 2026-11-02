@@ -152,6 +152,13 @@ export class InMemoryCapRepository implements CapRepository {
     return { items, ...(r.lastKey ? { cursor: encodeCursor(r.lastKey) } : {}) };
   }
 
+  async listAll(uid: string, opts: { includeDeleted?: boolean } = {}): Promise<Cap[]> {
+    return this.table
+      .query(userPk(uid), SK_PREFIX.cap)
+      .items.filter((i) => opts.includeDeleted || i.deletedAt === undefined)
+      .map((i) => stripKeys<Cap>(i));
+  }
+
   async history(capId: string): Promise<CapHistory[]> {
     return this.table.query(capPk(capId), '').items.map((i) => stripKeys<CapHistory>(i));
   }

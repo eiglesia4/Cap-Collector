@@ -75,6 +75,11 @@ export interface CapRepository {
   /** Tombstone (ADR-006): `patch` with `deletedAt` set; frees the pocket and drops GSI attributes. */
   softDelete(uid: string, prev: CapPrevious, history: CapHistory): Promise<Cap>;
   list(uid: string, opts?: CapListOptions): Promise<Page<Cap>>;
+  /**
+   * Every cap of the user in one call (follows all pages): the list endpoint filters and sorts in memory, acceptable
+   * at a personal collection's size (data-model.md § dHash comparison rationale; CAP-18).
+   */
+  listAll(uid: string, opts?: { includeDeleted?: boolean }): Promise<Cap[]>;
   /** History of one cap, oldest first. */
   history(capId: string): Promise<CapHistory[]>;
   /** GSI1: live caps on one sheet, by pocket. */

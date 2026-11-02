@@ -174,6 +174,15 @@ export class DynamoCapRepository implements CapRepository {
     };
   }
 
+  async listAll(uid: string, opts: { includeDeleted?: boolean } = {}): Promise<Cap[]> {
+    const items = await this.queryAll({
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: { ':pk': userPk(uid), ':prefix': SK_PREFIX.cap },
+      ...(opts.includeDeleted ? {} : { FilterExpression: 'attribute_not_exists(deletedAt)' }),
+    });
+    return items.map((i) => stripKeys<Cap>(i));
+  }
+
   async history(capId: string): Promise<CapHistory[]> {
     const items = await this.queryAll({
       KeyConditionExpression: 'pk = :pk',
