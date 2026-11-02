@@ -40,4 +40,16 @@ export const ROUTES: readonly RouteDef[] = [
     auth: true,
     load: async () => (await import('./handlers/caps-history.js')).handler,
   },
+  {
+    method: 'POST',
+    path: '/auth/apple',
+    auth: false,
+    load: async () => (await import('./handlers/auth-apple.js')).handler,
+  },
+  {
+    method: 'POST',
+    path: '/auth/refresh',
+    auth: false,
+    load: async () => (await import('./handlers/auth-refresh.js')).handler,
+  },
 ];
