@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-20: uploads API — `POST /uploads` returns a 5-minute presigned S3 PUT for `<uid>/<uploadId>/<side>.webp`
+  (`image/webp`, ≤ 1 MiB, signed Content-Type/Length, SSE-S3); ownership helpers for image keys and 15-minute presigned
+  GET links (`_links.images`) ready for the caps handlers.
 - CAP-19: auth API — `POST /auth/apple` (Apple JWKS verification, `aud` allow-list, PKCE nonce = S256(codeVerifier),
   single-user `sub` allow-list → 403), HS256 session JWT (1 h), hashed refresh tokens (`REFRESH#<hash>`, ttl 90 d)
   rotated on every `POST /auth/refresh` with replay → 401, simple-response Lambda authorizer emitting `uid`; refuses the
