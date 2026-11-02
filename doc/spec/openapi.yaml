@@ -1,12 +1,16 @@
 openapi: 3.1.0
 info:
   title: CapCollector API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    Contract between `app/` and `api/` (CAP-12, contracts v0.1). Owned by the architect; changes are new versions.
+    Contract between `app/` and `api/` (CAP-12 v0.1 → CAP-26 v0.2). Owned by the architect; changes are new versions.
     Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name
     them and describe shape; the zod schema is authoritative when both exist (CLAUDE.md § precedence).
-    All routes except `/auth/*` and `/healthz` require `Authorization: Bearer <session JWT>` (Sign in with Apple + PKCE, ADR-008).
+    All routes except `/auth/*` and `/healthz` (marked `security: []`) require `Authorization: Bearer <session JWT>`
+    (Sign in with Apple + PKCE, ADR-008). The route list, with handler names, is `shared/src/routes.ts` (T-shared-006).
+    Errors are `Problem` (RFC 9457); 500 carries the request id in `detail` and in the `x-request-id` header.
+    v0.2 (CAP-26): `security: []` markers, `/auth/apple` and `/auth/refresh` bodies, `/uploads` body without `capId`,
+    `Cap.imageUrls`, `Location.albumId`, `CapPatch` semantics (no defaults, `null` clears), sort rules, examples.
 servers:
   - url: https://{apiHost}
     variables:
@@ -27,6 +31,7 @@ paths:
     get:
       tags: [system]
       summary: Liveness; no auth
+      security: []
       responses:
         '200': { description: ok, content: { application/json: { schema: { type: object, properties: { status: { const: ok } } } } } }
 
@@ -34,24 +39,30 @@ paths:
     post:
       tags: [auth]
       summary: Exchange an Apple identity token (PKCE flow) for a session JWT + refresh token
+      security: []
+      description: |
+        PKCE binding (CAP-19/22): the app draws `codeVerifier` (RFC 7636, 43–128 chars), sends Apple
+        `nonce = base64url(SHA-256(codeVerifier))` on both platforms, and posts the verifier here; the API verifies
+        `idToken.nonce` against it (lower-case hex also accepted). `sub` must be in the single-user allow-list, else 403.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [identityToken, codeVerifier]
-              properties:
-                identityToken: { type: string }
-                authorizationCode: { type: string }
-                codeVerifier: { type: string }
+            schema: { $ref: '#/components/schemas/AppleSignInRequest' }
+            example: { identityToken: 'eyJraWQiOi…', codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk' }
       responses:
         '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
         '403': { description: Apple `sub` not in the allow-list (single user) }
   /auth/refresh:
     post:
       tags: [auth]
-      summary: Rotate the session JWT with the refresh token
+      summary: Rotate the session JWT with the refresh token (old refresh token is invalidated)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
       responses:
         '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
         '401': { description: refresh token invalid or revoked }
@@ -60,29 +71,20 @@ paths:
     post:
       tags: [uploads]
       summary: Presigned S3 PUT for one image (WebP, long edge ≤ 1024 px, ≤ 1 MiB)
+      description: |
+        Key convention (CAP-20): `<uid>/<uploadId>/<side>.webp`, where `uploadId` is a fresh ULID — not the future
+        `capId`. Caps reference images by key only. Writes to `/caps` accept only keys under the caller's `<uid>/`.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [side, contentType, bytes]
-              properties:
-                side: { type: string, enum: [top, underside] }
-                contentType: { const: image/webp }
-                bytes: { type: integer, maximum: 1048576 }
+            schema: { $ref: '#/components/schemas/UploadRequest' }
       responses:
         '200':
           description: where to PUT and the key to reference in `images`
           content:
             application/json:
-              schema:
-                type: object
-                required: [key, url, expiresAt]
-                properties:
-                  key: { type: string, description: object key relative to the images bucket }
-                  url: { type: string, format: uri }
-                  expiresAt: { type: string, format: date-time }
+              schema: { $ref: '#/components/schemas/UploadResponse' }
 
   /caps:
     get:
@@ -95,7 +97,7 @@ paths:
         - { name: type, in: query, schema: { $ref: '#/components/schemas/CapType' } }
         - { name: tag, in: query, schema: { type: string } }
         - { name: forTrade, in: query, schema: { type: boolean }, description: only caps with forTrade > 0 }
-        - { name: sort, in: query, schema: { type: string, enum: [brand, newest, country, year], default: brand } }
+        - { name: sort, in: query, schema: { type: string, enum: [brand, newest, country, year], default: brand }, description: 'brand A–Z · newest = createdAt desc · country A–Z then brand · year = oldest first, caps without year last' }
         - { name: cursor, in: query, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
         - { name: includeDeleted, in: query, schema: { type: boolean, default: false } }
@@ -104,7 +106,21 @@ paths:
     post:
       tags: [caps]
       summary: Create a cap (always after one of the three review screens, ADR-003)
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CapInput' } } } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CapInput' }
+            example:
+              brand: Mahou
+              variant: Clásica
+              country: ES
+              type: beer
+              year: 2023
+              images: { top: { key: 'u1/01JBF70A1B2C3D4E5F6G7H8J9K/top.webp', width: 1024, height: 1024 } }
+              tags: [spain, lager]
+              quantity: 3
+              forTrade: 2
       responses:
         '201': { description: created, content: { application/json: { schema: { $ref: '#/components/schemas/Cap' } } } }
         '409': { description: 'the requested `location` pocket is occupied (one cap per pocket, ADR-005)', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
@@ -120,7 +136,16 @@ paths:
     patch:
       tags: [caps]
       summary: Partial update; every changed field becomes a history entry
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CapPatch' } } } }
+      description: |
+        Only the keys present are applied; no defaults are filled in. `null` clears an optional field. `source` names
+        the author of this change (history entry) and never rewrites `Cap.source`. `location` is not patchable here
+        (use `/caps/{capId}/location`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CapPatch' }
+            example: { year: 2022, producer: null, source: 'manual' }
       responses:
         '200': { description: updated, content: { application/json: { schema: { $ref: '#/components/schemas/Cap' } } } }
         '409': { description: pocket occupied }
@@ -287,6 +312,11 @@ components:
     ExchangeStatus: { type: string, enum: [waiting, answered, reviewed, expired] }
     Source: { type: string, pattern: '^(manual|import|bedrock:.+|external:.+)$' }
 
+    AppleSignInRequest: { description: 'zod `AppleSignInRequest` (http.ts)', type: object, required: [identityToken, codeVerifier] }
+    RefreshRequest: { description: 'zod `RefreshRequest` (http.ts)', type: object, required: [refreshToken], properties: { refreshToken: { type: string } } }
+    UploadRequest: { description: 'zod `UploadRequest` (http.ts)', type: object, required: [side, contentType, bytes] }
+    UploadResponse: { description: 'zod `UploadResponse` (http.ts)', type: object, required: [key, url, expiresAt] }
+
     Session:
       type: object
       required: [accessToken, refreshToken, expiresAt]
@@ -296,7 +326,7 @@ components:
         expiresAt: { type: string, format: date-time }
 
     Problem:
-      description: RFC 9457 problem details
+      description: 'RFC 9457 problem details — zod `Problem` (http.ts). 500: request id in `detail` + `x-request-id` header.'
       type: object
       required: [title, status]
       properties:
@@ -307,11 +337,11 @@ components:
         errors: { type: array, items: { type: object, properties: { path: { type: string }, message: { type: string } } } }
 
     # Entities — zod: shared/src/schemas/*.ts (authoritative)
-    Location: { description: 'zod `Location` (location.ts): `{kind: album, album, sheet, pocket}` or `{kind: box|frame, album}`', type: object }
+    Location: { description: 'zod `Location` (location.ts): `{kind: album, album, sheet, pocket}` or `{kind: box|frame, album}`; `albumId` is server-filled, never sent by clients', type: object }
     ImageRef: { description: 'zod `ImageRef` (cap.ts)', type: object }
-    Cap: { description: 'zod `Cap` (cap.ts)', type: object }
+    Cap: { description: 'zod `Cap` (cap.ts); responses add `imageUrls` (presigned GET, ≈5 min)', type: object }
     CapInput: { description: 'zod `CapInput` (cap.ts)', type: object }
-    CapPatch: { description: 'zod `CapPatch` (cap.ts)', type: object }
+    CapPatch: { description: 'zod `CapPatch` (cap.ts): no defaults, `null` clears optionals', type: object }
     CapHistory: { description: 'zod `CapHistory` (cap.ts)', type: object }
     CapPage:
       type: object

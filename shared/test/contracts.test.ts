@@ -9,6 +9,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   Album,
+  AppleSignInRequest,
+  CapPatch,
+  Healthz,
+  Problem,
+  ROUTES,
+  RefreshRequest,
+  SK_PREFIX,
+  Session,
+  UploadRequest,
+  refreshSk,
+  routeByHandler,
+  toColonPath,
   AnalyseRequest,
   AnalyseResponse,
   Cap,
@@ -177,6 +189,7 @@ describe('shared contracts', () => {
       components: { schemas: Record<string, unknown> };
     };
     expect(api.openapi).toBe('3.1.0');
+    expect(Object.keys(api.paths)).toHaveLength(ROUTES.length ? new Set(ROUTES.map((r) => r.path)).size : 0);
     const expected = [
       '/healthz',
       '/auth/apple',
@@ -201,5 +214,81 @@ describe('shared contracts', () => {
     const refs = [...text.matchAll(/#\/components\/schemas\/([A-Za-z]+)/g)].map((m) => m[1]!);
     const defined = new Set(Object.keys(api.components.schemas));
     for (const r of new Set(refs)) expect(defined, `schema ${r} referenced but not defined`).toContain(r);
+  });
+});
+
+describe('shared contracts v0.2 (CAP-26)', () => {
+  const api = () =>
+    parseYaml(readFileSync(join(here, '..', '..', 'doc', 'spec', 'openapi.yaml'), 'utf8')) as {
+      info: { version: string };
+      paths: Record<string, Record<string, { security?: unknown[] }>>;
+    };
+
+  it('[T-shared-006] routes manifest equals openapi.yaml: same path+method set, auth matches security markers, handler names unique', () => {
+    const doc = api();
+    expect(doc.info.version).toBe('0.2.0');
+    const fromApi = new Set<string>();
+    const publicOps = new Set<string>();
+    for (const [path, ops] of Object.entries(doc.paths)) {
+      for (const [method, op] of Object.entries(ops)) {
+        if (method === 'parameters') continue;
+        const key = `${method.toUpperCase()} ${path}`;
+        fromApi.add(key);
+        if (Array.isArray(op.security) && op.security.length === 0) publicOps.add(key);
+      }
+    }
+    const fromRoutes = new Set(ROUTES.map((r) => `${r.method} ${r.path}`));
+    expect([...fromRoutes].sort()).toEqual([...fromApi].sort());
+    for (const r of ROUTES) expect(r.auth, `${r.method} ${r.path} auth`).toBe(!publicOps.has(`${r.method} ${r.path}`));
+    expect(
+      ROUTES.filter((r) => !r.auth)
+        .map((r) => r.handler)
+        .sort(),
+    ).toEqual(['auth-apple', 'auth-refresh', 'healthz']);
+    expect(new Set(ROUTES.map((r) => r.handler)).size).toBe(ROUTES.length);
+    expect(routeByHandler('caps-get')?.path).toBe('/caps/{capId}');
+    expect(toColonPath('/albums/{albumId}/sheets/{sheet}')).toBe('/albums/:albumId/sheets/:sheet');
+  });
+
+  it('[T-shared-007] http schemas, CapPatch semantics (no defaults, null clears), refresh key, server-filled albumId', () => {
+    expect(
+      Problem.parse({ title: 'Unprocessable', status: 422, errors: [{ path: 'brand', message: 'required' }] }).status,
+    ).toBe(422);
+    expect(Problem.safeParse({ title: 'x' }).success).toBe(false);
+    expect(Healthz.parse({ status: 'ok' })).toEqual({ status: 'ok' });
+    expect(Session.safeParse({ accessToken: 'a', refreshToken: 'r', expiresAt: '2026-11-02T10:00:00Z' }).success).toBe(
+      true,
+    );
+    expect(RefreshRequest.safeParse({ refreshToken: 'r', extra: 1 }).success).toBe(false); // strict
+    const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+    expect(AppleSignInRequest.parse({ identityToken: 't', codeVerifier: verifier }).authorizationCode).toBeUndefined();
+    expect(AppleSignInRequest.safeParse({ identityToken: 't', codeVerifier: 'short' }).success).toBe(false);
+    expect(UploadRequest.safeParse({ side: 'top', contentType: 'image/webp', bytes: 1_048_577 }).success).toBe(false);
+    expect(UploadRequest.safeParse({ side: 'top', contentType: 'image/webp', bytes: 10, capId: 'x' }).success).toBe(
+      false,
+    ); // capId dropped in v0.2
+
+    // CapPatch: only the keys sent come back; null clears; forTrade/quantity have no defaults any more
+    expect(CapPatch.parse({ year: 2022 })).toEqual({ year: 2022 });
+    expect(CapPatch.parse({ producer: null, variantOf: null })).toEqual({ producer: null, variantOf: null });
+    expect(CapPatch.safeParse({ brand: null }).success).toBe(false); // brand is required on the record: not clearable
+    expect(CapPatch.safeParse({ location: { kind: 'box', album: 'B' } }).success).toBe(false); // own route
+    expect(CapPatch.safeParse({ images: null }).success).toBe(false);
+
+    expect(refreshSk('abc')).toBe('REFRESH#abc');
+    expect(SK_PREFIX.refresh).toBe('REFRESH#');
+
+    const loc = Location.parse({
+      kind: 'album',
+      album: 'A',
+      sheet: 1,
+      pocket: 2,
+      albumId: '01JBF6Z3Q8K2M4N6P8R0S2T4V6',
+    });
+    expect(loc.albumId).toBe('01JBF6Z3Q8K2M4N6P8R0S2T4V6');
+    expect(formatLocationCode(loc)).toBe('A·1·2'); // albumId never leaks into the human code
+    expect(
+      Cap.safeParse({ ...(fixture('cap.json') as object), imageUrls: { top: 'https://s3.example/x' } }).success,
+    ).toBe(true);
   });
 });

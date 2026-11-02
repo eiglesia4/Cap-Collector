@@ -13,26 +13,28 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 
 `README.md` (this file) and `openapi.yaml` live only in the repo: they are the architect's contract outputs, published by PR.
 
-**Copied: 2026-10-31** (CAP-11, V0 skeleton) · **refreshed 2026-10-31** (CAP-12: data-model Agreed, ADR-008, openapi v0.1).
+**Copied: 2026-10-31** (CAP-11, V0 skeleton) · **refreshed 2026-10-31** (CAP-12: data-model Agreed, ADR-008, openapi v0.1) · **refreshed 2026-11-02** (CAP-26: contracts v0.2 — method.md § Refreshing, CONVENTIONS.md tagging/deploy/image-key/source rules, data-model.md REFRESH#/LOCK#/albumId).
 
 | Document | Status at copy | Code release |
 |---|---|---|
-| `method.md` | Agreed 2026-10-31 | V0 |
+| `method.md` | Agreed 2026-10-31 (+ § Refreshing 2026-10-31) | V0 |
 | `CONVENTIONS.md` (from the OneDrive root) | — | V0 |
 | `jira-epics.md` | Draft | V0 |
 | `specs/features.md` | Agreed 2026-10-18 | V0 |
 | `specs/exchange.md` | Agreed 2026-10-18 | V0 |
 | `specs/physical-link.md` | Agreed 2026-10-12 | V0 |
-| `specs/data-model.md` | **Agreed 2026-10-31** (CAP-12) | V0 |
+| `specs/data-model.md` | **Agreed 2026-10-31** (CAP-12), v0.2 additions 2026-11-02 | V0–V1 |
 | `design/SCREENS.md` | Proposed 2026-10-18 | V0 |
 | `decisions/ADR-000…008` | ADR-001…008 Accepted | V0 |
-| `openapi.yaml` | v0.1.0 (CAP-12, repo-only) | V0 |
+| `openapi.yaml` | v0.2.0 (CAP-26, repo-only) | V1 |
 
 ## Contracts (owned by the architect, `OWNERSHIP.md`)
 
-Published in CAP-12 as **contracts v0.1** (`CONTRACTS_VERSION` in `shared/src/index.ts`):
+Published in CAP-12 as **contracts v0.1**, bumped to **v0.2** in CAP-26 (`CONTRACTS_VERSION` in `shared/src/index.ts`):
 
 - `shared/src/schemas/*.ts` — zod schemas + inferred types: enums, Location (+ code parser), Cap / CapInput / CapPatch / CapHistory, Scan / AnalyseRequest / AnalyseResponse, Album / SheetView / NextFree, Exchange v1 (`parseExchangeUpload`, `normaliseResponseFields`).
-- `shared/src/keys.ts` — the only place DynamoDB keys are built (PK/SK, GSI1 location, GSI2 brand, LOCK markers, TTL).
-- `doc/spec/openapi.yaml` v0.1.0 — the HTTP API; bodies reference the zod schemas, which are authoritative.
+- `shared/src/keys.ts` — the only place DynamoDB keys are built (PK/SK, GSI1 location, GSI2 brand, LOCK markers, REFRESH# tokens, TTL).
+- `shared/src/routes.ts` — the single route manifest (method, path, auth, handler); infra and api import it.
+- `shared/src/schemas/http.ts` — Problem, Healthz, Session, AppleSignInRequest, RefreshRequest, UploadRequest/Response.
+- `doc/spec/openapi.yaml` v0.2.0 — the HTTP API; bodies reference the zod schemas, which are authoritative.
 - `specs/data-model.md` — Agreed.

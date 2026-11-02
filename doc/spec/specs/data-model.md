@@ -1,6 +1,6 @@
 # Data model (DynamoDB single table)
 
-**Status:** Agreed (2026-10-31, CAP-12) — keys are built only by `shared/src/keys.ts`; a key written any other way is a contract violation.
+**Status:** Agreed (2026-10-31, CAP-12; v0.2 additions 2026-11-02, CAP-26) — keys are built only by `shared/src/keys.ts`; a key written any other way is a contract violation.
 
 One table, on-demand capacity, PITR on, TTL attribute `ttl`. Attribute names: `pk`, `sk`, `gsi1pk`, `gsi1sk`, `gsi2pk`, `gsi2sk`, `ttl`.
 
@@ -13,9 +13,11 @@ One table, on-demand capacity, PITR on, TTL attribute `ttl`. Attribute names: `p
 | Scan | `USER#<uid>` | `SCAN#<ts>#<scanId>` | outcome, dhash, threshold, aiCalled, model, tokens, cost |
 | Exchange request | `USER#<uid>` | `EXCHANGE#<requestId>` | status waiting/answered/reviewed/expired; `ttl` = created + 30 d |
 | Album | `USER#<uid>` | `ALBUM#<albumId>` | letter, name, kind, sheets, cols, rows, pocketMm, pitchMm |
+| Refresh token | `USER#<uid>` | `REFRESH#<sha256(token)>` | hashed only; `ttl` = issued + 90 d; rotated on every `/auth/refresh` (v0.2, CAP-19) |
+| Pocket lock | `USER#<uid>` | `LOCK#<albumId>#<sheet>#<pocket>` | occupancy marker written in the cap's transaction (one cap per pocket) |
 | Wishlist item | `USER#<uid>` | `WISH#<id>` | V4 |
 
-`uid` = Apple `sub` of the single allowed user. Listing a user's caps = `Query pk = USER#<uid>, begins_with(sk, 'CAP#')`; same prefix pattern for scans, exchange requests and albums.
+`uid` = Apple `sub` of the single allowed user. A cap with an `album` location stores `location.albumId` (server-filled from the letter, v0.2) because GSI1 and `LOCK#` keys take the album id, not the letter. Listing a user's caps = `Query pk = USER#<uid>, begins_with(sk, 'CAP#')`; same prefix pattern for scans, exchange requests and albums.
 
 ## Indexes
 

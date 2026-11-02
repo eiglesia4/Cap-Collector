@@ -25,6 +25,8 @@
 - Cap id: ULID (`capId`). Never reuse. Soft-delete with tombstones.
 - Location code: `<albumLetter>·<sheet>·<pocket>` — album A–Z, sheet 1-based, pocket 1-based, row-major (6 columns × 7 rows on GRANDE sheets).
 - Deep link: `collectors://cap/<capId>`; web mirror `https://<domain>/cap/<capId>`.
+- Image keys: `<uid>/<uploadId>/<side>.webp` (`uploadId` = fresh ULID, not the cap id); caps reference images by key only (CAP-20).
+- `Cap.source` = how the record was born; `CapHistory.source` = who made each change (CAP-18).
 - Exchange format id: `capcollector.exchange`, integer `version`; importer accepts every version ever emitted.
 
 ## Code (when it starts)
@@ -34,6 +36,25 @@
 - Single-table DynamoDB. Key schema documented in `docs/specs/data-model.md`; never invent keys ad hoc.
 - Images: WebP, max 1024 px long edge, uploaded via presigned S3 URLs. dHash computed client-side.
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `infra:`).
+
+## AWS tagging (mandatory)
+Every taggable resource in every stack carries, applied once at the CDK app level (`Tags.of(app).add(...)`) so no construct can miss them:
+
+| Tag | Value |
+|---|---|
+| `project` | `EIM_CAP` |
+| `UserName` | `eiglesia4` |
+| `installation` | `<installation>` (e.g. `naeva`) |
+| `stage` | `<stage>` (e.g. `dev`) |
+
+These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_version`, the `config/*.json` version a deployment was synthesised from) are welcome. A synth test asserts the four on the table and on every bucket. Cost Explorer filters on `project = EIM_CAP`.
+
+## Deployment targets
+| installation.stage | Region | AWS profile (local) | Deployed by |
+|---|---|---|---|
+| `naeva.dev` | `eu-west-1` | `naevatecdev` | Edu, by hand (`npm run diff` → `npm run deploy`), never an agent |
+
+Region lives in `infra/config/<installation>.<stage>.json`; the profile and the account guard (`CAP_ACCOUNT_NAEVA_DEV`) live only in `.envrc.local` on Edu's machine. Nothing account-specific is ever committed.
 
 ## Cost rules
 - Stay serverless; no NAT, no VPC, no always-on compute.

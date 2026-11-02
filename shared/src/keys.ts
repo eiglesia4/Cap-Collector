@@ -23,6 +23,8 @@ export const scanSk = (ts: string, scanId: string) => `SCAN#${ts}#${scanId}` as 
 export const exchangeSk = (requestId: string) => `EXCHANGE#${requestId}` as const;
 export const albumSk = (albumId: string) => `ALBUM#${albumId}` as const;
 export const wishSk = (id: string) => `WISH#${id}` as const;
+/** Hashed refresh token under the user partition (CAP-19, v0.2): `REFRESH#<sha256 of the token>`; `ttl` 90 d. */
+export const refreshSk = (tokenHash: string) => `REFRESH#${tokenHash}` as const;
 /** Pocket occupancy marker, written transactionally with the cap (data-model.md § Invariants): one cap per pocket. */
 export const lockSk = (albumId: string, loc: AlbumLocation) => `LOCK#${albumId}#${loc.sheet}#${loc.pocket}` as const;
 
@@ -34,6 +36,7 @@ export const SK_PREFIX = {
   album: 'ALBUM#',
   wish: 'WISH#',
   lock: 'LOCK#',
+  refresh: 'REFRESH#',
 } as const;
 
 /** GSI1 — sheet view in one query. Pocket zero-padded to 2 digits so range queries sort numerically. */

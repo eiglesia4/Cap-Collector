@@ -7,6 +7,11 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-26: contracts v0.2 — `shared/src/routes.ts` (single route manifest), `schemas/http.ts` (Problem, Healthz, Session,
+  AppleSignInRequest, RefreshRequest, UploadRequest/Response), `Cap.imageUrls`, `Location.albumId` (server-filled),
+  `CapPatch` without defaults and with `null` to clear, `refreshSk()`; `openapi.yaml` 0.2.0 (security markers, auth and
+  upload bodies, sort rules, examples); `doc/spec/` refreshed from OneDrive (method § Refreshing, CONVENTIONS tagging /
+  deploy / image keys / source semantics, data-model REFRESH#, LOCK#, albumId).
 - CAP-22: Sign in with Apple screen — PKCE verifier per attempt with `nonce = base64url(SHA-256(verifier))`, Apple JS
   popup flow on web (and for now on iOS), state check, 403/network/cancel/not-configured states, route guard, silent
   session restore at start, Sign out in Settings; `VITE_APPLE_SERVICE_ID` / `VITE_APPLE_REDIRECT_URI` config.
