@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-18: caps API — `POST/GET/PATCH/DELETE /caps`, `/caps/{capId}/history` and `GET /caps` (filters, accent-insensitive
+  `q`, location-code search, sort brand/newest/country/year, cursor, `total` up to 5 000); history `HIST#` written in
+  the same transaction, GSI2 kept in step, tombstone delete, PATCH applies only the fields sent.
 - CAP-21: app foundation — Capacitor iOS project (`com.naevatec.collectors`), vanilla-TS shell with history router
   (10 routes) and tab bar Collection · Scan · Wishlist · Stats, `platform/` adapter (web + Capacitor, Capacitor imports
   fenced by lint), design tokens with self-hosted fonts, typed i18n, typed API client (401 → refresh → retry once),
