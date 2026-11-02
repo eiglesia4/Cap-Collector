@@ -10,7 +10,7 @@ import {
   ResponseValidationError,
   UnauthorizedError,
 } from './errors.js';
-import { HealthzSchema, ProblemSchema, SessionSchema, type Healthz, type Schema } from './schema.js';
+import { HealthzSchema, ProblemSchema, SessionSchema, type Healthz, type Schema, type Session } from './schema.js';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -23,9 +23,23 @@ export interface RequestOptions<T> {
   readonly auth?: boolean;
 }
 
+/** Body of POST /auth/apple (openapi.yaml § /auth/apple). */
+export interface AppleSignInBody {
+  readonly identityToken: string;
+  readonly authorizationCode?: string;
+  readonly codeVerifier: string;
+}
+
 export interface ApiClient {
   request<T>(path: string, options: RequestOptions<T>): Promise<T>;
   healthz(): Promise<Healthz>;
+  /** POST /auth/apple → Session (not stored here: the sign-in flow saves it). 403 = Apple ID not allowed. */
+  signInWithApple(body: AppleSignInBody): Promise<Session>;
+  /**
+   * POST /auth/refresh with the stored refresh token, shared with any in-flight 401 retry. True when a new session
+   * was saved; false when there is no session or the API refused the token; throws ApiError when unreachable.
+   */
+  refresh(): Promise<boolean>;
 }
 
 export interface ApiClientDeps {
@@ -79,12 +93,14 @@ export function createApiClient({
     return result.data;
   }
 
-  // SPEC-GAP CAP-21: openapi.yaml `/auth/refresh` declares no request body; the refresh token is sent as
-  // `{ refreshToken }` JSON (the conservative reading of ADR-008 §4). To be confirmed by the architect.
+  // openapi.yaml `/auth/refresh` declares no request body; `{ refreshToken }` JSON was confirmed by the architect
+  // in CAP-19 (relayed in CAP-22) and is what api/src/auth/service.ts accepts.
   async function refresh(): Promise<boolean> {
     const current = session.current();
     if (!current) return false;
     const res = await send('/auth/refresh', 'POST', { refreshToken: current.refreshToken }, null);
+    // A server fault says nothing about the token: keep the session and fail this call (CAP-22).
+    if (res.status >= 500) throw new HttpError(res.status);
     if (!res.ok) return false;
     await session.save(await parse('/auth/refresh', res, SessionSchema));
     return true;
@@ -120,5 +136,7 @@ export function createApiClient({
   return {
     request,
     healthz: () => request('/healthz', { schema: HealthzSchema, auth: false }),
+    signInWithApple: (body) => request('/auth/apple', { method: 'POST', body, schema: SessionSchema, auth: false }),
+    refresh: refreshOnce,
   };
 }

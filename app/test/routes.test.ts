@@ -17,6 +17,7 @@ describe('routes', () => {
       '/albums',
       '/exchange',
       '/settings',
+      '/sign-in',
     ]);
     expect(matchRoute('/')?.route.name).toBe('collection');
     expect(matchRoute('/settings/')?.route.name).toBe('settings');

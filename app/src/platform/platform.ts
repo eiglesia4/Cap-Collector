@@ -20,6 +20,31 @@ export interface ShareRequest {
   readonly files?: readonly File[];
 }
 
+/** What the app hands the Apple sheet / popup for one attempt (src/auth/pkce.ts). */
+export interface AppleSignInRequest {
+  /** base64url(SHA-256(codeVerifier)); Apple copies it into the identity token's `nonce` claim. */
+  readonly nonce: string;
+  readonly state: string;
+}
+
+/** What Apple returns on success; the identity token is never logged. */
+export interface AppleCredential {
+  readonly identityToken: string;
+  readonly authorizationCode?: string;
+  /** `state` as echoed by Apple; must equal the request's. */
+  readonly state?: string;
+}
+
+/** Sign in with Apple cannot run in this build (no Service ID / return URL configured). */
+export class AppleSignInUnavailableError extends Error {
+  override readonly name = 'AppleSignInUnavailableError';
+}
+
+/** The Apple JS SDK could not be loaded (offline, blocked). */
+export class AppleSdkLoadError extends Error {
+  override readonly name = 'AppleSdkLoadError';
+}
+
 export interface Platform {
   /** `native` = Capacitor iPhone app; `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
   readonly kind: 'web' | 'native';
@@ -31,6 +56,13 @@ export interface Platform {
   share(request: ShareRequest): Promise<boolean>;
   /** Small persistent key/value store (Preferences on iOS, localStorage on web). */
   readonly store: KeyValueStore;
+  /**
+   * Sign in with Apple (ADR-008 §4): the native sheet on iOS once the plugin is installed, otherwise the Apple JS
+   * popup. Resolves null when the user cancels; throws AppleSignInUnavailableError / AppleSdkLoadError.
+   */
+  signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null>;
+  /** True when signInWithApple uses the native iOS sheet rather than the web flow. */
+  supportsNativeAppleSignIn(): boolean;
 }
 
 export function isCancel(error: unknown): boolean {

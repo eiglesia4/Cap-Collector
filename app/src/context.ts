@@ -13,6 +13,8 @@ export interface AppContext {
   readonly api: ApiClient;
   readonly apiUrl: ApiUrlSetting;
   navigate(path: string): void;
+  /** Development builds only (CAP-22): enter the app without a session, e.g. against `npm run api:local`. */
+  skipSignIn(): void;
 }
 
 export type Screen = (ctx: AppContext, route: RouteMatch) => HTMLElement;

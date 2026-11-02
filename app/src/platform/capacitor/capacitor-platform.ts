@@ -45,6 +45,10 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
 
   return {
     kind: 'native',
+    // CAP-22 (story § How): the native sheet needs `@capacitor-community/apple-sign-in`, which app/package.json does
+    // not have yet (requested from the integrator). Until then the iPhone runs the same Apple JS popup as the web.
+    signInWithApple: (request) => fallback.signInWithApple(request),
+    supportsNativeAppleSignIn: () => false,
     async camera() {
       try {
         const result = await plugins.Camera.takePhoto({ quality: 90, correctOrientation: true });

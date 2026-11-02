@@ -13,7 +13,8 @@ export type RouteName =
   | 'newCap'
   | 'albums'
   | 'exchange'
-  | 'settings';
+  | 'settings'
+  | 'signIn';
 
 export interface RouteDef {
   readonly name: RouteName;
@@ -35,6 +36,8 @@ export const ROUTES: readonly RouteDef[] = [
   { name: 'albums', pattern: '/albums', tab: 'collection' },
   { name: 'exchange', pattern: '/exchange', tab: 'collection' },
   { name: 'settings', pattern: '/settings', tab: 'collection' },
+  // CAP-22: the only route reachable signed out; full screen, no tabs.
+  { name: 'signIn', pattern: '/sign-in', tab: 'collection', modal: true },
 ];
 
 export interface RouteMatch {

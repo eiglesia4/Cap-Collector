@@ -8,9 +8,9 @@ import { shellContext } from './support/fakes';
 let handle: AppHandle | undefined;
 let root: HTMLElement;
 
-function mount(path: string, kind: 'web' | 'native' = 'native'): AppHandle {
+async function mount(path: string, kind: 'web' | 'native' = 'native'): Promise<AppHandle> {
   window.history.replaceState(null, '', path);
-  handle = renderApp(root, shellContext({ kind }));
+  handle = renderApp(root, await shellContext({ kind }));
   return handle;
 }
 
@@ -25,17 +25,17 @@ beforeEach(() => {
 afterEach(() => handle?.destroy());
 
 describe('app shell', () => {
-  it('[T-app-001] renders the shell into the root element, replacing previous content', () => {
+  it('[T-app-001] renders the shell into the root element, replacing previous content', async () => {
     root.innerHTML = '<p>stale</p>';
-    mount('/');
+    await mount('/');
     expect(root.textContent).not.toContain('stale');
     expect(root.querySelector('.shell > main.view')).not.toBeNull();
     expect(root.querySelector('.shell > nav.tab-bar')).not.toBeNull();
     expect(document.title).toBe(t('app.name'));
   });
 
-  it('[T-app-002] routes paths to screens and keeps the bottom tab bar in sync (clicks, back, unknown → Collection)', () => {
-    const app = mount('/');
+  it('[T-app-002] routes paths to screens and keeps the bottom tab bar in sync (clicks, back, unknown → Collection)', async () => {
+    const app = await mount('/');
     expect(tabs().map((a) => a.textContent)).toEqual([
       t('tabs.collection'),
       t('tabs.scan'),
@@ -73,8 +73,8 @@ describe('app shell', () => {
     expect(title()).toBe(t('collection.title'));
   });
 
-  it('[T-app-016] hides the tab bar on modal form routes and shows "Upload photo" for Scan on the web build', () => {
-    const app = mount('/new', 'web');
+  it('[T-app-016] hides the tab bar on modal form routes and shows "Upload photo" for Scan on the web build', async () => {
+    const app = await mount('/new', 'web');
     expect(root.querySelector<HTMLElement>('.tab-bar')?.hidden).toBe(true);
     root.querySelector<HTMLAnchorElement>('a.header-action')?.click();
     expect(window.location.pathname).toBe('/scan');
@@ -83,13 +83,13 @@ describe('app shell', () => {
     expect(title()).toBe(t('scan.uploadTitle'));
     app.destroy();
 
-    mount('/scan', 'native');
+    await mount('/scan', 'native');
     expect(tabs()[1]?.textContent).toBe(t('tabs.scan'));
     expect(title()).toBe(t('scan.title'));
   });
 
-  it('[T-app-017] leaves modified, external and non-router link clicks to the browser', () => {
-    const app = mount('/');
+  it('[T-app-017] leaves modified, external and non-router link clicks to the browser', async () => {
+    const app = await mount('/');
     const click = (el: Element, init: MouseEventInit = {}) => {
       const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init });
       el.dispatchEvent(event);
