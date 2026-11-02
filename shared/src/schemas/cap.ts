@@ -32,6 +32,13 @@ export const CapImages = z.object({
   underside: ImageRef.optional(),
 });
 
+/** Presigned GET URLs (≈5 min) the API adds to cap responses (v0.2, CAP-20). Never stored; absent on writes. */
+export const ImageUrls = z.object({
+  top: z.string().url(),
+  underside: z.string().url().optional(),
+});
+export type ImageUrls = z.infer<typeof ImageUrls>;
+
 /**
  * Fields the user (or an AI) fills in. Shared by the review form, the exchange `response.fields`
  * (nullable variant below) and the API bodies. `brand` is the only required one (features.md).
@@ -65,7 +72,10 @@ export const CapOwnership = z.object({
   variantOf: Ulid.optional(),
 });
 
-/** Provenance and AI bookkeeping (ADR-004). */
+/**
+ * Provenance and AI bookkeeping (ADR-004). `source` here = how the record was born; each change's author lives in
+ * `CapHistory.source` (decided in CAP-18: a PATCH never rewrites `Cap.source`).
+ */
 export const CapProvenance = z.object({
   source: Source,
   dhash: DHash.optional(),
@@ -83,6 +93,8 @@ export const Cap = z
     updatedAt: Instant,
     /** Tombstone (ADR-006): present → deleted; never physically removed. */
     deletedAt: Instant.optional(),
+    /** Response-only: presigned read URLs for `images` (CAP-20 → v0.2). */
+    imageUrls: ImageUrls.optional(),
   })
   .extend(CapFields.shape)
   .extend(CapOwnership.shape)
@@ -105,7 +117,43 @@ export const CapInput = CapFields.extend(CapOwnership.shape)
   .strict();
 export type CapInput = z.infer<typeof CapInput>;
 
-export const CapPatch = CapInput.partial().strict();
+/**
+ * Body of `PATCH /caps/{id}` (v0.2, CAP-18): only the keys present are applied — no defaults are filled in — and an
+ * optional field is cleared by sending `null`. `source` names the author of this change (history entry), not a new
+ * origin for the record. `images` cannot be nulled; `location` is rejected outright (own route).
+ */
+const patchOptional = <T extends z.ZodTypeAny>(schema: T) => schema.nullable().optional();
+export const CapPatch = z
+  .object({
+    brand: CapFields.shape.brand.optional(),
+    variant: patchOptional(CapFields.shape.variant.unwrap()),
+    producer: patchOptional(CapFields.shape.producer.unwrap()),
+    country: patchOptional(CountryCode),
+    type: patchOptional(CapType),
+    material: patchOptional(Material),
+    closure: patchOptional(Closure),
+    year: patchOptional(Year),
+    description: patchOptional(CapFields.shape.description.unwrap()),
+    textOnCap: patchOptional(CapFields.shape.textOnCap.unwrap()),
+    condition: patchOptional(Condition),
+    acquiredWhere: patchOptional(CapOwnership.shape.acquiredWhere.unwrap()),
+    acquiredOn: patchOptional(CalendarDate),
+    tags: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
+    notes: patchOptional(CapOwnership.shape.notes.unwrap()),
+    quantity: z.number().int().min(1).optional(),
+    forTrade: z.number().int().min(0).optional(),
+    variantOf: patchOptional(Ulid),
+    /** Never patchable: location has its own route (`PUT/DELETE /caps/{id}/location`). Present → 422. */
+    location: z.never().optional(),
+    images: CapImages.optional(),
+    status: CapStatus.optional(),
+    source: Source.optional(),
+    dhash: DHash.optional(),
+    dhashUnderside: DHash.optional(),
+    aiModel: patchOptional(z.string().max(120)),
+    aiConfidence: patchOptional(Confidence),
+  })
+  .strict();
 export type CapPatch = z.infer<typeof CapPatch>;
 
 /** One field change inside a history entry. Values are JSON; `from` is absent on first set. */

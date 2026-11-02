@@ -14,6 +14,17 @@
 
 Rule: **code never changes a contract.** A story that needs a new field or endpoint → conservative choice, `// SPEC-GAP CAP-<n>: …` in code, listed under *Spec deviations* in the Jira closing comment; the architect versions the contract.
 
+## Refreshing the frozen copy (`doc/spec/`)
+The repo's `doc/spec/` mirrors the **contents** of the OneDrive `docs/` folder plus the root `CONVENTIONS.md` — never the `docs/` folder itself. The refresh is always an `area-infra` story (or part of the contracts story) and runs exactly:
+
+```bash
+rsync -a --delete --exclude README.md "$CAP_DOCS/docs/" doc/spec/      # contents, trailing slash matters
+cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
+# then update the copy table in doc/spec/README.md (date, statuses, code release)
+```
+
+`cp -R "$CAP_DOCS/docs" doc/spec/` creates `doc/spec/docs/` — a duplicate tree that two readers then disagree about (happened 2026-10-31). `doc/spec/README.md` is the only file that lives in the repo and not in OneDrive, hence the `--exclude`.
+
 ## Jira project `CAP`
 - Workflow (same as SESHET): **Backlog · Ready · In Progress · In Review · Blocked · Done**. Ready = can start now (no *is blocked by* link to anything not Done).
 - Epics = components (EP-01 … EP-10). Stories = commit-sized, testable, one territory each.

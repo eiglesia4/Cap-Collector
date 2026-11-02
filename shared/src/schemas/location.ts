@@ -1,7 +1,7 @@
 // Physical location of a cap and its code `A·3·17` (ADR-005, physical-link.md § Location code). Owned by the architect.
 import { z } from 'zod';
 
-import { LocationKind } from './enums.js';
+import { LocationKind, Ulid } from './enums.js';
 
 /** Album identifier as the user sees it: a single upper-case letter A–Z. */
 export const AlbumLetter = z.string().regex(/^[A-Z]$/, 'album letter A–Z expected');
@@ -9,6 +9,8 @@ export const AlbumLetter = z.string().regex(/^[A-Z]$/, 'album letter A–Z expec
 const base = {
   /** Which album/box/frame, by its letter (unique per user; the `Album` record maps letter → albumId). */
   album: AlbumLetter,
+  /** Server-filled from the letter (v0.2, CAP-17): clients never send it; GSI1 and `LOCK#` keys need it. */
+  albumId: Ulid.optional(),
 };
 
 /** `album` kind: sheet and pocket are required, 1-based, row-major on the sheet. */
