@@ -6,8 +6,12 @@
  *   (and protected) from day one; context `requireAllHandlers=true` turns a missing handler into a synth error.
  * - The authorizer is api/src/auth/authorizer.ts once dev-api merges it (CAP-19); until then a deny-all stub.
  * - Least privilege per function from the manifest's `grants`; SSM-backed settings only where `secrets` says so.
- * - CORS allows `app_origins` from config/ plus the CloudFront web URL, imported from the CollectorsData `WebUrl`
- *   output (CAP-27), so the web build can call the API without listing its generated domain by hand.
+ * - CORS allows `app_origins` from config/ plus the web origin. With `domains` in config (CAP-29) that origin is
+ *   `https://<domains.web>` taken from config, with no import: CloudFormation refuses to change an export another
+ *   stack imports, and CAP-29 changes `WebUrl`. Without `domains`, it is the CloudFront URL imported from the
+ *   CollectorsData `WebUrl` output (CAP-27).
+ * - Custom domain (CAP-29): with `domains.api`, a regional API Gateway domain name (ACM certificate ARN from SSM)
+ *   mapped to the default stage; DNS is a GoDaddy CNAME to the `ApiDomainTarget` output.
  * No VPC, no NAT, no always-on compute (CONVENTIONS § Cost rules); arm64, 256 MB, 10 s, JSON logs kept 30 days.
  */
 import { existsSync, readdirSync } from 'node:fs';
@@ -16,12 +20,15 @@ import { fileURLToPath } from 'node:url';
 
 import { Annotations, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import {
+  ApiMapping,
   type CfnStage,
   CorsHttpMethod,
+  DomainName,
   HttpApi,
   HttpMethod,
   type IHttpRouteAuthorizer,
 } from 'aws-cdk-lib/aws-apigatewayv2';
+import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Table } from 'aws-cdk-lib/aws-dynamodb';
@@ -75,6 +82,14 @@ export function orphanHandlers(routes: readonly Route[], apiSrcDir: string): str
     .filter((h) => !known.has(h));
 }
 
+/**
+ * The web build's origin for API CORS: from config when `domains` is set (no `Fn::ImportValue`, so CollectorsData may
+ * change its `WebUrl` export — decided in CAP-27 review, 2026-11-07), else imported from CollectorsData (CAP-27).
+ */
+export function webOrigin(deployment: Deployment, config: InstallationConfig): string {
+  return config.domains ? `https://${config.domains.web}` : Fn.importValue(dataExportName(deployment, 'WebUrl'));
+}
+
 const pascal = (kebab: string) => kebab.replace(/(^|-)([a-z0-9])/g, (_m, _d: string, c: string) => c.toUpperCase());
 
 export class CollectorsApiStack extends Stack {
@@ -83,6 +98,8 @@ export class CollectorsApiStack extends Stack {
   readonly functions: ReadonlyMap<string, NodejsFunction>;
   /** The file bundled as the authorizer: api/src/auth/authorizer.ts when it exists, else the deny-all stub. */
   readonly authorizerEntry: string;
+  /** API Gateway custom domain, only when config declares `domains.api` (CAP-29). */
+  readonly domainName?: DomainName;
 
   constructor(scope: Construct, id: string, props: CollectorsApiStackProps) {
     super(scope, id, props);
@@ -168,7 +185,7 @@ export class CollectorsApiStack extends Stack {
       apiName: resourceName(deployment, 'api'),
       description: 'CapCollector HTTP API (doc/spec/openapi.yaml)',
       corsPreflight: {
-        allowOrigins: [...config.app_origins, Fn.importValue(dataExportName(deployment, 'WebUrl'))],
+        allowOrigins: [...config.app_origins, webOrigin(deployment, config)],
         allowMethods: [
           CorsHttpMethod.GET,
           CorsHttpMethod.POST,
@@ -205,10 +222,36 @@ export class CollectorsApiStack extends Stack {
     }
     this.functions = functions;
 
+    // Custom domain (CAP-29): regional endpoint with the ACM certificate (same region as this stack) from SSM.
+    const apiDomain = config.domains?.api;
+    if (apiDomain) {
+      const certificateArn = StringParameter.valueForStringParameter(
+        this,
+        settingParameterName(deployment, 'apiCertificateArn'),
+      );
+      this.domainName = new DomainName(this, 'ApiDomain', {
+        domainName: apiDomain,
+        certificate: Certificate.fromCertificateArn(this, 'ApiCertificate', certificateArn),
+      });
+      const defaultStage = this.api.defaultStage;
+      if (!defaultStage) throw new Error('CollectorsApi: the HTTP API has no default stage to map the domain to');
+      new ApiMapping(this, 'ApiMapping', { api: this.api, domainName: this.domainName, stage: defaultStage });
+    }
+
     const out = (key: string, value: string, description: string) =>
       new CfnOutput(this, key, { value, description, exportName: `${resourceName(deployment, 'api')}-${key}` });
-    out('ApiUrl', this.api.apiEndpoint, 'HTTP API base URL (VITE_API_URL for the app)');
+    out(
+      'ApiUrl',
+      apiDomain ? `https://${apiDomain}` : this.api.apiEndpoint,
+      'HTTP API base URL (VITE_API_URL for the app)',
+    );
     out('ApiId', this.api.apiId, 'HTTP API id');
+    if (apiDomain && this.domainName) {
+      new CfnOutput(this, 'ApiDomainTarget', {
+        value: this.domainName.regionalDomainName,
+        description: `GoDaddy CNAME value for ${apiDomain}`,
+      });
+    }
   }
 
   private grant(fn: NodejsFunction, route: Route, table: Table, imagesBucket: Bucket): void {

@@ -17,6 +17,8 @@ const INSTALLATION_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 const ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/;
 /** Free text (dev, prod, test…); only its shape is checked. */
 const STAGE_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
+/** A bare DNS name (no scheme, no path, no trailing dot), lowercase: what CloudFront and API Gateway accept. */
+const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 /**
  * AWS tagging (CONVENTIONS.md § AWS tagging, decided in CAP-13 revision, 2026-11-01): every taggable resource carries
@@ -47,6 +49,18 @@ export interface InstallationConfig {
   readonly region: string;
   /** Origins allowed to PUT images with a presigned URL (CORS on the images bucket, CAP-13). Optional, default none. */
   readonly app_origins: readonly string[];
+  /**
+   * Custom domains (ADR-008 §5 as amended 2026-11-02, CAP-29). Optional: without it the web build and the API keep
+   * their default CloudFront / API Gateway URLs. DNS stays at GoDaddy; the certificates come from SSM.
+   */
+  readonly domains?: Domains;
+}
+
+export interface Domains {
+  /** Host of the web build on CloudFront, e.g. `caps.naevatec.com` (certificate in us-east-1). */
+  readonly web: string;
+  /** Host of the HTTP API, e.g. `api.caps.naevatec.com` (regional certificate, same region as the stack). */
+  readonly api: string;
 }
 
 function fromContext(app: App, key: string, envVar: string): string | undefined {
@@ -107,7 +121,43 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
       `${file}: "app_origins" must be a list of origins like "https://example.org" or "capacitor://localhost"`,
     );
   }
-  return { region: raw.region, config_version: raw.config_version, app_origins: origins };
+  const domains = raw.domains === undefined ? undefined : validateDomains(file, raw.domains);
+  return {
+    region: raw.region,
+    config_version: raw.config_version,
+    app_origins: origins,
+    ...(domains && { domains }),
+  };
+}
+
+/** `domains` is all or nothing: both hosts, both bare lowercase DNS names (T-infra-026). */
+function validateDomains(file: string, value: unknown): Domains {
+  const d = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  for (const key of ['web', 'api'] as const) {
+    const host = d[key];
+    if (typeof host !== 'string' || !HOSTNAME_RE.test(host)) {
+      throw new Error(
+        `${file}: "domains.${key}" must be a bare host name like "caps.example.org" ` +
+          '("domains" needs both "web" and "api")',
+      );
+    }
+  }
+  return { web: d.web as string, api: d.api as string };
+}
+
+/**
+ * The config with its `domains` removed when CDK context `domains=off` is passed.
+ * SPEC-GAP CAP-29: the certificate ARNs live in SSM parameters that CollectorsData itself creates (story), but a stack
+ * cannot read at deploy time a parameter it creates in the same deploy. So the very first rollout deploys
+ * CollectorsData once with `domains=off` (creates the `unset` parameters, nothing else changes), Edu fills them, and
+ * only then deploys with the domains on (README § Custom domains). Any other value of the flag is refused.
+ */
+export function applyDomainsSwitch(app: App, config: InstallationConfig): InstallationConfig {
+  const flag: unknown = app.node.tryGetContext('domains');
+  if (flag === undefined || flag === 'on') return config;
+  if (flag !== 'off') throw new Error(`Invalid context domains="${String(flag)}": use "off" (or omit it)`);
+  const { domains: _omitted, ...rest } = config;
+  return rest;
 }
 
 /** `CAP_ACCOUNT_<INSTALLATION>_<STAGE>`, uppercase, hyphens → underscores. The account belongs to the pair. */

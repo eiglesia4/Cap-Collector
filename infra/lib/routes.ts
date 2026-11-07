@@ -20,6 +20,18 @@ export const SECRET_ENV = {
 } as const;
 export type SecretName = keyof typeof SECRET_ENV;
 
+/**
+ * SSM-backed settings read by the stacks themselves, never by a Lambda (CAP-29): the ACM certificate ARNs of the
+ * custom domains. Same `/cap/<inst>/<stage>/<name>` parameters as the secrets, but no env var, so they can never be
+ * listed in a route's `secrets` (the type forbids it; T-infra-024 checks the bundles' env).
+ * `webCertificateArn` → ACM in us-east-1 (CloudFront); `apiCertificateArn` → ACM in the stack's region (regional API).
+ */
+export const CERTIFICATE_SETTINGS = ['webCertificateArn', 'apiCertificateArn'] as const;
+export type CertificateSettingName = (typeof CERTIFICATE_SETTINGS)[number];
+
+/** Every SSM parameter CollectorsData creates with the `unset` placeholder. */
+export type SettingName = SecretName | CertificateSettingName;
+
 export interface Wiring {
   readonly grants: readonly Grant[];
   readonly secrets?: readonly SecretName[];
