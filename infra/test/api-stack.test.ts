@@ -1,11 +1,11 @@
-// CollectorsApi stack (CAP-15): route manifest ⟷ openapi.yaml, handler wiring and stubs, authorizer, IAM, settings.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// CollectorsApi stack (CAP-15): routes from shared + wiring (CAP-27), handler stubs, authorizer, IAM, CORS, settings.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { App } from 'aws-cdk-lib';
 import { Annotations, Match, Template } from 'aws-cdk-lib/assertions';
+import { ROUTES as CONTRACT_ROUTES, type RouteDef } from '@capcollector/shared';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
 
 import { buildApp } from '../lib/app.js';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../lib/collectors-api-stack.js';
 import { CollectorsDataStack, settingParameterName, UNSET_PARAMETER_VALUE } from '../lib/collectors-data-stack.js';
 import type { Deployment, InstallationConfig } from '../lib/config.js';
-import { type Route, ROUTES, SECRET_ENV } from '../lib/routes.js';
+import { type Route, ROUTES, SECRET_ENV, WIRING, wireRoutes } from '../lib/routes.js';
 import { handler as denyAll } from '../lib/stubs/authorizer-deny.js';
 import { handler as notImplemented } from '../lib/stubs/not-implemented.js';
 
@@ -137,30 +137,25 @@ function summarise(template: Template) {
 }
 
 describe('CollectorsApi stack', () => {
-  it('[T-infra-016] route manifest equals openapi.yaml: same paths, methods and auth (public = /auth/* and /healthz)', () => {
-    const spec = parse(readFileSync(join(REPO_ROOT, 'doc', 'spec', 'openapi.yaml'), 'utf8')) as {
-      security?: unknown[];
-      paths: Record<string, Record<string, { security?: unknown[] }>>;
-    };
-    const methods = new Set(['get', 'post', 'put', 'patch', 'delete']);
-    const isPublic = (path: string) => path === '/healthz' || path.startsWith('/auth/');
-    const fromSpec = Object.entries(spec.paths).flatMap(([path, item]) =>
-      Object.entries(item)
-        .filter(([m]) => methods.has(m))
-        // An operation-level `security` wins; otherwise the rule stated in info.description.
-        .map(
-          ([m, op]) =>
-            `${m.toUpperCase()} ${path} auth=${String(op.security ? op.security.length > 0 : !isPublic(path))}`,
-        ),
-    );
-    const fromManifest = ROUTES.map((r) => `${r.method} ${r.path} auth=${String(r.auth)}`);
-    expect([...fromManifest].sort()).toEqual([...fromSpec].sort());
-    expect(spec.security).toEqual([{ bearer: [] }]);
+  it('[T-infra-016] infra routes are the shared ROUTES plus wiring: every contract handler wired, no stray wiring', () => {
+    // Paths, methods and auth come from @capcollector/shared unchanged; the comparison with openapi.yaml lives only in
+    // T-shared-006 (CAP-27 retired the copy that was here).
+    const strip = ({ method, path, handler, auth }: RouteDef) => ({ method, path, handler, auth });
+    expect(ROUTES.map(strip)).toEqual(CONTRACT_ROUTES.map(strip));
 
-    // Handler names are unique (one Lambda each) and kebab-case file names.
-    const handlers = ROUTES.map((r) => r.handler);
-    expect(new Set(handlers).size).toBe(handlers.length);
-    for (const h of handlers) expect(h).toMatch(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/);
+    // Every contract handler has an explicit WIRING entry, and WIRING names nothing else.
+    expect(Object.keys(WIRING).sort()).toEqual(CONTRACT_ROUTES.map((r) => r.handler).sort());
+
+    // Public routes get no table/S3 grant beyond what the auth flow needs; wiring is copied, not invented.
+    for (const route of ROUTES) expect(route.grants).toEqual(WIRING[route.handler]?.grants);
+    expect(ROUTES.find((r) => r.handler === 'healthz')).toMatchObject({ auth: false, grants: [] });
+
+    // A route the contract adds before infra wires it deploys with nothing granted (and the check above fails).
+    const added: RouteDef = { method: 'GET', path: '/new', handler: 'new-thing', auth: true };
+    expect(wireRoutes([added], {})).toEqual([{ ...added, grants: [] }]);
+    expect(wireRoutes([added], { 'new-thing': { grants: ['table'], secrets: ['sessionSecret'] } })).toEqual([
+      { ...added, grants: ['table'], secrets: ['sessionSecret'] },
+    ]);
   });
 
   it('[T-infra-017] a manifest handler without a file is served by the 501 stub, or fails synth in strict mode', () => {
@@ -203,7 +198,7 @@ describe('CollectorsApi stack', () => {
   it('[T-infra-018] snapshot: functions sized and logged as specified, authorizer on every protected route, IAM scoped', () => {
     // A fixture with one handler per kind of grant, so the IAM shape is visible before dev-api merges them.
     const src = fakeApiSrc(['healthz', 'auth-apple', 'caps-get', 'caps-patch', 'uploads-create']);
-    const { api, template } = apiStack({ apiSrcDir: src });
+    const { data, api, template } = apiStack({ apiSrcDir: src });
     const s = summarise(template);
     expect(s).toMatchSnapshot();
 
@@ -241,10 +236,28 @@ describe('CollectorsApi stack', () => {
     expect(s.functions.Authorizer?.env).toContain(SECRET_ENV.sessionSecret);
     expect(s.functions.Authorizer?.env).not.toContain(SECRET_ENV.allowedAppleSubs);
 
-    // CORS from app_origins, throttling, outputs.
+    // CORS: app_origins plus the CloudFront WebUrl imported from the CollectorsData output (CAP-27); throttling, outputs.
+    const webUrl = { 'Fn::ImportValue': 'cap-naeva-dev-data-WebUrl' };
     template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',
-      CorsConfiguration: Match.objectLike({ AllowOrigins: config.app_origins }),
+      CorsConfiguration: Match.objectLike({ AllowOrigins: [...config.app_origins, webUrl] }),
+    });
+    Template.fromStack(data).hasOutput('WebUrl', { Export: { Name: 'cap-naeva-dev-data-WebUrl' } });
+    // Without app_origins the web build is still allowed (CORS used to be omitted entirely).
+    const bare = new App({ context: NO_BUNDLING });
+    const bareData = new CollectorsDataStack(bare, 'CollectorsData', {
+      deployment,
+      config: { ...config, app_origins: [] },
+    });
+    const bareApi = new CollectorsApiStack(bare, 'CollectorsApi', {
+      deployment,
+      config: { ...config, app_origins: [] },
+      table: bareData.table,
+      imagesBucket: bareData.imagesBucket,
+      apiSrcDir: src,
+    });
+    Template.fromStack(bareApi).hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({ AllowOrigins: [webUrl] }),
     });
     template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
       DefaultRouteSettings: { ThrottlingRateLimit: THROTTLE.rateLimit, ThrottlingBurstLimit: THROTTLE.burstLimit },

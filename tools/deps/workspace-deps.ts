@@ -1,10 +1,15 @@
 // Workspace dependency hygiene (CAP-14): every declared dependency is installed, and workspaces only share code
 // through `@capcollector/shared` (OWNERSHIP.md: one owner per territory, contracts are the only bridge).
+// Internal workspace versioning (decided in CAP-27, 2026-11-07): a workspace declares `"@capcollector/shared": "*"`.
+// npm has no `workspace:` protocol, and a pinned version ("0.0.0") stops matching the local package the day the
+// architect bumps shared, so `npm ci` would try the registry and fail; `*` always links the workspace.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 /** The only package a workspace may take from another workspace. */
 export const SHARED_PACKAGE = '@capcollector/shared';
+/** The only range a workspace may use for another workspace package (see the header). */
+export const INTERNAL_RANGE = '*';
 const WORKSPACE_SCOPE = '@capcollector/';
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'cdk.out', 'coverage', 'ios', 'android']);
 
@@ -42,6 +47,14 @@ export function crossWorkspaceDependencies(wsDir: string): string[] {
   const m = readManifest(wsDir);
   const names = [...Object.keys(m.dependencies ?? {}), ...Object.keys(m.devDependencies ?? {})];
   return names.filter((n) => n.startsWith(WORKSPACE_SCOPE) && n !== SHARED_PACKAGE && n !== m.name);
+}
+
+/** Internal (`@capcollector/*`) dependencies declared with a range other than `*`, as `name@range`. */
+export function pinnedInternalDependencies(wsDir: string): string[] {
+  const m = readManifest(wsDir);
+  return Object.entries({ ...m.dependencies, ...m.devDependencies })
+    .filter(([n, range]) => n.startsWith(WORKSPACE_SCOPE) && range !== INTERNAL_RANGE)
+    .map(([n, range]) => `${n}@${range}`);
 }
 
 const SPECIFIER_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
