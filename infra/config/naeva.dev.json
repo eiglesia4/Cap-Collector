@@ -1,5 +1,6 @@
 {
-  "config_version": "2026-11-01",
+  "config_version": "2026-11-07",
   "region": "eu-west-1",
-  "app_origins": ["capacitor://localhost", "http://localhost:5173"]
+  "app_origins": ["capacitor://localhost", "http://localhost:5173"],
+  "domains": { "web": "caps.naevatec.com", "api": "api.caps.naevatec.com" }
 }

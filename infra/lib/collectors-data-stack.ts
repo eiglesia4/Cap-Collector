@@ -16,6 +16,7 @@ import {
   PriceClass,
   ViewerProtocolPolicy,
 } from 'aws-cdk-lib/aws-cloudfront';
+import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { AttributeType, BillingMode, ProjectionType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import {
@@ -31,7 +32,7 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
-import { SECRET_ENV, type SecretName } from './routes.js';
+import { CERTIFICATE_SETTINGS, SECRET_ENV, type SecretName, type SettingName } from './routes.js';
 import { TABLE_DEFINITION } from './table-definition.js';
 
 export type CollectorsDataStackProps = StackProps & {
@@ -58,16 +59,16 @@ export const dataExportName = (deployment: Deployment, key: string): string =>
   `${resourceName(deployment, 'data')}-${key}`;
 
 /** `/cap/<installation>/<stage>/<setting>`, e.g. `/cap/naeva/dev/session-secret`. */
-export const settingParameterName = (deployment: Deployment, name: SecretName): string =>
+export const settingParameterName = (deployment: Deployment, name: SettingName): string =>
   `/cap/${deployment.installation}/${deployment.stage}/${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
 
 export class CollectorsDataStack extends Stack {
   readonly table: Table;
   readonly imagesBucket: Bucket;
   readonly webBucket: Bucket;
-  readonly settings: Readonly<Record<SecretName, StringParameter>>;
+  readonly settings: Readonly<Record<SettingName, StringParameter>>;
   readonly distribution: Distribution;
-  /** `https://<id>.cloudfront.net` — the web origin until the real domain exists (ADR-008 §5, EP-09). */
+  /** `https://<domains.web>` when config declares it (CAP-29), else `https://<id>.cloudfront.net`. */
   readonly webUrl: string;
 
   constructor(scope: Construct, id: string, props: CollectorsDataStackProps) {
@@ -87,9 +88,21 @@ export class CollectorsDataStack extends Stack {
       autoDeleteObjects: disposable,
     });
 
-    // HTTPS on the default *.cloudfront.net domain; price class 100 (EU + North America), compression, HTTP/2+3.
-    // Deep paths (/cap/<id>) reach S3 as missing keys → the SPA's index.html with 200, so the client router decides.
+    // Custom domain (CAP-29): the us-east-1 ACM certificate whose ARN Edu stores in SSM, resolved at deploy time.
+    // DNS stays at GoDaddy: a CNAME from domains.web to the `WebDomainTarget` output. No Route 53.
+    const webDomain = config.domains?.web;
+    const webCertificate = webDomain
+      ? Certificate.fromCertificateArn(
+          this,
+          'WebCertificate',
+          StringParameter.valueForStringParameter(this, settingParameterName(deployment, 'webCertificateArn')),
+        )
+      : undefined;
+
+    // HTTPS on the default *.cloudfront.net domain (plus domains.web when set); price class 100 (EU + North America),
+    // compression, HTTP/2+3. Deep paths (/cap/<id>) reach S3 as missing keys → the SPA's index.html with 200.
     this.distribution = new Distribution(this, 'WebDistribution', {
+      ...(webDomain && webCertificate && { domainNames: [webDomain], certificate: webCertificate }),
       comment: `${resourceName(deployment, 'web')} — CapCollector web build`,
       defaultRootObject: 'index.html',
       priceClass: PriceClass.PRICE_CLASS_100,
@@ -109,11 +122,11 @@ export class CollectorsDataStack extends Stack {
         ttl: Duration.seconds(0),
       })),
     });
-    this.webUrl = `https://${this.distribution.distributionDomainName}`;
+    this.webUrl = `https://${webDomain ?? this.distribution.distributionDomainName}`;
 
     // Cap photos (WebP ≤ 1024 px, uploaded with presigned PUT from the app). Private, versioned, IA after 90 days.
-    // SPEC-GAP CAP-13: the web domain is not chosen yet (ADR-008), so CORS allows the origins declared in
-    // infra/config/<installation>.<stage>.json plus this stack's own CloudFront origin (CAP-16).
+    // CORS allows the origins declared in infra/config/<installation>.<stage>.json plus this stack's own web URL:
+    // the custom domain when config declares one (CAP-29), else the CloudFront origin (CAP-16).
     this.imagesBucket = new Bucket(this, 'Images', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
@@ -170,16 +183,23 @@ export class CollectorsDataStack extends Stack {
     // API settings filled by hand (CAP-15): created here, not in CollectorsApi, so they exist before the API stack
     // resolves them at deploy time. SPEC-GAP CAP-15: plain String parameters, because CloudFormation cannot create a
     // SecureString and Lambda env cannot resolve one; the values end up in the functions' (encrypted) environment.
-    const setting = (name: SecretName) =>
+    // The certificate ARNs (CAP-29) are created the same way, whether or not config declares `domains`, so they can
+    // be filled before the deploy that turns the domains on (README § Custom domains); no Lambda ever sees them.
+    const setting = (name: SettingName, description: string) =>
       new StringParameter(this, `Setting${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`, {
         parameterName: settingParameterName(deployment, name),
         stringValue: UNSET_PARAMETER_VALUE,
-        description: `CapCollector ${SECRET_ENV[name]} — filled by Edu, never committed`,
+        description: `CapCollector ${description} — filled by Edu, never committed`,
       });
+    const secret = (name: SecretName) => setting(name, SECRET_ENV[name]);
+    const certificate = (name: (typeof CERTIFICATE_SETTINGS)[number]) =>
+      setting(name, `${name} (ACM certificate ARN for the custom domain)`);
     this.settings = {
-      allowedAppleSubs: setting('allowedAppleSubs'),
-      appleClientIds: setting('appleClientIds'),
-      sessionSecret: setting('sessionSecret'),
+      allowedAppleSubs: secret('allowedAppleSubs'),
+      appleClientIds: secret('appleClientIds'),
+      sessionSecret: secret('sessionSecret'),
+      webCertificateArn: certificate('webCertificateArn'),
+      apiCertificateArn: certificate('apiCertificateArn'),
     };
 
     // Exported for CollectorsApi (and for Edu's console checks after deploy).
@@ -189,7 +209,13 @@ export class CollectorsDataStack extends Stack {
     out('TableArn', this.table.tableArn, 'DynamoDB single table ARN');
     out('ImagesBucketName', this.imagesBucket.bucketName, 'S3 bucket for cap images (presigned PUT/GET)');
     out('WebBucketName', this.webBucket.bucketName, 'S3 bucket for the static web build');
-    out('WebUrl', this.webUrl, 'HTTPS URL of the web build (app_origins, Apple return URL until EP-09)');
+    out('WebUrl', this.webUrl, 'HTTPS URL of the web build (custom domain when config declares domains.web)');
     out('DistributionId', this.distribution.distributionId, 'CloudFront distribution of the web build');
+    if (webDomain) {
+      new CfnOutput(this, 'WebDomainTarget', {
+        value: this.distribution.distributionDomainName,
+        description: `GoDaddy CNAME value for ${webDomain}`,
+      });
+    }
   }
 }

@@ -1,10 +1,11 @@
 /**
  * Composition of the CDK app, separate from bin/app.ts so tests synthesize exactly what the CLI does.
- * Order: resolve deployment → require its config file → account guard → stacks → app-level tags.
+ * Order: resolve deployment → require its config file (+ domains switch) → account guard → stacks → app-level tags.
  */
 import { App, Tags } from 'aws-cdk-lib';
 
 import {
+  applyDomainsSwitch,
   assertAccountMatchesDeployment,
   type Deployment,
   loadInstallationConfig,
@@ -26,7 +27,8 @@ export interface BuiltApp {
 
 export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
   const deployment = resolveDeployment(app);
-  const config = loadInstallationConfig(deployment, configDir);
+  // `--context domains=off` only for the first rollout of custom domains (CAP-29, README § Custom domains).
+  const config = applyDomainsSwitch(app, loadInstallationConfig(deployment, configDir));
   assertAccountMatchesDeployment(deployment);
 
   const account = process.env.CDK_DEFAULT_ACCOUNT;

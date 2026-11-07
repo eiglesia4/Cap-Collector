@@ -22,9 +22,13 @@ try {
   const { target, outputs, plan } = deployWeb({ run, dryRun });
   const where = `${target.deployment.installation}/${target.deployment.stage}`;
   if (dryRun) {
-    console.log(`deploy:web (dry run) for ${where}: bucket ${outputs.bucket}, distribution ${outputs.distributionId}`);
+    console.log(
+      `deploy:web (dry run) for ${where}: bucket ${outputs.bucket}, distribution ${outputs.distributionId}, ` +
+        `would publish at ${outputs.webUrl}`,
+    );
     for (const step of plan) console.log(`  ${step.cmd} ${step.args.join(' ')}`);
   } else {
+    // WebUrl is the custom domain once config declares domains.web (CAP-29), else the CloudFront URL.
     console.log(`deploy:web: ${where} published at ${outputs.webUrl}`);
   }
 } catch (e) {

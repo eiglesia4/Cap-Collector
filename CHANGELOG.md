@@ -7,6 +7,12 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-29: custom domains — optional `domains: { web, api }` in `infra/config/*.json` (naeva/dev:
+  `caps.naevatec.com`, `api.caps.naevatec.com`); CloudFront alias + us-east-1 ACM certificate and a regional API
+  Gateway domain + mapping, both ARNs read from new SSM settings `web-certificate-arn` / `api-certificate-arn`
+  (never passed to a Lambda); outputs `WebDomainTarget` / `ApiDomainTarget` for the GoDaddy CNAMEs; with domains the
+  API CORS origin comes from config instead of importing `WebUrl`; `--context domains=off` for the first rollout;
+  runbook in `infra/README.md` (T-infra-024…026).
 - CAP-24: cap detail screen (SCREENS.md #6) — top/underside photo swap, chips, Quantity · For trade · Added tiles,
   fields card (incl. `textOnCap`), "Where is it?" row, same-brand variants carousel, history newest first, Share
   (`collectors://cap/<id>` until CAP-31 switches to the HTTPS link) and soft Delete with confirm sheet and toast.
