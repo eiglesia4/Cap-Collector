@@ -12,9 +12,10 @@
     "@aws-sdk/client-s3": "^3.1161.0",
     "@aws-sdk/lib-dynamodb": "^3.1161.0",
     "@aws-sdk/s3-request-presigner": "^3.1161.0",
-    "@capcollector/shared": "0.0.0",
+    "@capcollector/shared": "*",
     "jose": "^6.2.14",
-    "ulid": "^3.0.2"
+    "ulid": "^3.0.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",

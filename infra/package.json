@@ -13,7 +13,7 @@
     "db:create": "tsx scripts/db-create.ts"
   },
   "dependencies": {
-    "@capcollector/shared": "0.0.0",
+    "@capcollector/shared": "*",
     "aws-cdk-lib": "^2.275.0",
     "constructs": "^10.8.1"
   },

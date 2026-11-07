@@ -53,6 +53,10 @@ const str = (name: string) => ({ name, type: AttributeType.STRING });
 /** Value the stack writes once; Edu overwrites it (`aws ssm put-parameter --overwrite`). The API must refuse it. */
 export const UNSET_PARAMETER_VALUE = 'unset';
 
+/** CloudFormation export name of a CollectorsData output (CollectorsApi imports `WebUrl` for CORS, CAP-27). */
+export const dataExportName = (deployment: Deployment, key: string): string =>
+  `${resourceName(deployment, 'data')}-${key}`;
+
 /** `/cap/<installation>/<stage>/<setting>`, e.g. `/cap/naeva/dev/session-secret`. */
 export const settingParameterName = (deployment: Deployment, name: SecretName): string =>
   `/cap/${deployment.installation}/${deployment.stage}/${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
@@ -180,7 +184,7 @@ export class CollectorsDataStack extends Stack {
 
     // Exported for CollectorsApi (and for Edu's console checks after deploy).
     const out = (key: string, value: string, description: string) =>
-      new CfnOutput(this, key, { value, description, exportName: `${resourceName(deployment, 'data')}-${key}` });
+      new CfnOutput(this, key, { value, description, exportName: dataExportName(deployment, key) });
     out('TableName', this.table.tableName, 'DynamoDB single table');
     out('TableArn', this.table.tableArn, 'DynamoDB single table ARN');
     out('ImagesBucketName', this.imagesBucket.bucketName, 'S3 bucket for cap images (presigned PUT/GET)');

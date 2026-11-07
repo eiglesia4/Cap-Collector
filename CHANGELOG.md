@@ -7,6 +7,15 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-27: integrator housekeeping — `zod` declared in `api`, `@capacitor-community/apple-sign-in` 7.1.0 in `app` (SPM
+  `Package.swift` synced; native sheet wiring is CAP-28); Capacitor import boundary moved to the root `eslint.config.js`
+  (`app/eslint.config.js` removed, T-infra-023); `.prettierignore` covers `cap sync` output; API CORS allows the
+  CloudFront `WebUrl` imported from CollectorsData; `infra/lib/routes.ts` = shared `ROUTES` + per-handler wiring
+  (T-infra-016 now checks wiring; openapi parity only in T-shared-006); internal workspace deps declared `"*"`
+  (T-infra-015).
+- CAP-23: collection screen (SCREENS.md #1) — count header, sort sheet, debounced search, type/country/needs-review
+  chips (AND), recently-added strip, 3-column round tiles (`imageUrls.top` or brand-hued placeholder), cursor infinite
+  scroll, iOS pull-to-refresh, empty states, query/scroll restored on back navigation.
 - CAP-26: contracts v0.2 — `shared/src/routes.ts` (single route manifest), `schemas/http.ts` (Problem, Healthz, Session,
   AppleSignInRequest, RefreshRequest, UploadRequest/Response), `Cap.imageUrls`, `Location.albumId` (server-filled),
   `CapPatch` without defaults and with `null` to clear, `refreshSk()`; `openapi.yaml` 0.2.0 (security markers, auth and

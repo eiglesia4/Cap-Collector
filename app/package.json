@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/camera": "^8.2.6",
     "@capacitor/cli": "^8.6.0",
     "@capacitor/core": "^8.6.0",
@@ -18,7 +19,7 @@
     "@capacitor/ios": "^8.6.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
-    "@capcollector/shared": "0.0.0"
+    "@capcollector/shared": "*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

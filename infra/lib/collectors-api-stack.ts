@@ -6,13 +6,15 @@
  *   (and protected) from day one; context `requireAllHandlers=true` turns a missing handler into a synth error.
  * - The authorizer is api/src/auth/authorizer.ts once dev-api merges it (CAP-19); until then a deny-all stub.
  * - Least privilege per function from the manifest's `grants`; SSM-backed settings only where `secrets` says so.
+ * - CORS allows `app_origins` from config/ plus the CloudFront web URL, imported from the CollectorsData `WebUrl`
+ *   output (CAP-27), so the web build can call the API without listing its generated domain by hand.
  * No VPC, no NAT, no always-on compute (CONVENTIONS § Cost rules); arm64, 256 MB, 10 s, JSON logs kept 30 days.
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Annotations, CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { Annotations, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import {
   type CfnStage,
   CorsHttpMethod,
@@ -31,7 +33,7 @@ import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
-import { isDisposableStage, settingParameterName } from './collectors-data-stack.js';
+import { dataExportName, isDisposableStage, settingParameterName } from './collectors-data-stack.js';
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
 import { AUTHORIZER_SECRETS, type Route, ROUTES, SECRET_ENV, type SecretName } from './routes.js';
 
@@ -165,20 +167,18 @@ export class CollectorsApiStack extends Stack {
     this.api = new HttpApi(this, 'HttpApi', {
       apiName: resourceName(deployment, 'api'),
       description: 'CapCollector HTTP API (doc/spec/openapi.yaml)',
-      ...(config.app_origins.length > 0 && {
-        corsPreflight: {
-          allowOrigins: [...config.app_origins],
-          allowMethods: [
-            CorsHttpMethod.GET,
-            CorsHttpMethod.POST,
-            CorsHttpMethod.PUT,
-            CorsHttpMethod.PATCH,
-            CorsHttpMethod.DELETE,
-          ],
-          allowHeaders: ['authorization', 'content-type'],
-          maxAge: Duration.days(1),
-        },
-      }),
+      corsPreflight: {
+        allowOrigins: [...config.app_origins, Fn.importValue(dataExportName(deployment, 'WebUrl'))],
+        allowMethods: [
+          CorsHttpMethod.GET,
+          CorsHttpMethod.POST,
+          CorsHttpMethod.PUT,
+          CorsHttpMethod.PATCH,
+          CorsHttpMethod.DELETE,
+        ],
+        allowHeaders: ['authorization', 'content-type'],
+        maxAge: Duration.days(1),
+      },
     });
     const stage = this.api.defaultStage?.node.defaultChild as CfnStage | undefined;
     stage?.addPropertyOverride('DefaultRouteSettings', {

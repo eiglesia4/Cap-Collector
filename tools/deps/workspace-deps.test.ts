@@ -11,6 +11,7 @@ import {
   internalsViolation,
   isInstalled,
   missingDependencies,
+  pinnedInternalDependencies,
   sourceViolations,
   workspaceDirs,
 } from './workspace-deps.js';
@@ -18,13 +19,14 @@ import {
 const root = resolve(import.meta.dirname, '..', '..');
 
 describe('workspace dependencies', () => {
-  it('[T-infra-015] every declared dependency resolves and no workspace depends on another one but shared', () => {
+  it('[T-infra-015] every declared dependency resolves, no workspace depends on another one but shared, internal deps are "*"', () => {
     // The real repo: all four workspaces are clean.
     const dirs = workspaceDirs(root);
     expect(dirs.map((d) => basename(d))).toEqual(['shared', 'app', 'api', 'infra']);
     for (const dir of dirs) {
       expect({ ws: basename(dir), missing: missingDependencies(dir) }).toEqual({ ws: basename(dir), missing: [] });
       expect(crossWorkspaceDependencies(dir)).toEqual([]);
+      expect(pinnedInternalDependencies(dir)).toEqual([]);
       expect(sourceViolations(dir)).toEqual([]);
     }
 
@@ -56,6 +58,7 @@ describe('workspace dependencies', () => {
     expect(isInstalled('present', ws)).toBe(true);
     expect(missingDependencies(ws)).toEqual(['@capcollector/shared', '@capcollector/app', 'not-installed']);
     expect(crossWorkspaceDependencies(ws)).toEqual(['@capcollector/app']);
+    expect(pinnedInternalDependencies(ws)).toEqual(['@capcollector/shared@0.0.0', '@capcollector/app@0.0.0']);
     expect(sourceViolations(ws)).toEqual([
       'src/h.ts: ../../app/src/x.js (relative import leaves the workspace)',
       'src/h.ts: @capcollector/shared/src/keys.js (deep import into shared (use the package root))',
