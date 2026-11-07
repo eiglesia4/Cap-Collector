@@ -1,5 +1,5 @@
 # Copiar a .envrc.local (ignorado). Un fichero por máquina/agente.
-export CAP_AGENT="dev-api"              # architect | dev-app | dev-api | integrator
+export CAP_AGENT="dev-api"              # architect | dev-app | dev-api | dev-infra | integrator
 export JIRA_EMAIL="tu@naevatec.com"
 export JIRA_TOKEN="..."
 # export AWS_PROFILE="capcollector-dev"

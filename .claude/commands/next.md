@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, mcp__atlassian__*, mcp__jira
 
 Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en orden y no te saltes ninguno. Tu identidad es `$CAP_AGENT` (si no está definido, para y pídelo).
 
-1. **Elegir la historia.** Tu etiqueta de territorio sale de `$CAP_AGENT`: `dev-app` → `area-app` · `dev-api` → `area-api` · `integrator` → `area-infra` (cualquier otro valor: para y dilo). Con el MCP de Atlassian (site `naevatec.atlassian.net`), busca:
+1. **Elegir la historia.** Tu etiqueta de territorio sale de `$CAP_AGENT`: `dev-app` → `area-app` · `dev-api` → `area-api` · `dev-infra` → `area-infra` · `integrator` → `area-integration` (cualquier otro valor: para y dilo). Con el MCP de Atlassian (site `naevatec.atlassian.net`), busca:
    `project = CAP AND status = "Ready" AND issuetype != Epic AND labels = <tu etiqueta> ORDER BY Rank ASC`
    (si el MCP se come las comillas, usa `statusCategory = 2` y filtra `Ready` al leer). Si el usuario pasó `$ARGUMENTS`, usa esa clave (y comprueba que lleva tu etiqueta; si no, para).
    Salta las que lleven `design` (las resuelve el arquitecto) o `needs-human` (esperan a Edu). **Nunca cojas una historia de otra etiqueta**, aunque no quede ninguna de la tuya.

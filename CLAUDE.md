@@ -49,7 +49,7 @@ capcollector/
 ├── shared/   contratos: zod + tipos (Cap, Location, Exchange v1)   → arquitecto
 ├── app/      Vite + TS (+ Capacitor) · UI, dHash cliente, PDF       → dev-app
 ├── api/      Lambdas TS · DynamoDB · Bedrock · prefirmadas · auth   → dev-api
-├── infra/    CDK v2: CollectorsData · CollectorsApi                 → integrador / Edu
+├── infra/    CDK v2: CollectorsData · CollectorsApi                 → dev-infra (despliega Edu)
 ├── tools/    catálogo de tests (TEST.md)                            → integrador
 ├── .claude/commands/ next · revise · handoff · integrate
 └── .github/ CI · CODEOWNERS      .githooks/ pre-commit · pre-push
@@ -97,9 +97,9 @@ Proyecto de un solo lenguaje y una sola persona: todo corre con el toolchain loc
 
 - **Fuente de estado: Jira `CAP`** (site `naevatec.atlassian.net`). Columnas Backlog · **Ready** · In Progress · In Review · Blocked · Done. Un agente solo coge historias en **Ready** (el arquitecto las pone ahí con spec referenciada, rutas permitidas, IDs de test y criterios). Rank = orden.
 - **Ready significa «puede empezar ahora»**: una historia con dependencias pendientes se queda en Backlog con enlaces _is blocked by_; `/integrate` pasa a Ready las bloqueadas cuyo último bloqueador acaba de entrar en `main`. `/next` comprueba los enlaces antes de coger nada.
-- **Territorio → etiqueta**: `CAP_AGENT=dev-app` → `area-app` · `dev-api` → `area-api` · `integrator` → `area-infra`. `/next` solo mira la etiqueta de su territorio.
+- **Territorio → etiqueta**: `CAP_AGENT=dev-app` → `area-app` · `dev-api` → `area-api` · `dev-infra` → `area-infra` · `integrator` → `area-integration` (dependencias, CI, housekeeping). `/next` solo mira la etiqueta de su territorio. El integrador no construye infraestructura: eso es `dev-infra` (decidido en CAP-34, 2026-11-07).
 - `/next` coge la siguiente historia Ready de su territorio, la pasa a In Progress, crea rama + worktree, implementa contra la spec, tests, PR, comenta en Jira y la deja en In Review. `/revise CAP-<n>` aplica a un PR abierto lo que pide el último comentario del arquitecto o del integrador. `/handoff` cierra una sesión a medias. `/integrate` (integrador) rebasea, pasa los checks completos, mergea lo verde con el GO de Edu y desbloquea las historias enlazadas.
-- **Orden de arranque de una tanda**: primero el integrador (`/next` de su historia `area-infra` si la hay, luego `/integrate`), y los devs solo cuando `/integrate` haya informado de qué historias ha desbloqueado.
+- **Orden de arranque de una tanda**: primero el integrador (`/integrate`, y `/next` de su historia `area-integration` si la hay), y los devs (`dev-app`, `dev-api`, `dev-infra`) solo cuando `/integrate` haya informado de qué historias ha desbloqueado.
 - **Comentario de cierre en Jira** (en inglés) con secciones fijas (las lee el dashboard): primera línea `[cap-status] agent=<nombre> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>`, y después **Done · Tests · Spec deviations · Pending · PR · Needs human** (yes/no + why). La etiqueta `needs-human` es lo que aparece en el dashboard de Edu.
 - WIP: 2 devs activos + 1 en revisión (una sola persona revisa).
 - Historias grandes (>1 día o con decisiones): plan en `doc/plans/CAP-<n>-<slug>.md` (plantilla `_PLANTILLA.md`). Las pequeñas, solo el comentario Jira.

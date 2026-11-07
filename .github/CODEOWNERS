@@ -9,8 +9,10 @@
 /app/                     @eiglesia4
 /api/                     @eiglesia4
 
-# Integrator / Edu: infra, CI, hooks, tooling, generated catalog, changelog and shared dependency/config files
+# dev-infra: CDK stacks and deploy scripts (Edu deploys)
 /infra/                   @eiglesia4
+
+# Integrator: CI, hooks, tooling, generated catalog, changelog and shared dependency/config files
 /tools/                   @eiglesia4
 /.github/                 @eiglesia4
 /.githooks/               @eiglesia4

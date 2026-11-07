@@ -1,4 +1,4 @@
-# Working method — architect, dev agents, integrator (CapCollector)
+# Working method — architect, dev agents (app · api · infra), integrator (CapCollector)
 
 **Status:** Agreed (2026-10-31) · Adapted from `Metodo_Agentico_Seshet_v1.1` (Naevatec). Same mechanics, fewer territories.
 
@@ -28,7 +28,7 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 ## Jira project `CAP`
 - Workflow (same as SESHET): **Backlog · Ready · In Progress · In Review · Blocked · Done**. Ready = can start now (no *is blocked by* link to anything not Done).
 - Epics = components (EP-01 … EP-10). Stories = commit-sized, testable, one territory each.
-- Labels: `area-app` · `area-api` · `area-infra` · `design` (architect resolves) · `needs-human` (Edu's dashboard) · `deliverable-V0…V4` · `cap-<epic slug>`.
+- Labels: `area-app` · `area-api` · `area-infra` (dev-infra: CDK) · `area-integration` (integrator: dependencies, CI, housekeeping) · `design` (architect resolves) · `needs-human` (Edu's dashboard) · `deliverable-V0…V4` · `cap-<epic slug>`.
 - Versions (Kanban milestones): **V0 skeleton** · **V1 manual collection** · **V2 scan & AI** · **V3 album link** · **V4 phase 2**.
 - Story package before Ready: spec referenced (file + section), allowed paths, test IDs `T-<comp>-nnn` (`comp` ∈ `app · api · shared · infra · vision · print · exchange`), acceptance criteria, `area-*` label, deliverable label.
 - Closing comment (English, parsed by the dashboard): first line `[cap-status] agent=<name> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>`, then **Done · Tests · Spec deviations · Pending · PR · Needs human**.
@@ -47,7 +47,7 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 `/next` · `/revise CAP-<n>` · `/handoff` · `/integrate [--auto] [--release <tag>]` — copies of the Seshet commands with `SESHET→CAP`, `SESHET_AGENT→CAP_AGENT`, `deploy/run.sh→npm run` (no Docker: single-language TS workspace, local tooling is enough for a one-person project).
 
 ## Start order of a batch
-1. Integrator: `/next` on its `area-infra` story, merge; 2. `/integrate` what is In Review; 3. its report says which stories became Ready; 4. only then open the dev terminals. WIP: 2 devs + 1 in review (one person reviewing).
+1. Integrator: `/integrate` what is In Review (and `/next` on its `area-integration` story, if any); 2. its report says which stories became Ready; 3. only then open the dev terminals. WIP: 2 devs + 1 in review (one person reviewing).
 
 ## Weekly (Edu, 15 min)
 Read *Spec deviations* of closed stories → bump contracts if needed → move next stories to Ready → check `needs-human`.
