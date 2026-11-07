@@ -1,22 +1,38 @@
 // `npm run api:local` (CAP-17): a plain Node http server that turns requests into API Gateway HTTP API v2 events and
-// runs the Lambda handlers of src/routes.ts in-process. Repositories: in memory, or DynamoDB Local when
+// runs the Lambda handlers named by the shared route manifest (`ROUTES`, contracts v0.2) in-process; a route whose
+// handler has not landed yet answers the 501 Problem, as the deployed stub does (CAP-30). Repositories: in memory, or DynamoDB Local when
 // CAP_DYNAMODB_ENDPOINT is set (deploy/docker-compose.yaml + `npm run db:create`). Auth: with CAP_STAGE=local the
 // `x-cap-uid` header (default CAP_LOCAL_UID or "local-user") stands in for the authorizer; otherwise the real
 // authorizer checks the session JWT (CAP-19). Never deployed.
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { ROUTES, type RouteDef } from '@capcollector/shared';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 
 import { handler as authorizer } from '../src/auth/authorizer.js';
 
-import { AUTHORIZER_UID_KEY, problem } from '../src/lib/http.js';
+import { AUTHORIZER_UID_KEY, type Handler, problem } from '../src/lib/http.js';
 import { createMemoryRepositories } from '../src/lib/repo/memory.js';
 import { setRepositories } from '../src/lib/repo/index.js';
-import { ROUTES, type RouteDef } from '../src/routes.js';
 
 export const LOCAL_UID_HEADER = 'x-cap-uid';
+
+/** api/src/handlers/ — one file per `RouteDef.handler` (CLAUDE.md § api). */
+export const HANDLERS_DIR = fileURLToPath(new URL('../src/handlers/', import.meta.url));
+
+/** True when `api/src/handlers/<name>.ts` exists. */
+export const hasHandler = (name: string, dir: string = HANDLERS_DIR) => existsSync(`${dir}${name}.ts`);
+
+/** Loads a route's handler module; `undefined` while its story has not landed (→ 501, like the deployed stub). */
+export async function loadHandler(route: RouteDef): Promise<Handler | undefined> {
+  if (!hasHandler(route.handler)) return undefined;
+  // The .ts file URL works under tsx (`npm run api:local`) and vitest alike; the name comes from the shared manifest.
+  const url = pathToFileURL(`${HANDLERS_DIR}${route.handler}.ts`).href;
+  return ((await import(/* @vite-ignore */ url)) as { handler: Handler }).handler;
+}
 
 interface Match {
   route: RouteDef;
@@ -114,7 +130,11 @@ export function localAuthFor(env: NodeJS.ProcessEnv = process.env): LocalAuth {
     : { mode: 'authorizer' };
 }
 
-export function createLocalServer(auth: LocalAuth = localAuthFor(), routes: readonly RouteDef[] = ROUTES): Server {
+export function createLocalServer(
+  auth: LocalAuth = localAuthFor(),
+  routes: readonly RouteDef[] = ROUTES,
+  load: (route: RouteDef) => Promise<Handler | undefined> = loadHandler,
+): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -127,7 +147,15 @@ export function createLocalServer(auth: LocalAuth = localAuthFor(), routes: read
         result = problem({ title: 'Not found', status: 404, detail: `No route ${method} ${url.pathname}` }, 'local');
       } else {
         const who = m.route.auth ? await resolveUid(auth, headers) : {};
-        result = who.deny ?? (await (await m.route.load())(toEvent({ method, url, headers, body }, m, who.uid)));
+        const fn = who.deny ? undefined : await load(m.route);
+        result =
+          who.deny ??
+          (fn
+            ? await fn(toEvent({ method, url, headers, body }, m, who.uid))
+            : problem(
+                { title: 'Not implemented', status: 501, detail: `${m.route.handler} has not landed yet` },
+                'local',
+              ));
       }
       res.writeHead(result.statusCode ?? 200, result.headers as Record<string, string>);
       res.end(result.body ?? '');
@@ -150,6 +178,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const auth = localAuthFor();
   createLocalServer(auth).listen(port, '127.0.0.1', () => {
     console.log(`api:local on http://127.0.0.1:${port} (repositories: ${repos}, auth: ${auth.mode}); routes:`);
-    for (const r of ROUTES) console.log(`  ${r.method} ${r.path}${r.auth ? '' : ' (public)'}`);
+    for (const r of ROUTES) {
+      const notes = [r.auth ? '' : 'public', hasHandler(r.handler) ? '' : '501'].filter(Boolean).join(', ');
+      console.log(`  ${r.method} ${r.path}${notes ? ` (${notes})` : ''}`);
+    }
   });
 }

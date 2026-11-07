@@ -8,6 +8,7 @@
 // so a replayed (stolen or already-used) token answers 401.
 import { createHash, randomBytes } from 'node:crypto';
 
+import type { Session } from '@capcollector/shared';
 import { SignJWT, jwtVerify } from 'jose';
 
 import type { RefreshTokenRepository } from '../lib/repo/types.js';
@@ -17,12 +18,8 @@ export const SESSION_TTL_SECONDS = 3600;
 export const SESSION_ISSUER = 'capcollector';
 export const SESSION_AUDIENCE = 'capcollector-api';
 
-/** openapi.yaml § Session. */
-export interface Session {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: string;
-}
+/** openapi.yaml § Session — the shared contract type (v0.2, CAP-30). */
+export type { Session } from '@capcollector/shared';
 
 export const hashToken = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
 

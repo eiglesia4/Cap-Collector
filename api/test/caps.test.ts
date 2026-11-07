@@ -1,6 +1,6 @@
 // Caps API handlers (CAP-18) over the in-memory repositories: CRUD round trip, history, strict input, PATCH semantics,
 // list filters / search / sort / cursor. Spec: openapi.yaml /caps*, ADR-006, data-model.md.
-import type { Cap, CapHistory } from '@capcollector/shared';
+import { Cap, type CapHistory } from '@capcollector/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { handler as createH } from '../src/handlers/caps-create.js';
@@ -15,10 +15,13 @@ import { setRepositories } from '../src/lib/repo/index.js';
 import { createMemoryRepositories } from '../src/lib/repo/memory.js';
 import type { Repositories } from '../src/lib/repo/types.js';
 import { after } from '../src/lib/time.js';
+import { useAwsTestEnv } from './support/aws-env.js';
 import { FIXTURE_CAP, apiEvent, makeCap, makeHistory, pocket } from './support/fixtures.js';
 
 const UID = 'apple-sub-1';
 let repos: Repositories;
+
+useAwsTestEnv();
 
 beforeEach(() => {
   repos = createMemoryRepositories();
@@ -35,6 +38,12 @@ function bare(over: Parameters<typeof makeCap>[0]): Cap {
 
 const IMAGES = { top: { key: 'u/x/top.webp', width: 800, height: 800 } };
 const json = <T>(res: { body?: string | undefined }) => JSON.parse(res.body ?? 'null') as T;
+/** The stored record of a cap response: `imageUrls` are signed per call (T-api-038), so comparisons leave them out. */
+const record = (res: { body?: string | undefined }): Cap => {
+  const cap = json<Cap>(res);
+  delete cap.imageUrls;
+  return cap;
+};
 
 const create = (body: Record<string, unknown>, uid = UID) =>
   createH(apiEvent({ uid, routeKey: 'POST /caps', body: JSON.stringify({ images: IMAGES, ...body }) }));
@@ -49,18 +58,18 @@ describe('caps API', () => {
   it('[T-api-017] create → get → patch → delete round trip with history entries; 404 after delete', async () => {
     const res = await create({ brand: 'Mahou', variant: 'Clásica', country: 'ES', quantity: 3, forTrade: 1 });
     expect(res.statusCode).toBe(201);
-    const cap = json<Cap>(res);
+    const cap = record(res);
     expect(cap.capId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(cap).toMatchObject({ status: 'complete', source: 'manual', brand: 'Mahou', tags: [], quantity: 3 });
     expect(cap.createdAt).toBe(cap.updatedAt);
-    expect(json<Cap>(await get(cap.capId))).toEqual(cap);
+    expect(record(await get(cap.capId))).toEqual(cap);
 
-    const flagged = json<Cap>(await create({ brand: 'Estrella', status: 'needsReview', source: 'external:chatgpt' }));
+    const flagged = record(await create({ brand: 'Estrella', status: 'needsReview', source: 'external:chatgpt' }));
     expect(flagged).toMatchObject({ status: 'needsReview', source: 'external:chatgpt' });
 
     const p = await patch(cap.capId, { variant: 'Sin', year: 2024, source: 'bedrock:anthropic.claude-haiku' });
     expect(p.statusCode).toBe(200);
-    const patched = json<Cap>(p);
+    const patched = record(p);
     expect(patched).toMatchObject({ variant: 'Sin', year: 2024, quantity: 3, forTrade: 1, source: 'manual' });
     expect(Date.parse(patched.updatedAt)).toBeGreaterThan(Date.parse(cap.updatedAt));
 
@@ -97,7 +106,7 @@ describe('caps API', () => {
   });
 
   it('[T-api-018] list: filters, accent-insensitive q, location-code search, sort orders, cursor continuity, total', async () => {
-    const mk = async (body: Record<string, unknown>) => json<Cap>(await create(body));
+    const mk = async (body: Record<string, unknown>) => record(await create(body));
     const mahou = await mk({
       brand: 'Mahou',
       variant: 'Clásica',
@@ -232,7 +241,7 @@ describe('caps API', () => {
     expect(json<{ errors: { path: string }[] }>(problems[2]!).errors.map((e) => e.path)).toEqual(['body.forTrade']);
     expect(json<{ total: number }>(await list()).total).toBe(0);
 
-    const cap = json<Cap>(await create({ brand: 'Mahou', quantity: 2, forTrade: 1 }));
+    const cap = record(await create({ brand: 'Mahou', quantity: 2, forTrade: 1 }));
     expect((await patch(cap.capId, { colour: 'red' })).statusCode).toBe(422);
     expect((await patch(cap.capId, { location: { kind: 'box', album: 'B' } })).statusCode).toBe(422);
     const over = await patch(cap.capId, { forTrade: 3 });
@@ -240,15 +249,15 @@ describe('caps API', () => {
     expect(json<{ errors: { path: string }[] }>(over).errors.map((e) => e.path)).toEqual(['body.forTrade']);
     expect((await patch(cap.capId, { variantOf: cap.capId })).statusCode).toBe(422);
     expect((await patch(cap.capId, { capId: newId() })).statusCode).toBe(422);
-    expect(json<Cap>(await get(cap.capId))).toEqual(cap);
+    expect(record(await get(cap.capId))).toEqual(cap);
     expect(json<CapHistory[]>(await history(cap.capId))).toHaveLength(1);
   });
 
   it('[T-api-022] PATCH changes only the fields sent (zod defaults never overwrite); a no-op patch writes nothing', async () => {
-    const cap = json<Cap>(
+    const cap = record(
       await create({ brand: 'Mahou', tags: ['spain', 'lager'], quantity: 4, forTrade: 2, source: 'external:claude' }),
     );
-    const p = json<Cap>(await patch(cap.capId, { brand: 'Mahou Cinco Estrellas' }));
+    const p = record(await patch(cap.capId, { brand: 'Mahou Cinco Estrellas' }));
     // CapPatch.parse would have injected tags: [], quantity: 1, forTrade: 0, source: 'manual'.
     expect(p).toMatchObject({ tags: ['spain', 'lager'], quantity: 4, forTrade: 2, source: 'external:claude' });
     const h = json<CapHistory[]>(await history(cap.capId));
@@ -258,13 +267,13 @@ describe('caps API', () => {
     });
 
     // Explicitly sent defaults do apply.
-    const t = json<Cap>(await patch(cap.capId, { tags: [], forTrade: 0 }));
+    const t = record(await patch(cap.capId, { tags: [], forTrade: 0 }));
     expect(t).toMatchObject({ tags: [], forTrade: 0, quantity: 4 });
 
     // Same values again → 200 with the record unchanged and no history entry.
     const same = await patch(cap.capId, { tags: [], brand: 'Mahou Cinco Estrellas' });
     expect(same.statusCode).toBe(200);
-    expect(json<Cap>(same).updatedAt).toBe(t.updatedAt);
+    expect(record(same).updatedAt).toBe(t.updatedAt);
     expect(json<CapHistory[]>(await history(cap.capId))).toHaveLength(3);
 
     // GSI2 follows brand changes (data-model.md § Indexes).
@@ -327,5 +336,49 @@ describe('caps API', () => {
       CapListQuery.parse({ q: 'nothing' }),
     );
     expect(small).toEqual({ items: [], total: 0 });
+  });
+
+  it('[T-api-038] every cap response carries imageUrls (presigned GET per side present, none for a missing side) and parses as the shared Cap', async () => {
+    const bothSides = { ...IMAGES, underside: { key: 'u/x/underside.webp', width: 800, height: 800 } };
+    const check = (cap: Cap, sides: string[]) => {
+      expect(Cap.safeParse(cap).success).toBe(true);
+      expect(Object.keys(cap.imageUrls ?? {})).toEqual(sides);
+      const top = new URL(cap.imageUrls!.top);
+      expect(top.hostname).toBe('cap-dev-images.s3.eu-west-1.amazonaws.com');
+      expect(decodeURIComponent(top.pathname)).toBe(`/${cap.images.top.key}`);
+      expect(top.searchParams.get('X-Amz-Expires')).toBe('900');
+    };
+    const made = json<Cap>(await create({ brand: 'Mahou' }));
+    check(made, ['top']);
+    const both = json<Cap>(await create({ brand: 'Alhambra', images: bothSides }));
+    check(both, ['top', 'underside']);
+    expect(both.imageUrls?.underside).toContain('underside.webp');
+
+    check(json<Cap>(await get(made.capId)), ['top']);
+    check(json<Cap>(await patch(made.capId, { year: 2020 })), ['top']);
+    const page = json<{ items: Cap[] }>(await list());
+    expect(page.items).toHaveLength(2);
+    for (const c of page.items) check(c, c.capId === both.capId ? ['top', 'underside'] : ['top']);
+    // Never stored: the repository record has no imageUrls.
+    expect(await repos.caps.get(UID, made.capId)).not.toHaveProperty('imageUrls');
+    expect(JSON.stringify(json(await list()))).not.toContain('_links');
+  });
+
+  it('[T-api-041] PATCH null clears an optional field (history keeps from, no to); null on an unset field is a no-op; images cannot be nulled', async () => {
+    const cap = record(await create({ brand: 'Mahou', variant: 'Clásica', year: 2021, tags: ['x'] }));
+    const cleared = record(await patch(cap.capId, { variant: null, year: null }));
+    expect(cleared).not.toHaveProperty('variant');
+    expect(cleared).not.toHaveProperty('year');
+    expect(cleared).toMatchObject({ brand: 'Mahou', tags: ['x'] });
+    const h = json<CapHistory[]>(await history(cap.capId));
+    expect(h[0]?.changes).toEqual([
+      { field: 'variant', from: 'Clásica' },
+      { field: 'year', from: 2021 },
+    ]);
+    const again = record(await patch(cap.capId, { variant: null }));
+    expect(again.updatedAt).toBe(cleared.updatedAt);
+    expect(json<CapHistory[]>(await history(cap.capId))).toHaveLength(2);
+    expect((await patch(cap.capId, { images: null })).statusCode).toBe(422);
+    expect((await patch(cap.capId, { brand: null })).statusCode).toBe(422);
   });
 });

@@ -1,8 +1,6 @@
-// GET /healthz — liveness probe, no auth (openapi.yaml § /healthz). Built on defineHandler like every route (CAP-17).
+// GET /healthz — liveness probe, no auth (openapi.yaml § /healthz, shared `Healthz`). Built on defineHandler (CAP-17).
+import { Healthz } from '@capcollector/shared';
+
 import { defineHandler, ok } from '../lib/http.js';
 
-export interface HealthzBody {
-  status: 'ok';
-}
-
-export const handler = defineHandler({ auth: false }, async () => ok({ status: 'ok' } satisfies HealthzBody));
+export const handler = defineHandler({ auth: false }, async () => ok(Healthz.parse({ status: 'ok' })));

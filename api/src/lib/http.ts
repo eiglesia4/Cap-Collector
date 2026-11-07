@@ -1,6 +1,8 @@
 // Handler wrapper every route uses (CLAUDE.md § api: "un handler por ruta, lógica en lib/"): parses and validates
 // body/query/path with the zod contracts of @capcollector/shared, injects the caller's `uid` from the Lambda authorizer
-// context, and turns errors into RFC 9457 Problems (openapi.yaml § Problem). Never logs bodies, headers or tokens.
+// context, and turns errors into RFC 9457 Problems built through the shared `Problem` schema (openapi.yaml § Problem,
+// contracts v0.2, CAP-30). Never logs bodies, headers or tokens.
+import { Problem } from '@capcollector/shared';
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyHandlerV2,
@@ -21,14 +23,6 @@ export const AUTHORIZER_UID_KEY = 'uid';
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' } as const;
 const PROBLEM_HEADERS = { 'content-type': 'application/problem+json', 'cache-control': 'no-store' } as const;
 
-export interface ProblemBody {
-  type?: string;
-  title: string;
-  status: number;
-  detail?: string;
-  errors?: { path: string; message: string }[];
-}
-
 export interface HandlerSpec<
   B extends z.ZodType | undefined,
   Q extends z.ZodType | undefined,
@@ -45,8 +39,6 @@ type Parsed<S> = S extends z.ZodType ? z.output<S> : undefined;
 
 export interface Request<B, Q, P, A extends boolean> {
   body: B;
-  /** The JSON body before zod (defaults not applied): which keys the client actually sent (CAP-18 PATCH). */
-  rawBody: unknown;
   query: Q;
   path: P;
   /** Caller id (Apple `sub`, data-model.md); always set when `auth: true`. */
@@ -72,11 +64,20 @@ export type Handler = ((
 ) => Promise<APIGatewayProxyStructuredResultV2>) &
   APIGatewayProxyHandlerV2;
 
-export function problem(p: ProblemBody, requestId: string): APIGatewayProxyStructuredResultV2 {
-  return { statusCode: p.status, headers: { ...PROBLEM_HEADERS, 'x-request-id': requestId }, body: JSON.stringify(p) };
+/**
+ * The one way an error body is built (CAP-30): the shared `Problem` schema parses it, so a body that drifts from the
+ * contract throws here (a programming error the tests catch) instead of reaching the app.
+ */
+export function problem(p: Problem, requestId: string): APIGatewayProxyStructuredResultV2 {
+  const body = Problem.parse(p);
+  return {
+    statusCode: body.status,
+    headers: { ...PROBLEM_HEADERS, 'x-request-id': requestId },
+    body: JSON.stringify(body),
+  };
 }
 
-function zodProblem(err: ZodError, where: string): ProblemBody {
+function zodProblem(err: ZodError, where: string): Problem {
   return {
     title: 'Validation failed',
     status: 422,
@@ -157,7 +158,6 @@ export function defineHandler<
       const rawBody = spec.body ? readBody(event) : undefined;
       const req = {
         body: validate(spec.body, rawBody, 'body'),
-        rawBody,
         query: validate(spec.query, event.queryStringParameters ?? {}, 'query'),
         path: validate(spec.path, event.pathParameters ?? {}, 'path'),
         uid,

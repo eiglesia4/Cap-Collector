@@ -62,11 +62,6 @@ async function liveCap(repos: Repositories, uid: string, capId: string): Promise
 /** `{capId}` path parameter (openapi.yaml components.parameters.capId: a ULID). */
 export const CapIdPath = z.object({ capId: Ulid });
 
-/** Top-level keys of the JSON body as sent (before zod defaults), for PATCH. */
-export function sentKeys(raw: unknown): ReadonlySet<string> {
-  return new Set(typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? Object.keys(raw) : []);
-}
-
 /** POST /caps body: the shared `CapInput` plus the V1 location rule. */
 export const CapCreateBody = CapInputSchema.superRefine(rejectLocation);
 /** PATCH /caps/{capId} body: the shared `CapPatch` plus the V1 location rule. */
@@ -98,25 +93,23 @@ const SERVER_FIELDS = new Set(['capId', 'createdAt', 'updatedAt', 'deletedAt', '
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * Applies only the keys the client sent. SPEC-GAP CAP-18: `CapPatch` is `CapInput.partial()`, and zod 4 still fills the
- * `.default()`s of CapInput inside it (tags [], quantity 1, forTrade 0, source manual) — applying the parsed object
- * would silently overwrite those fields, breaking "nothing is overwritten without an explicit tick" (CLAUDE.md).
- * The parsed body is used for validation and values; `sent` (the raw JSON keys) decides what changes.
+ * Applies the shared `CapPatch` semantics (v0.2): an absent key leaves the field untouched (the schema fills no
+ * defaults), `null` clears an optional field. A cleared field is logged with `from` and no `to`.
  */
-export async function patchCap(
-  repos: Repositories,
-  uid: string,
-  capId: string,
-  patch: CapPatch,
-  sent: ReadonlySet<string>,
-): Promise<Cap> {
+export async function patchCap(repos: Repositories, uid: string, capId: string, patch: CapPatch): Promise<Cap> {
   const prev = await liveCap(repos, uid, capId);
   const next: Record<string, unknown> = { ...prev };
   const changes: CapHistory['changes'] = [];
   for (const [field, value] of Object.entries(patch)) {
-    if (!sent.has(field) || SERVER_FIELDS.has(field)) continue;
-    if (same(prev[field as keyof Cap], value)) continue;
+    if (value === undefined || SERVER_FIELDS.has(field)) continue;
     const from = prev[field as keyof Cap];
+    if (value === null) {
+      if (from === undefined) continue;
+      changes.push({ field, from });
+      delete next[field];
+      continue;
+    }
+    if (same(from, value)) continue;
     changes.push({ field, ...(from === undefined ? {} : { from }), to: value });
     next[field] = value;
   }
@@ -126,7 +119,7 @@ export async function patchCap(
   next.updatedAt = ts;
   const cap = checkCap(next);
   // The history entry carries who made the change; the record keeps its original provenance.
-  const source: Source = sent.has('source') ? patch.source! : 'manual';
+  const source: Source = patch.source ?? 'manual';
   const history: CapHistory = { capId, ts, source, action: 'updated', changes };
   const albumId = await albumIdOf(repos, uid, prev);
   await repos.caps.patch(

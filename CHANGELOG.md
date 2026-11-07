@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-30: API adopts contracts v0.2 — `Cap.imageUrls = { top, underside? }` (15-minute presigned GETs) on caps
+  list/get/create/patch, shared `AppleSignInRequest`/`RefreshRequest`/`Session`/`Healthz`/`UploadRequest`/
+  `UploadResponse`/`Problem` schemas, local server on shared `ROUTES`, `refreshSk()`, `CapPatch` `null` clears a field.
 - CAP-29: custom domains — optional `domains: { web, api }` in `infra/config/*.json` (naeva/dev:
   `caps.naevatec.com`, `api.caps.naevatec.com`); CloudFront alias + us-east-1 ACM certificate and a regional API
   Gateway domain + mapping, both ARNs read from new SSM settings `web-certificate-arn` / `api-certificate-arn`
