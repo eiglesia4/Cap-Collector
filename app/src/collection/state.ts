@@ -41,3 +41,10 @@ export function collectionState(ctx: Pick<AppContext, 'api'>): CollectionState {
   }
   return state;
 }
+
+/** A cap was deleted (CAP-24): drop it from the loaded grid and the "Recently added" strip without refetching. */
+export function forgetCap(ctx: Pick<AppContext, 'api'>, capId: string): void {
+  const state = collectionState(ctx);
+  state.pager.remove(capId);
+  if (state.recent !== null) state.recent = state.recent.filter((c) => c.capId !== capId);
+}

@@ -23,6 +23,8 @@ export interface Pager {
   reset(fetchPage: FetchPage): Promise<void>;
   /** Load the next page; no-op while loading, after the last page or before the first reset. */
   loadMore(): Promise<void>;
+  /** Drop a cap that was deleted elsewhere (CAP-24), keeping the loaded pages and the scroll position. */
+  remove(capId: string): void;
 }
 
 const EMPTY: PagerState = { items: [], cursor: null, done: false, total: null, loading: false, error: null };
@@ -72,6 +74,11 @@ export function createPager(onChange: (state: PagerState) => void = () => undefi
     loadMore() {
       if (state.loading || state.done || source === null) return Promise.resolve();
       return load();
+    },
+    remove(capId) {
+      const items = state.items.filter((c) => c.capId !== capId);
+      if (items.length === state.items.length) return;
+      set({ items, total: state.total === null ? null : Math.max(0, state.total - 1) });
     },
   };
 }
