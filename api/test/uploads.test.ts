@@ -1,10 +1,10 @@
 // Uploads (CAP-20, openapi.yaml /uploads, ADR-002): key convention and ownership prefix, presigned PUT conditions and
 // expiry (URL inspection, no network), strict body → 422, presigned GET links for caps-get / caps-list.
 import { S3Client } from '@aws-sdk/client-s3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Cap } from '@capcollector/shared';
+import { describe, expect, it } from 'vitest';
 
 import { handler as uploadH } from '../src/handlers/uploads-create.js';
-import { resetConfig } from '../src/lib/config.js';
 import {
   GET_URL_TTL_SECONDS,
   MAX_IMAGE_BYTES,
@@ -12,37 +12,20 @@ import {
   assertOwnImages,
   createS3,
   imageKey,
-  imageLinks,
+  imageUrls,
   ownsKey,
   presignUpload,
-  withImageLinks,
+  withImageUrls,
 } from '../src/lib/images.js';
-import { newId } from '../src/lib/ids.js';
+import { TEST_BUCKET, useAwsTestEnv } from './support/aws-env.js';
 import { FIXTURE_CAP, apiEvent } from './support/fixtures.js';
 
 const UID = '001234.abcdef0123456789abcdef0123456789.1234';
-const BUCKET = 'cap-dev-images';
+const BUCKET = TEST_BUCKET;
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const s3 = new S3Client({ region: 'eu-west-1', credentials: { accessKeyId: 'AKIDTEST', secretAccessKey: 'secret' } });
-const saved = { ...process.env };
 
-beforeEach(() => {
-  Object.assign(process.env, {
-    CAP_TABLE_NAME: 'cap-dev-table',
-    CAP_IMAGES_BUCKET: BUCKET,
-    CAP_STAGE: 'dev',
-    AWS_REGION: 'eu-west-1',
-    AWS_ACCESS_KEY_ID: 'AKIDTEST',
-    AWS_SECRET_ACCESS_KEY: 'secret',
-  });
-  // The SDK ignores env credentials when a profile is set; tests never use the developer's AWS profile.
-  delete process.env.AWS_PROFILE;
-  resetConfig();
-});
-afterEach(() => {
-  process.env = { ...saved };
-  resetConfig();
-});
+useAwsTestEnv();
 
 const body = { side: 'top', contentType: 'image/webp', bytes: 182_044 };
 const json = <T>(res: { body?: string | undefined }) => JSON.parse(res.body ?? 'null') as T;
@@ -58,13 +41,10 @@ describe('uploads', () => {
     expect(id).toMatch(ULID);
     expect(file).toBe('top.webp');
 
-    const capId = newId();
-    const existing = await presignUpload(s3, BUCKET, UID, {
-      side: 'underside',
-      contentType: 'image/webp',
-      bytes: 10,
-      capId,
-    });
+    // Every upload mints its own id (UploadRequest has no capId, v0.2).
+    const existing = await presignUpload(s3, BUCKET, UID, { side: 'underside', contentType: 'image/webp', bytes: 10 });
+    const capId = existing.key.split('/').at(-2)!;
+    expect(capId).not.toBe(id);
     expect(existing.key).toBe(imageKey(UID, capId, 'underside'));
 
     expect(ownsKey(UID, existing.key)).toBe(true);
@@ -118,7 +98,7 @@ describe('uploads', () => {
       s3,
       BUCKET,
       UID,
-      { side: 'top', contentType: 'image/webp', bytes: 182_045, capId: t.key.split('/').at(-2)! },
+      { side: 'top', contentType: 'image/webp', bytes: 182_045 },
       () => now,
     );
     expect(new URL(other.url).searchParams.get('X-Amz-Signature')).not.toBe(q.get('X-Amz-Signature'));
@@ -136,14 +116,14 @@ describe('uploads', () => {
     expect(local.config.forcePathStyle).toBe(true);
   });
 
-  it('[T-api-036] oversize, wrong type, bad side, unknown field or bad capId → 422; no session → 401', async () => {
+  it('[T-api-036] oversize, wrong type, bad side, unknown field or capId (not in UploadRequest) → 422; no session → 401', async () => {
     const cases: [Record<string, unknown>, string][] = [
       [{ ...body, bytes: MAX_IMAGE_BYTES + 1 }, 'body.bytes'],
       [{ ...body, bytes: 0 }, 'body.bytes'],
       [{ ...body, bytes: 1.5 }, 'body.bytes'],
       [{ ...body, contentType: 'image/jpeg' }, 'body.contentType'],
       [{ ...body, side: 'rim' }, 'body.side'],
-      [{ ...body, capId: 'nope' }, 'body.capId'],
+      [{ ...body, capId: '01JBF6Z3Q8K2M4N6P8R0S2T4V6' }, 'body'],
       [{ ...body, key: 'mine.webp' }, 'body'],
     ];
     for (const [b, path] of cases) {
@@ -155,18 +135,21 @@ describe('uploads', () => {
     expect((await upload(body, '')).statusCode).toBe(401);
   });
 
-  it('[T-api-037] presigned GET links for both sides (15 min) under _links.images; the cap fields stay untouched', async () => {
-    const links = await imageLinks(s3, BUCKET, FIXTURE_CAP.images);
-    const top = new URL(links.top);
+  it('[T-api-037] imageUrls: one presigned GET (15 min) per side present, none for a missing side; the record is untouched', async () => {
+    const urls = await imageUrls(s3, BUCKET, FIXTURE_CAP.images);
+    const top = new URL(urls.top);
     expect(decodeURIComponent(top.pathname)).toBe(`/${FIXTURE_CAP.images.top.key}`);
     expect(top.searchParams.get('X-Amz-Expires')).toBe(String(GET_URL_TTL_SECONDS));
-    expect(links.underside).toContain('underside.webp');
-    const onlyTop = await imageLinks(s3, BUCKET, { top: FIXTURE_CAP.images.top });
+    expect(urls.underside).toContain('underside.webp');
+    const onlyTop = await imageUrls(s3, BUCKET, { top: FIXTURE_CAP.images.top });
     expect(onlyTop).not.toHaveProperty('underside');
 
-    const out = await withImageLinks(s3, BUCKET, FIXTURE_CAP);
-    const { _links, ...rest } = out;
+    // withImageUrls signs with the Lambda's config/bucket and replaces any stale imageUrls.
+    const out = await withImageUrls({ ...FIXTURE_CAP, imageUrls: { top: 'https://stale.example/x' } });
+    const { imageUrls: got, ...rest } = out;
     expect(rest).toEqual(FIXTURE_CAP);
-    expect(Object.keys(_links.images)).toEqual(['top', 'underside']);
+    expect(Object.keys(got!)).toEqual(['top', 'underside']);
+    expect(new URL(got!.top).hostname).toBe(`${BUCKET}.s3.eu-west-1.amazonaws.com`);
+    expect(Cap.safeParse(out).success).toBe(true);
   });
 });

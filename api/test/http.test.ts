@@ -1,10 +1,11 @@
 // Tests for the handler wrapper api/src/lib/http.ts (CAP-17): validation → 422 Problem, auth, error mapping, no leaks.
+import { Problem } from '@capcollector/shared';
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BadRequest, Conflict, NotFound, NotImplemented } from '../src/lib/errors.js';
-import { created, defineHandler, noContent, ok } from '../src/lib/http.js';
+import { ValidationError, created, defineHandler, noContent, ok, problem } from '../src/lib/http.js';
 import { apiEvent } from './support/fixtures.js';
 
 const body = (res: { body?: string | undefined }) => JSON.parse(res.body ?? 'null') as Record<string, unknown>;
@@ -132,5 +133,31 @@ describe('defineHandler', () => {
     expect(viaCtx.headers?.['x-request-id']).toBe('aws-req-1');
     const generated = await weird(ev);
     expect(generated.headers?.['x-request-id']).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it('[T-api-040] every error body (400, 401, 404, 409, 422, 500, 501) parses as the shared Problem; a drifting body is refused', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failing = (err: unknown) =>
+      defineHandler({ auth: false }, async () => {
+        throw err;
+      });
+    const responses = [
+      await echo(apiEvent({ ...valid, body: '{oops' })),
+      await echo(apiEvent({ ...valid, uid: '' })),
+      await echo(apiEvent({ ...valid, body: JSON.stringify({ brand: '' }) })),
+      await failing(new NotFound('cap x not found'))(apiEvent({})),
+      await failing(new Conflict('stale'))(apiEvent({})),
+      await failing(new NotImplemented())(apiEvent({})),
+      await failing(new ValidationError(new z.ZodError([]), 'body'))(apiEvent({})),
+      await failing(new Error('boom'))(apiEvent({})),
+    ];
+    expect(responses.map((r) => r.statusCode)).toEqual([400, 401, 422, 404, 409, 501, 422, 500]);
+    for (const r of responses) {
+      expect(r.headers?.['content-type']).toBe('application/problem+json');
+      const parsed = Problem.safeParse(JSON.parse(r.body ?? 'null'));
+      expect(parsed.success, r.body).toBe(true);
+      expect(parsed.data?.status).toBe(r.statusCode);
+    }
+    expect(() => problem({ title: '', status: 99 } as Problem, 'req-1')).toThrow();
   });
 });

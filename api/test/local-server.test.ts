@@ -1,12 +1,44 @@
-// `npm run api:local` (CAP-17): the Node server maps routes onto the Lambda handlers with a fake authorizer uid.
+// `npm run api:local` (CAP-17): the Node server maps the shared route manifest (CAP-30) onto the Lambda handlers with a
+// fake authorizer uid; routes whose handler has not landed answer 501.
+import { readdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
+import { ROUTES, type RouteDef } from '@capcollector/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createLocalServer, matchRoute, toEvent, useLocalRepositories } from '../scripts/local-server.js';
+import {
+  HANDLERS_DIR,
+  createLocalServer,
+  hasHandler,
+  matchRoute,
+  toEvent,
+  useLocalRepositories,
+} from '../scripts/local-server.js';
 import { getRepositories, setRepositories } from '../src/lib/repo/index.js';
 import { InMemoryCapRepository, createMemoryRepositories } from '../src/lib/repo/memory.js';
-import type { RouteDef } from '../src/routes.js';
+import { useAwsTestEnv } from './support/aws-env.js';
+
+useAwsTestEnv();
+
+/**
+ * Contract routes whose handler belongs to a later story (V2 scans, V3 location/albums/exchange). SPEC-GAP CAP-30: the
+ * story asks for "every ROUTES[].handler has a file", which cannot hold until those stories land; this list must
+ * shrink as each one merges (T-api-039 fails if a listed handler appears or an unlisted one is missing).
+ */
+const NOT_YET_LANDED = [
+  'caps-location-put',
+  'caps-location-delete',
+  'scans-analyse',
+  'scans-list',
+  'albums-list',
+  'albums-create',
+  'albums-patch',
+  'albums-sheet',
+  'albums-next-free',
+  'exchange-requests-list',
+  'exchange-requests-create',
+  'exchange-requests-patch',
+];
 
 const server = createLocalServer({ mode: 'fake', defaultUid: 'local-user' });
 let base = '';
@@ -38,12 +70,7 @@ describe('api:local', () => {
   });
 
   it('[T-api-013] path templates bind parameters; auth routes get the fake uid in the authorizer context, public ones none', () => {
-    const route: RouteDef = {
-      method: 'GET',
-      path: '/caps/{capId}/history',
-      auth: true,
-      load: async () => undefined as never,
-    };
+    const route: RouteDef = { method: 'GET', path: '/caps/{capId}/history', handler: 'caps-history', auth: true };
     const m = matchRoute('GET', '/caps/01J%20X/history', [route]);
     expect(m?.params).toEqual({ capId: '01J X' });
     expect(matchRoute('POST', '/caps/1/history', [route])).toBeUndefined();
@@ -98,5 +125,20 @@ describe('api:local', () => {
     expect((await call('POST', '/caps', { brand: 'X', images, location: { kind: 'box', album: 'B' } })).status).toBe(
       422,
     );
+  });
+
+  it('[T-api-039] handlers ↔ shared ROUTES: every handler file is a contract route, every route has a file or is a listed later story (501 locally)', async () => {
+    const files = readdirSync(HANDLERS_DIR)
+      .filter((f) => f.endsWith('.ts'))
+      .map((f) => f.slice(0, -3))
+      .sort();
+    const routeHandlers = ROUTES.map((r) => r.handler);
+    expect(files.filter((f) => !routeHandlers.includes(f))).toEqual([]);
+    expect(routeHandlers.filter((h) => !hasHandler(h)).sort()).toEqual([...NOT_YET_LANDED].sort());
+    // The local server serves exactly the shared manifest: a contract route without a handler yet → 501 Problem.
+    const res = await fetch(`${base}/albums`);
+    expect(res.status).toBe(501);
+    expect(res.headers.get('content-type')).toBe('application/problem+json');
+    expect(await res.json()).toMatchObject({ status: 501, title: 'Not implemented' });
   });
 });

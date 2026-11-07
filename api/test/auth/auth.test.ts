@@ -291,14 +291,10 @@ describe('api:local auth', () => {
     expect(localAuthFor({ CAP_STAGE: 'dev' })).toEqual({ mode: 'authorizer' });
     expect(localAuthFor({})).toEqual({ mode: 'authorizer' });
 
-    const whoami = {
-      method: 'GET' as const,
-      path: '/whoami',
-      auth: true,
-      load: async () => defineHandler({ auth: true }, async (req) => ok({ uid: req.uid })),
-    };
+    const whoami = { method: 'GET' as const, path: '/whoami', handler: 'whoami', auth: true };
+    const whoamiH = defineHandler({ auth: true }, async (req) => ok({ uid: req.uid }));
     const serve = async (auth: Parameters<typeof createLocalServer>[0]) => {
-      const server = createLocalServer(auth, [whoami]);
+      const server = createLocalServer(auth, [whoami], async () => whoamiH);
       await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       return { base, close: () => new Promise((r) => server.close(r)) };
