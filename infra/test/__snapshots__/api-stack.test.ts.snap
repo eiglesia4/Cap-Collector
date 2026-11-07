@@ -135,6 +135,7 @@ exports[`CollectorsApi stack > [T-infra-018] snapshot: functions sized and logge
       "dynamodb:Query",
       "dynamodb:Scan",
       "dynamodb:UpdateItem",
+      "s3:GetObject",
     ],
     "UploadsCreateServiceRole": [
       "s3:PutObject",

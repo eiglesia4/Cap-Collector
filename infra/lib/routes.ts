@@ -53,11 +53,12 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
 
   'uploads-create': { grants: ['images-put'] },
 
-  // CAP-20: caps-get / caps-list return presigned GET URLs for the images.
+  // CAP-20: every handler that returns a Cap presigns GET URLs for its images (`Cap.imageUrls`); CAP-35 adds
+  // caps-create and caps-patch, which return the Cap since CAP-30. T-infra-027 keeps the list complete.
   'caps-list': { grants: ['table', 'images-get'] },
-  'caps-create': T,
+  'caps-create': { grants: ['table', 'images-get'] },
   'caps-get': { grants: ['table', 'images-get'] },
-  'caps-patch': T,
+  'caps-patch': { grants: ['table', 'images-get'] },
   'caps-delete': T,
   'caps-history': T,
   'caps-location-put': T,
