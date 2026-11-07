@@ -6,12 +6,18 @@ import type { ApiClient } from '../api/client.js';
 import { ApiError, HttpError, NetworkError, NotConfiguredError, ProblemError } from '../api/errors.js';
 import { AppleSdkLoadError, AppleSignInUnavailableError, type Platform } from '../platform/platform.js';
 import type { SessionStore } from '../session/session-store.js';
+import { appleSubFromIdentityToken } from './apple-sub.js';
 import { createPkce, type PkceCrypto } from './pkce.js';
 
 /** Why a sign-in attempt failed; the screen maps each to a message. */
 export type SignInFailure = 'not-allowed' | 'network' | 'unavailable' | 'failed';
 
-export type SignInResult = { kind: 'signed-in' } | { kind: 'cancelled' } | { kind: 'failed'; reason: SignInFailure };
+/**
+ * `appleSub` (CAP-28): on `not-allowed`, the Apple user id decoded from the identity token, so the user can hand it to
+ * the server allow-list. Absent when the token cannot be decoded.
+ */
+export type SignInResult =
+  { kind: 'signed-in' } | { kind: 'cancelled' } | { kind: 'failed'; reason: SignInFailure; appleSub?: string };
 
 export interface SignInDeps {
   readonly platform: Pick<Platform, 'signInWithApple'>;
@@ -28,12 +34,14 @@ function failure(error: unknown): SignInFailure {
 }
 
 export async function signIn(deps: SignInDeps): Promise<SignInResult> {
+  let identityToken: string | null = null;
   try {
     const pkce = await createPkce(deps.crypto);
     const credential = await deps.platform.signInWithApple({ nonce: pkce.nonce, state: pkce.state });
     if (credential === null) return { kind: 'cancelled' };
     // A response for another attempt (or a forged one) is dropped before the token is sent anywhere.
     if (credential.state !== pkce.state) return { kind: 'failed', reason: 'failed' };
+    identityToken = credential.identityToken;
     const session = await deps.api.signInWithApple({
       identityToken: credential.identityToken,
       ...(credential.authorizationCode !== undefined && { authorizationCode: credential.authorizationCode }),
@@ -42,7 +50,10 @@ export async function signIn(deps: SignInDeps): Promise<SignInResult> {
     await deps.session.save(session);
     return { kind: 'signed-in' };
   } catch (error) {
-    return { kind: 'failed', reason: failure(error) };
+    const reason = failure(error);
+    const appleSub =
+      reason === 'not-allowed' && identityToken !== null ? appleSubFromIdentityToken(identityToken) : null;
+    return appleSub === null ? { kind: 'failed', reason } : { kind: 'failed', reason, appleSub };
   }
 }
 

@@ -1,12 +1,10 @@
-// Tests for the Sign in with Apple web adapter, its configuration and the iPhone fallback (CAP-22, ADR-008 §4).
+// Tests for the Sign in with Apple web adapter and its configuration (CAP-22, ADR-008 §4).
 import { describe, expect, it, vi } from 'vitest';
 
 import { ConfigError, loadConfig, parseAppleConfig } from '../src/config';
-import { createCapacitorPlatform, type CapacitorPlugins } from '../src/platform/capacitor/capacitor-platform';
 import { AppleSdkLoadError, AppleSignInUnavailableError } from '../src/platform/platform';
 import { APPLE_SDK_URL, createAppleWebSignIn, scriptLoader, type AppleIdAuth } from '../src/platform/web/apple-sign-in';
 import { createWebPlatform } from '../src/platform/web/web-platform';
-import { fakePlatform } from './support/fakes';
 
 const APPLE = { serviceId: 'com.naevatec.collectors.web', redirectUri: 'https://d111.cloudfront.net/' };
 const REQUEST = { nonce: 'nonce-1', state: 'state-1' };
@@ -93,7 +91,7 @@ describe('Apple web sign-in', () => {
     expect(scripts).toHaveLength(3);
   });
 
-  it('[T-app-028] web platform uses the web flow; the iPhone falls back to it until the native plugin is installed', async () => {
+  it('[T-app-028] web platform uses the web flow (the iPhone uses the native sheet since CAP-28, T-app-045)', async () => {
     const sdk = fakeSdk(async () => ({ authorization: { id_token: 'id-token', state: 'state-1' } }));
     const web = createWebPlatform(window, { apple: APPLE, loadAppleSdk: async () => sdk });
     expect(web.supportsNativeAppleSignIn()).toBe(false);
@@ -101,12 +99,6 @@ describe('Apple web sign-in', () => {
     await expect(createWebPlatform(window).signInWithApple(REQUEST)).rejects.toBeInstanceOf(
       AppleSignInUnavailableError,
     );
-
-    const fallback = fakePlatform('web');
-    const native = createCapacitorPlatform(fallback, {} as CapacitorPlugins);
-    expect(native.supportsNativeAppleSignIn()).toBe(false);
-    expect(await native.signInWithApple(REQUEST)).toBeNull();
-    expect(fallback.signInWithApple).toHaveBeenCalledWith(REQUEST);
   });
 
   it('[T-app-029] Apple config: both values or neither, https return URL only', () => {

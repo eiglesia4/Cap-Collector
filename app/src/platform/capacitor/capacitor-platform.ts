@@ -1,18 +1,41 @@
-// Capacitor (iPhone) implementation of the Platform adapter: Camera, Share, Filesystem, Preferences — ADR-001.
-// Non-image file picks (e.g. an Exchange answer JSON) fall back to the web <input type=file>, which WKWebView
-// presents with the Files app.
+// Capacitor (iPhone) implementation of the Platform adapter: Camera, Share, Filesystem, Preferences and the native
+// Sign in with Apple sheet (ADR-001, ADR-008 §4, CAP-28). Non-image file picks (e.g. an Exchange answer JSON) fall
+// back to the web <input type=file>, which WKWebView presents with the Files app.
+import { SignInWithApple, type SignInWithApplePlugin } from '@capacitor-community/apple-sign-in';
 import { Camera } from '@capacitor/camera';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
 import { Share } from '@capacitor/share';
 
-import { isCancel, type PickOptions, type Platform, type ShareRequest } from '../platform.js';
+import {
+  isCancel,
+  type AppleCredential,
+  type AppleSignInRequest,
+  type PickOptions,
+  type Platform,
+  type ShareRequest,
+} from '../platform.js';
+
+/**
+ * iOS bundle id = Sign in with Apple `clientId` on the native path (never the web Services ID). Must equal `appId` in
+ * app/capacitor.config.ts (T-app-044 checks it).
+ */
+export const IOS_BUNDLE_ID = 'com.naevatec.collectors';
+
+/** `ASAuthorizationError.canceled`: the plugin rejects with its localized description, which says "error 1001". */
+const APPLE_CANCELED = /AuthorizationError error 1001\b/;
+
+export function isAppleCancel(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return isCancel(error) || APPLE_CANCELED.test(message);
+}
 
 export interface CapacitorPlugins {
   readonly Camera: Pick<typeof Camera, 'takePhoto' | 'chooseFromGallery'>;
   readonly Share: Pick<typeof Share, 'share'>;
   readonly Filesystem: Pick<typeof Filesystem, 'writeFile'>;
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
+  readonly SignInWithApple: Pick<SignInWithApplePlugin, 'authorize'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
 }
@@ -22,6 +45,7 @@ const defaultPlugins = (): CapacitorPlugins => ({
   Share,
   Filesystem,
   Preferences,
+  SignInWithApple,
   fetch: (input) => fetch(input),
 });
 
@@ -43,12 +67,33 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     return new File([blob], name, { type: blob.type || 'image/jpeg' });
   }
 
+  // Native sheet (ASAuthorizationController). The nonce is the PKCE one, exactly as on the web (openapi.yaml §
+  // AppleSignInRequest); Apple does not echo `state` natively, so the request's own is returned for the CAP-22 check.
+  async function signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null> {
+    try {
+      const { response } = await plugins.SignInWithApple.authorize({
+        clientId: IOS_BUNDLE_ID,
+        // Required by the plugin's typings, unused by its iOS implementation (web-only redirect flow).
+        redirectURI: '',
+        scopes: 'email',
+        nonce: request.nonce,
+        state: request.state,
+      });
+      return {
+        identityToken: response.identityToken,
+        ...(response.authorizationCode ? { authorizationCode: response.authorizationCode } : {}),
+        state: request.state,
+      };
+    } catch (error) {
+      if (isAppleCancel(error)) return null;
+      throw error;
+    }
+  }
+
   return {
     kind: 'native',
-    // CAP-22 (story § How): the native sheet needs `@capacitor-community/apple-sign-in`, which app/package.json does
-    // not have yet (requested from the integrator). Until then the iPhone runs the same Apple JS popup as the web.
-    signInWithApple: (request) => fallback.signInWithApple(request),
-    supportsNativeAppleSignIn: () => false,
+    signInWithApple,
+    supportsNativeAppleSignIn: () => true,
     async camera() {
       try {
         const result = await plugins.Camera.takePhoto({ quality: 90, correctOrientation: true });
