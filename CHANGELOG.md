@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-24: cap detail screen (SCREENS.md #6) — top/underside photo swap, chips, Quantity · For trade · Added tiles,
+  fields card (incl. `textOnCap`), "Where is it?" row, same-brand variants carousel, history newest first, Share
+  (`collectors://cap/<id>` until CAP-31 switches to the HTTPS link) and soft Delete with confirm sheet and toast.
 - CAP-27: integrator housekeeping — `zod` declared in `api`, `@capacitor-community/apple-sign-in` 7.1.0 in `app` (SPM
   `Package.swift` synced; native sheet wiring is CAP-28); Capacitor import boundary moved to the root `eslint.config.js`
   (`app/eslint.config.js` removed, T-infra-023); `.prettierignore` covers `cap sync` output; API CORS allows the

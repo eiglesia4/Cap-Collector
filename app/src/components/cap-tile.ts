@@ -18,20 +18,26 @@ export function brandHue(brand: string): number {
   return hash % 360;
 }
 
-function placeholder(cap: Cap): HTMLElement {
+function placeholder(cap: Cap, className = 'cap-thumb'): HTMLElement {
   return h('span', {
-    class: 'cap-thumb cap-thumb--placeholder',
+    class: `${className} cap-thumb--placeholder`,
     attrs: { style: `--cap-hue: ${String(brandHue(cap.brand))}`, 'aria-hidden': 'true' },
   });
 }
 
-function thumbnail(cap: Cap): HTMLElement {
-  const url = cap.imageUrls?.top;
-  if (url === undefined) return placeholder(cap);
-  const img = h('img', { class: 'cap-thumb', attrs: { src: url, loading: 'lazy', decoding: 'async', alt: '' } });
-  img.addEventListener('error', () => img.replaceWith(placeholder(cap)), { once: true });
+/**
+ * A round cap image for `side` (presigned `imageUrls`, contracts v0.2), or the brand-hued placeholder when the URL is
+ * missing or has expired. Shared by the grid tiles and the detail screen (CAP-24).
+ */
+export function capImage(cap: Cap, side: 'top' | 'underside' = 'top', className = 'cap-thumb'): HTMLElement {
+  const url = cap.imageUrls?.[side];
+  if (url === undefined) return placeholder(cap, className);
+  const img = h('img', { class: className, attrs: { src: url, loading: 'lazy', decoding: 'async', alt: '' } });
+  img.addEventListener('error', () => img.replaceWith(placeholder(cap, className)), { once: true });
   return img;
 }
+
+const thumbnail = (cap: Cap) => capImage(cap);
 
 export function capTitle(cap: Cap): string {
   return [cap.brand, cap.variant].filter(Boolean).join(t('collection.separator'));

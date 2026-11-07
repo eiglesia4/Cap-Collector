@@ -22,6 +22,7 @@ import { CapTile } from '../components/cap-tile.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
+import { TYPE_LABEL } from '../i18n/labels.js';
 import { pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
 
@@ -31,15 +32,6 @@ export const SEARCH_DEBOUNCE_MS = 300;
 export const PULL_THRESHOLD = 70;
 
 const TYPE_CHIPS: readonly CapType[] = ['beer', 'soft drink', 'water', 'cider', 'wine', 'other'];
-
-const TYPE_LABEL: Record<CapType, MessageKey> = {
-  beer: 'capType.beer',
-  'soft drink': 'capType.softDrink',
-  water: 'capType.water',
-  cider: 'capType.cider',
-  wine: 'capType.wine',
-  other: 'capType.other',
-};
 
 const SORT_LABEL: Record<Sort, MessageKey> = {
   brand: 'collection.sortBrand',
