@@ -58,7 +58,7 @@ describe('settings screen', () => {
     expect(failing.status()).toBe(t('settings.apiFailed'));
 
     // Production build: no override field; without an API URL the check says so instead of calling.
-    const prod = await render({ apiUrl: null, version: '0.2.0', dev: false, apple: null });
+    const prod = await render({ apiUrl: null, version: '0.2.0', dev: false, apple: null, webUrl: null });
     expect(prod.el.querySelector('#api-url')).toBeNull();
     prod.el.querySelector<HTMLButtonElement>('button[type="button"]')?.click();
     expect(prod.status()).toBe(t('settings.apiNotConfigured'));

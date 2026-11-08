@@ -8,7 +8,7 @@ import { Cap, formatLocationCode, Location, type CapHistory } from '@capcollecto
 import { HttpError, ProblemError } from '../api/errors.js';
 import { sameBrand } from '../cap/brand.js';
 import { CapHistoryListSchema, NoContentSchema } from '../cap/schemas.js';
-import { shareRequest } from '../cap/share.js';
+import { linkOrigin, shareRequest } from '../cap/share.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
 import { forgetCap } from '../collection/state.js';
@@ -163,7 +163,9 @@ function moreMenu(ctx: AppContext, root: HTMLElement, cap: Cap): HTMLElement {
           on: {
             click: () => {
               menu.open = false;
-              void ctx.platform.share(shareRequest(cap, ctx.platform.kind, window.location.origin)).catch(() => false);
+              void ctx.platform
+                .share(shareRequest(cap, linkOrigin(ctx.platform.kind, ctx.config.webUrl, window.location.origin)))
+                .catch(() => false);
             },
           },
         },
