@@ -13,6 +13,7 @@ describe('routes', () => {
       '/stats',
       '/cap/:id',
       '/cap/:id/edit',
+      '/cap/:id/reidentify',
       '/new',
       '/scan/duplicate',
       '/scan/review',

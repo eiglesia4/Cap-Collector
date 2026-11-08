@@ -10,6 +10,7 @@ export type RouteName =
   | 'stats'
   | 'capDetail'
   | 'capEdit'
+  | 'capReidentify'
   | 'newCap'
   | 'scanDuplicate'
   | 'scanReview'
@@ -34,6 +35,8 @@ export const ROUTES: readonly RouteDef[] = [
   { name: 'stats', pattern: '/stats', tab: 'stats' },
   { name: 'capDetail', pattern: '/cap/:id', tab: 'collection' },
   { name: 'capEdit', pattern: '/cap/:id/edit', tab: 'collection', modal: true },
+  // Detail ⋯ → "Re-identify with AI" (CAP-43).
+  { name: 'capReidentify', pattern: '/cap/:id/reidentify', tab: 'collection', modal: true },
   { name: 'newCap', pattern: '/new', tab: 'scan', modal: true },
   // Capture outcomes (CAP-41 routes there; the screens are CAP-42 "Already in collection" and CAP-43 "AI review").
   { name: 'scanDuplicate', pattern: '/scan/duplicate', tab: 'scan', modal: true },
