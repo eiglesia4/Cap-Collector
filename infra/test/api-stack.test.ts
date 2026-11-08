@@ -42,6 +42,7 @@ const config: InstallationConfig = {
   config_version: 'test',
   region: 'test-region-1',
   app_origins: ['capacitor://localhost', 'http://localhost:5173'],
+  ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
 };
 /** Unit tests never run esbuild: the stack is checked, not the bundles (CI `npm run synth` bundles for real). */
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
@@ -306,13 +307,18 @@ describe('CollectorsApi stack', () => {
     }
     expect(settingParameterName(deployment, 'allowedAppleSubs')).toBe('/cap/naeva/dev/allowed-apple-subs');
 
-    // The API stack takes them as SSM-typed CloudFormation parameters (re-resolved on every deploy).
+    // The API stack takes them as SSM-typed CloudFormation parameters (re-resolved on every deploy); `alertEmail`
+    // (CAP-40) is read by the stack for the alerts subscription, never passed to a function.
+    dataTemplate.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/cap/naeva/dev/alert-email',
+      Value: UNSET_PARAMETER_VALUE,
+    });
     const params = template.toJSON().Parameters as Record<string, { Type: string; Default: string }>;
     const ssm = Object.values(params).filter(
       (p) => p.Type === 'AWS::SSM::Parameter::Value<String>' && p.Default.startsWith('/cap/'),
     );
     expect(ssm.map((p) => p.Default).sort()).toEqual(
-      ['allowedAppleSubs', 'appleClientIds', 'sessionSecret']
+      ['alertEmail', 'allowedAppleSubs', 'appleClientIds', 'sessionSecret']
         .map((n) => `/cap/naeva/dev/${n.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
         .sort(),
     );

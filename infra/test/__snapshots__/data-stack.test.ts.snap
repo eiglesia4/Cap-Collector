@@ -97,7 +97,7 @@ exports[`CollectorsData stack > [T-infra-008] synthesised table matches data-mod
   "Tags": [
     {
       "Key": "cap:config_version",
-      "Value": "2026-11-07",
+      "Value": "2026-11-08",
     },
     {
       "Key": "installation",

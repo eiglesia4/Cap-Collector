@@ -39,7 +39,12 @@ function configDir(content: Record<string, unknown>): string {
   return dir;
 }
 
-const BASE = { config_version: 'test', region: 'eu-west-1', app_origins: ['capacitor://localhost'] };
+const BASE = {
+  config_version: 'test',
+  region: 'eu-west-1',
+  app_origins: ['capacitor://localhost'],
+  ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+};
 const DOMAINS = { web: 'caps.naevatec.com', api: 'api.caps.naevatec.com' };
 
 function synth(opts: { domains?: typeof DOMAINS; context?: Record<string, unknown> } = {}) {

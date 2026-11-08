@@ -37,7 +37,12 @@ const stackFor = (stage: string) =>
   Template.fromStack(
     new CollectorsDataStack(new App(), 'CollectorsData', {
       deployment: { installation: 'naeva', stage },
-      config: { config_version: 'test', region: 'test-region-1', app_origins: ['capacitor://localhost'] },
+      config: {
+        config_version: 'test',
+        region: 'test-region-1',
+        app_origins: ['capacitor://localhost'],
+        ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+      },
     }),
   );
 
@@ -172,7 +177,15 @@ describe('CollectorsData stack', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
     const target = { installation: 'naeva', stage: 'dev' };
     const write = (extra: Record<string, unknown>) =>
-      writeFileSync(join(dir, 'naeva.dev.json'), JSON.stringify({ config_version: 'v', region: 'r', ...extra }));
+      writeFileSync(
+        join(dir, 'naeva.dev.json'),
+        JSON.stringify({
+          config_version: 'v',
+          region: 'r',
+          ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+          ...extra,
+        }),
+      );
 
     write({});
     expect(loadInstallationConfig(target, dir).app_origins).toEqual([]);
