@@ -7,6 +7,12 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-44: exchange requests API (ADR-007) — `POST /exchange/requests` registers a downloaded bundle as `waiting` with
+  a 30-day `ttl` (409 on a duplicate `requestId`, scan linked in the same transaction), list newest first with
+  `expired` computed on read, PATCH `waiting → answered` (needs `provider`) → `reviewed`; real
+  `DynamoExchangeRepository` (T-api-051…057). Needs the CAP-48 table grant before deploy.
+- CAP-38: `@aws-sdk/client-bedrock-runtime` ^3.1161.0 in `api` (same line as the other `@aws-sdk/*`, one shared
+  `@aws-sdk/core`) for the Bedrock vision adapter (CAP-39).
 - CAP-46: `fflate` ^0.8.3 in `app` (tiny, dependency-free ESM zip) for building `request.zip` exchange bundles on the
   client (CAP-45).
 - CAP-37: scans API (ADR-004) — `POST /scans/analyse`: dHash Hamming over the user's live caps (≤ `CAP_DHASH_THRESHOLD`,

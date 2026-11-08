@@ -33,6 +33,7 @@ import {
   pageSize,
   pocketFromGsi1Sk,
   stripKeys,
+  toExchangeItem,
   tombstone,
 } from './items.js';
 import {
@@ -244,17 +245,29 @@ export class InMemoryScanRepository implements ScanRepository {
 export class InMemoryExchangeRepository implements ExchangeRepository {
   constructor(readonly table: MemoryTable = new MemoryTable()) {}
 
-  async put(uid: string, item: ExchangeRequestItem): Promise<void> {
-    this.table.put({ ...item, pk: userPk(uid), sk: exchangeSk(item.requestId) });
+  /** Same conditions as the Dynamo transaction: the request is new and the linked scan still exists. */
+  async create(uid: string, item: ExchangeRequestItem, linkScan?: Scan): Promise<void> {
+    const key = { pk: userPk(uid), sk: exchangeSk(item.requestId) };
+    const scanKey = linkScan && { pk: userPk(uid), sk: scanSk(linkScan.ts, linkScan.scanId) };
+    const scan = scanKey && this.table.get(scanKey);
+    if (this.table.get(key) || (scanKey && !scan)) throw new Conflict('The exchange request already exists');
+    this.table.put({ ...item, ...key });
+    if (scan) this.table.put({ ...scan, exchangeRequestId: item.requestId });
   }
 
   async get(uid: string, requestId: string): Promise<ExchangeRequestItem | undefined> {
     const it = this.table.get({ pk: userPk(uid), sk: exchangeSk(requestId) });
-    return it && stripKeys<ExchangeRequestItem>(it);
+    return it && toExchangeItem(it);
+  }
+
+  async update(uid: string, item: ExchangeRequestItem, prevStatus: ExchangeRequestItem['status']): Promise<void> {
+    const key = { pk: userPk(uid), sk: exchangeSk(item.requestId) };
+    if (this.table.get(key)?.status !== prevStatus) throw new Conflict('The exchange request changed');
+    this.table.put({ ...item, ...key });
   }
 
   async list(uid: string): Promise<ExchangeRequestItem[]> {
-    return this.table.query(userPk(uid), SK_PREFIX.exchange).items.map((i) => stripKeys<ExchangeRequestItem>(i));
+    return this.table.query(userPk(uid), SK_PREFIX.exchange).items.map((i) => toExchangeItem(i));
   }
 }
 
