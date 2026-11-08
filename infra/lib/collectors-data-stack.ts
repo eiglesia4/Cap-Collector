@@ -32,7 +32,7 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
-import { CERTIFICATE_SETTINGS, SECRET_ENV, type SecretName, type SettingName } from './routes.js';
+import type { SettingName } from './routes.js';
 import { addTableBackup } from './backup.js';
 import { retainProviderLogs } from './ops.js';
 import { TABLE_DEFINITION } from './table-definition.js';
@@ -59,7 +59,10 @@ export const ABORT_MULTIPART_AFTER_DAYS = 7;
 
 const str = (name: string) => ({ name, type: AttributeType.STRING });
 
-/** Value the stack writes once; Edu overwrites it (`aws ssm put-parameter --overwrite`). The API must refuse it. */
+/**
+ * Placeholder `settings:bootstrap` writes in a missing setting (CAP-60); Edu overwrites it (`aws ssm put-parameter
+ * --overwrite`). The API must refuse it.
+ */
 export const UNSET_PARAMETER_VALUE = 'unset';
 
 /** CloudFormation export name of a CollectorsData output (CollectorsApi imports `WebUrl` for CORS, CAP-27). */
@@ -74,7 +77,6 @@ export class CollectorsDataStack extends Stack {
   readonly table: Table;
   readonly imagesBucket: Bucket;
   readonly webBucket: Bucket;
-  readonly settings: Readonly<Record<SettingName, StringParameter>>;
   readonly distribution: Distribution;
   /** `https://<domains.web>` when config declares it (CAP-29), else `https://<id>.cloudfront.net`. */
   readonly webUrl: string;
@@ -192,29 +194,12 @@ export class CollectorsDataStack extends Stack {
     // Daily AWS Backup of the table (CAP-57); the vault follows the stack's removal policy.
     addTableBackup(this, deployment, this.table, config.ops.backupRetentionDays, removalPolicy);
 
-    // API settings filled by hand (CAP-15): created here, not in CollectorsApi, so they exist before the API stack
-    // resolves them at deploy time. SPEC-GAP CAP-15: plain String parameters, because CloudFormation cannot create a
-    // SecureString and Lambda env cannot resolve one; the values end up in the functions' (encrypted) environment.
-    // The certificate ARNs (CAP-29) are created the same way, whether or not config declares `domains`, so they can
-    // be filled before the deploy that turns the domains on (README § Custom domains); no Lambda ever sees them.
-    const setting = (name: SettingName, description: string) =>
-      new StringParameter(this, `Setting${name[0]?.toUpperCase() ?? ''}${name.slice(1)}`, {
-        parameterName: settingParameterName(deployment, name),
-        stringValue: UNSET_PARAMETER_VALUE,
-        description: `CapCollector ${description} — filled by Edu, never committed`,
-      });
-    const secret = (name: SecretName) => setting(name, SECRET_ENV[name]);
-    const certificate = (name: (typeof CERTIFICATE_SETTINGS)[number]) =>
-      setting(name, `${name} (ACM certificate ARN for the custom domain)`);
-    this.settings = {
-      // CAP-40: e-mail for the alerts topic (CollectorsApi); `unset` → topic and alarm without a subscription.
-      alertEmail: setting('alertEmail', 'alert e-mail for the cost alarms'),
-      allowedAppleSubs: secret('allowedAppleSubs'),
-      appleClientIds: secret('appleClientIds'),
-      sessionSecret: secret('sessionSecret'),
-      webCertificateArn: certificate('webCertificateArn'),
-      apiCertificateArn: certificate('apiCertificateArn'),
-    };
+    // API settings (CAP-15, CAP-29, CAP-40) are NOT created here (CAP-60): their values are Edu's, and a CDK-owned
+    // parameter either collides with an existing one or resets a real value to `unset` on any template change. The
+    // stacks only read them (`valueForStringParameter` → an `AWS::SSM::Parameter::Value<String>` template parameter,
+    // which fails the deploy with a clear message if one is missing). Creation: `npm run settings:bootstrap`
+    // (infra/README.md § Settings). SPEC-GAP CAP-15 stands: plain String parameters, since Lambda env cannot resolve
+    // a SecureString; the values end up in the functions' (encrypted) environment.
 
     // Exported for CollectorsApi (and for Edu's console checks after deploy).
     const out = (key: string, value: string, description: string) =>

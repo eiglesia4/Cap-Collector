@@ -3,10 +3,10 @@
 Owned by the integrator (OWNERSHIP.md). **Deploying is Edu's job, never an agent's.** Targets and profiles:
 CONVENTIONS.md § Deployment targets; per-target settings: [`config/`](config/README.md).
 
-| Stack            | What                                                                                                                                       | Story                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
-| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table + its AWS Backup plan, the SSM settings                      | CAP-13, CAP-15, CAP-29, CAP-57 |
-| `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer, alarms + budget | CAP-15, CAP-29, CAP-40, CAP-51 |
+| Stack            | What                                                                                                                                         | Story                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table + its AWS Backup plan (reads, never creates, the SSM settings) | CAP-13, CAP-29, CAP-57, CAP-60 |
+| `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer, alarms + budget   | CAP-15, CAP-29, CAP-40, CAP-51 |
 
 ## Deploy (Edu)
 
@@ -16,9 +16,11 @@ npm run diff                       # from the repo root (builds shared first)
 npm run deploy                     # CollectorsData first, then CollectorsApi
 ```
 
-**First deploy of `CollectorsApi`:** `CollectorsData` creates its SSM parameters with the value `unset`; the API
-reads them at deploy time and must refuse `unset`. Fill them before relying on Sign in with Apple (CAP-19), then run
-`npm run deploy` again so CloudFormation resolves the new values:
+**Settings first (CAP-60):** the stacks only _read_ the six `/cap/<inst>/<stage>/*` SSM settings; a deploy fails
+with a clear "parameter not found" while one is missing. On a new target run `npm run settings:bootstrap -w
+@capcollector/infra` once (creates the missing ones as `unset`; see § Settings). The API must refuse `unset`: fill
+the auth ones before relying on Sign in with Apple (CAP-19), then run `npm run deploy` again so CloudFormation
+resolves the new values:
 
 ```bash
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/allowed-apple-subs --value '<apple sub>'
@@ -42,8 +44,54 @@ aws bedrock list-inference-profiles --region eu-west-1 --query "inferenceProfile
 aws bedrock list-foundation-models  --region eu-west-1 --by-output-modality TEXT --query "modelSummaries[?contains(modelId,'haiku')].modelId"
 ```
 
-CloudFormation leaves these values alone as long as the parameter definitions in `collectors-data-stack.ts` do not
-change; if one ever does, the parameter is reset to `unset` and has to be filled again.
+No stack owns these parameters (CAP-60), so no deploy can reset or delete a value.
+
+## Settings (CAP-60)
+
+The six settings — `allowed-apple-subs`, `apple-client-ids`, `session-secret`, `web-certificate-arn`,
+`api-certificate-arn`, `alert-email` under `/cap/<inst>/<stage>/` — are Edu's: created once, filled by hand, read by
+the stacks at deploy time (`AWS::SSM::Parameter::Value<String>` template parameters). Scripts (target from
+`CAP_INSTALLATION` / `CAP_STAGE`, profile from the environment; logic in [`lib/settings.ts`](lib/settings.ts)):
+
+```bash
+npm run settings:bootstrap -w @capcollector/infra   # creates the missing ones as `unset` (tagged); never overwrites
+npm run settings:show      -w @capcollector/infra   # name + set / unset / missing — never the values
+npm run settings:restore   -w @capcollector/infra -- infra/.local/settings-backup.json   # overwrite from a backup
+```
+
+**Migration, once per target that was deployed before CAP-60.** The deployed `CollectorsData` template still owns
+the parameters, so the first deploy after CAP-60 _deletes_ them. Check first:
+
+```bash
+aws cloudformation describe-stack-resources --stack-name cap-naeva-dev-data \
+  --query "StackResources[?ResourceType=='AWS::SSM::Parameter'].PhysicalResourceId"
+```
+
+If that lists nothing (e.g. the stack never got that far — the "already exists" failure this story fixes), skip
+steps 1 and 4. Otherwise:
+
+```bash
+# 1. Back up the values (infra/.local/ is gitignored; delete the file once restored).
+mkdir -p infra/.local
+aws ssm get-parameters --with-decryption --output json --names \
+  /cap/naeva/dev/allowed-apple-subs /cap/naeva/dev/apple-client-ids /cap/naeva/dev/session-secret \
+  /cap/naeva/dev/web-certificate-arn /cap/naeva/dev/api-certificate-arn /cap/naeva/dev/alert-email \
+  > infra/.local/settings-backup.json
+# 2. Deploy only the data stack: it drops the parameters from the template, and SSM deletes them. (A full deploy
+#    would then fail in CollectorsApi, which reads them.)
+npm run cdk -w @capcollector/infra -- deploy -e CollectorsData \
+  --context installation=$CAP_INSTALLATION --context stage=$CAP_STAGE
+# 3. Recreate the missing ones as `unset`.
+npm run settings:bootstrap -w @capcollector/infra
+# 4. Put the saved values back, check, and deploy everything (the API re-reads them).
+npm run settings:restore -w @capcollector/infra -- infra/.local/settings-backup.json
+npm run settings:show -w @capcollector/infra
+npm run deploy && rm infra/.local/settings-backup.json
+```
+
+Between steps 2 and 4 the deployed functions keep the values they were deployed with; only a deploy re-reads SSM.
+If the target already uses its custom domains, keep them on in step 2: the data stack resolves the web certificate
+ARN before the parameters are removed.
 
 ## Operations (CAP-51): what fires when
 
@@ -124,10 +172,8 @@ aws acm request-certificate --region eu-west-1 --domain-name api.caps.naevatec.c
 aws acm describe-certificate --region <region> --certificate-arn <arn>   # → ResourceRecord for validation
 # 2. GoDaddy: add both validation CNAMEs; wait until both certificates are ISSUED.
 
-# 3. Only the first time: create the two `unset` parameters without turning the domains on (a stack cannot read
-#    a parameter it creates in the same deploy).
-npm run cdk -w @capcollector/infra -- deploy -e CollectorsData \
-  --context installation=$CAP_INSTALLATION --context stage=$CAP_STAGE --context domains=off
+# 3. The two certificate settings exist (`settings:bootstrap`, § Settings); fill them. Until they hold real ARNs,
+#    deploy with `--context domains=off`: a certificate cannot be imported from `unset`.
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/web-certificate-arn --value '<us-east-1 cert ARN>'
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/api-certificate-arn --value '<eu-west-1 cert ARN>'
 

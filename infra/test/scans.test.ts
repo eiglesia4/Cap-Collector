@@ -213,12 +213,10 @@ describe('scans infra (CAP-40)', () => {
     });
     expect(BEDROCK_DAILY_INVOCATIONS_ALARM).toBe(300);
 
-    // The e-mail lives in SSM (created `unset` by CollectorsData) and is resolved at deploy time; the subscription
-    // exists only under the condition "value ≠ unset" — i.e. without an e-mail, topic and alarm but no subscription.
-    data.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/cap/naeva/dev/alert-email',
-      Value: UNSET_PARAMETER_VALUE,
-    });
+    // The e-mail lives in SSM (bootstrapped `unset`, CAP-60; no stack creates it) and is resolved at deploy time; the
+    // subscription exists only under the condition "value ≠ unset" — without an e-mail, topic and alarm but no
+    // subscription.
+    data.resourceCountIs('AWS::SSM::Parameter', 0);
     const params = api.toJSON().Parameters as Record<string, { Default?: string }>;
     const emailParam = Object.keys(params).find((k) => params[k]?.Default === '/cap/naeva/dev/alert-email');
     expect(emailParam).toBeDefined();

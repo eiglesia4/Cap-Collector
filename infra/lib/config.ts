@@ -249,10 +249,9 @@ function validateDomains(file: string, value: unknown): Domains {
 
 /**
  * The config with its `domains` removed when CDK context `domains=off` is passed.
- * SPEC-GAP CAP-29: the certificate ARNs live in SSM parameters that CollectorsData itself creates (story), but a stack
- * cannot read at deploy time a parameter it creates in the same deploy. So the very first rollout deploys
- * CollectorsData once with `domains=off` (creates the `unset` parameters, nothing else changes), Edu fills them, and
- * only then deploys with the domains on (README § Custom domains). Any other value of the flag is refused.
+ * The certificate ARNs live in SSM settings that no stack creates (CAP-60: `settings:bootstrap` makes them `unset`),
+ * and a certificate cannot be imported from `unset`. So until Edu has filled both ARNs, deploys pass `domains=off`;
+ * then the domains go on (README § Custom domains). Any other value of the flag is refused.
  */
 export function applyDomainsSwitch(app: App, config: InstallationConfig): InstallationConfig {
   const flag: unknown = app.node.tryGetContext('domains');
