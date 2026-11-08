@@ -23,19 +23,11 @@ import { useAwsTestEnv } from './support/aws-env.js';
 useAwsTestEnv();
 
 /**
- * Contract routes whose handler belongs to a later story (V2 scans, V3 location/albums). SPEC-GAP CAP-30: the
+ * Contract routes whose handler belongs to a later story (V3 location). SPEC-GAP CAP-30: the
  * story asks for "every ROUTES[].handler has a file", which cannot hold until those stories land; this list must
  * shrink as each one merges (T-api-039 fails if a listed handler appears or an unlisted one is missing).
  */
-const NOT_YET_LANDED = [
-  'caps-location-put',
-  'caps-location-delete',
-  'albums-list',
-  'albums-create',
-  'albums-patch',
-  'albums-sheet',
-  'albums-next-free',
-];
+const NOT_YET_LANDED = ['caps-location-put', 'caps-location-delete'];
 
 const server = createLocalServer({ mode: 'fake', defaultUid: 'local-user' });
 let base = '';
@@ -133,7 +125,7 @@ describe('api:local', () => {
     expect(files.filter((f) => !routeHandlers.includes(f))).toEqual([]);
     expect(routeHandlers.filter((h) => !hasHandler(h)).sort()).toEqual([...NOT_YET_LANDED].sort());
     // The local server serves exactly the shared manifest: a contract route without a handler yet → 501 Problem.
-    const res = await fetch(`${base}/albums`);
+    const res = await fetch(`${base}/caps/01JBF6Z3Q8K2M4N6P8R0S2T4V6/location`, { method: 'DELETE' });
     expect(res.status).toBe(501);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
     expect(await res.json()).toMatchObject({ status: 501, title: 'Not implemented' });

@@ -4,6 +4,7 @@ import {
   type AlbumLocation,
   INDEXES,
   SK_PREFIX,
+  albumSk,
   brandGsi2,
   capPk,
   capSk,
@@ -17,9 +18,10 @@ import {
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 
-import { Conflict, NotImplemented } from '../../src/lib/errors.js';
+import { Conflict } from '../../src/lib/errors.js';
 import { encodeCursor } from '../../src/lib/repo/items.js';
 import {
+  DynamoAlbumRepository,
   DynamoCapRepository,
   DynamoExchangeRepository,
   DynamoRefreshTokenRepository,
@@ -190,18 +192,105 @@ describe('DynamoCapRepository keys', () => {
     await expect(throttled.put(UID, { cap: FIXTURE_CAP, albumId: ALBUM_ID, history: h })).rejects.toThrow('slow down');
   });
 
-  it('[T-api-011] the album DynamoDB repository is a stub that answers 501 until its story (scans real since CAP-37, exchange since CAP-44)', async () => {
-    const repos = createDynamoRepositories(createDocumentClient({}), TABLE);
+  it('[T-api-071] albums: USER#/ALBUM#<albumId> keys from shared, list follows pages, create conditioned on a new id and a free letter, update on updatedAt; GSI1 sheet drops tombstones', async () => {
+    const album = {
+      albumId: ALBUM_ID,
+      letter: 'A',
+      name: 'Leuchtturm GRANDE 1',
+      kind: 'album' as const,
+      sheets: 10,
+      cols: 6,
+      rows: 7,
+      createdAt: '2026-11-08T10:00:00.000Z',
+      updatedAt: '2026-11-08T10:00:00.000Z',
+    };
+    const key = { pk: userPk(UID), sk: albumSk(ALBUM_ID) };
+    const other = { ...album, albumId: '01JBF6Z3Q8K2M4N6P8R0S2OTHR', letter: 'B' };
+    const sent: Cmd[] = [];
+    let page = 0;
+    const doc: DocSender = {
+      send: async (c) => {
+        sent.push(c);
+        if (c instanceof GetCommand) return { Item: { ...album, ...key } };
+        if (c instanceof QueryCommand) {
+          page++;
+          return page % 2 === 1
+            ? { Items: [{ ...album, ...key }], LastEvaluatedKey: key }
+            : { Items: [{ ...other, pk: key.pk, sk: albumSk(other.albumId) }] };
+        }
+        return {};
+      },
+    };
+    const repos = createDynamoRepositories(doc, TABLE);
+    expect(createDynamoRepositories(createDocumentClient({}), TABLE).albums).toBeInstanceOf(DynamoAlbumRepository);
     expect(repos.caps).toBeInstanceOf(DynamoCapRepository);
-    const calls = [
-      repos.albums.get(UID, 'a'),
-      repos.albums.byLetter(UID, 'A'),
-      repos.albums.list(UID),
-      repos.albums.put(UID, {} as never),
-    ];
-    for (const c of calls) await expect(c).rejects.toBeInstanceOf(NotImplemented);
     expect(repos.scans).toBeInstanceOf(DynamoScanRepository);
     expect(repos.exchange).toBeInstanceOf(DynamoExchangeRepository);
+    const repo = repos.albums;
+
+    expect(await repo.get(UID, ALBUM_ID)).toEqual(album);
+    expect((sent[0] as GetCommand).input).toEqual({ TableName: TABLE, Key: key });
+
+    expect(await repo.list(UID)).toEqual([album, other]);
+    const q1 = (sent[1] as QueryCommand).input;
+    expect(q1).toEqual({
+      TableName: TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: { ':pk': userPk(UID), ':prefix': SK_PREFIX.album },
+    });
+    expect((sent[2] as QueryCommand).input.ExclusiveStartKey).toEqual(key);
+    expect(await repo.byLetter(UID, 'B')).toEqual(other);
+
+    await repo.put(UID, album);
+    expect((sent.at(-1) as PutCommand).input).toEqual({ TableName: TABLE, Item: { ...album, ...key } });
+
+    // Letter taken by another album → Conflict before any write; a free letter → put conditioned on a new id.
+    const before = sent.length;
+    await expect(repo.create(UID, { ...album, albumId: '01JBF6Z3Q8K2M4N6P8R0S2NEW0' })).rejects.toBeInstanceOf(
+      Conflict,
+    );
+    expect(sent.slice(before).some((c) => c instanceof PutCommand)).toBe(false);
+    await repo.create(UID, { ...album, letter: 'C' });
+    expect((sent.at(-1) as PutCommand).input).toEqual({
+      TableName: TABLE,
+      Item: { ...album, letter: 'C', ...key },
+      ConditionExpression: 'attribute_not_exists(pk)',
+    });
+
+    const next = { ...album, name: 'Renamed', updatedAt: '2026-11-08T11:00:00.000Z' };
+    await repo.update(UID, next, album.updatedAt);
+    expect((sent.at(-1) as PutCommand).input).toEqual({
+      TableName: TABLE,
+      Item: { ...next, ...key },
+      ConditionExpression: 'updatedAt = :prev',
+      ExpressionAttributeValues: { ':prev': album.updatedAt },
+    });
+    await expect(repo.update(UID, { ...next, letter: 'B' }, album.updatedAt)).rejects.toBeInstanceOf(Conflict);
+
+    const stale = Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' });
+    const failing = new DynamoAlbumRepository(
+      { send: async (c) => (c instanceof QueryCommand ? { Items: [] } : Promise.reject(stale)) },
+      TABLE,
+    );
+    await expect(failing.update(UID, next, album.updatedAt)).rejects.toBeInstanceOf(Conflict);
+    await expect(failing.create(UID, album)).rejects.toBeInstanceOf(Conflict);
+    const broken = new DynamoAlbumRepository(
+      {
+        send: async (c) =>
+          c instanceof QueryCommand ? { Items: [] } : Promise.reject(Object.assign(new Error('down'), { name: 'X' })),
+      },
+      TABLE,
+    );
+    await expect(broken.create(UID, album)).rejects.toThrow('down');
+
+    // GSI1: a tombstoned row with a stale index key is dropped from the sheet.
+    const gsi = recorder(() => ({
+      Items: [
+        { ...FIXTURE_CAP, gsi1sk: 'POCKET#17' },
+        { ...FIXTURE_CAP, capId: 'gone', gsi1sk: 'POCKET#18', deletedAt: '2026-11-08T10:00:00.000Z' },
+      ],
+    }));
+    expect((await gsi.repo.listGsi1(ALBUM_ID, 3)).map((e) => e.pocket)).toEqual([17]);
   });
 
   it('[T-api-048] scans: USER#/SCAN#<ts>#<scanId> keys from shared, newest first with cursor, get by id follows pages', async () => {
