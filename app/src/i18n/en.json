@@ -171,6 +171,7 @@
   "form.photoTooLarge": "This photo is too large even after resizing.",
   "form.webpUnsupported": "This browser can’t save WebP images. Use Safari 16 or later, or a current Chrome or Firefox.",
   "form.saveFlagged": "Save and flag needs review",
+  "form.needsReview": "Needs review",
   "form.saved": "Saved",
   "form.saveFailed": "Couldn’t save. Check your connection and try again.",
   "form.conflict": "Another cap already uses that pocket.",

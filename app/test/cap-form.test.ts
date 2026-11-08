@@ -320,7 +320,7 @@ describe('cap form — save', () => {
     }
   });
 
-  it('[T-app-053] PATCH sends only the changed fields (null clears one); no change sends nothing', async () => {
+  it('[T-app-053] PATCH sends only the changed fields (null clears one), status only when the Needs review toggle changed', async () => {
     const cap = capOf(
       wireCap(3, {
         brand: 'Mahou',
@@ -368,6 +368,30 @@ describe('cap form — save', () => {
     expect(m.calls).toEqual([
       { path: `/caps/${ulid(3)}`, method: 'PATCH', body: { year: 2023, producer: null, source: 'manual' } },
     ]);
+
+    // Edit mode: a "Needs review" toggle pre-filled from the status replaces "Save and flag"; `status` goes in the
+    // PATCH only when the toggle changed (architect review, 2026-11-08: no overwrite without an explicit tick).
+    const editSave = async (status: Cap['status'], act: (root: HTMLElement) => void) => {
+      const e = await mount((_p, method) => (method === 'PATCH' ? wireCap(3, { brand: 'Mahou' }) : undefined), {
+        mode: 'edit',
+        cap: { ...cap, status },
+      });
+      expect(e.el.querySelector('[data-save="needsReview"]')).toBeNull();
+      const toggle = q<HTMLInputElement>(e.el, '#cap-needs-review');
+      expect(toggle.checked).toBe(status !== 'complete');
+      act(e.el);
+      submit(e.el);
+      await settle();
+      return e.calls.map((c) => c.body);
+    };
+    const tick = (root: HTMLElement) => q<HTMLInputElement>(root, '#cap-needs-review').click();
+    expect(await editSave('complete', tick)).toEqual([{ status: 'needsReview', source: 'manual' }]);
+    expect(await editSave('needsReview', tick)).toEqual([{ status: 'complete', source: 'manual' }]);
+    expect(await editSave('unidentified', tick)).toEqual([{ status: 'complete', source: 'manual' }]);
+    // Toggle untouched: a needsReview / unidentified cap keeps its status on a plain Save.
+    const retype = (root: HTMLElement) => type(root, 'year', '2023');
+    expect(await editSave('needsReview', retype)).toEqual([{ year: 2023, source: 'manual' }]);
+    expect(await editSave('unidentified', retype)).toEqual([{ year: 2023, source: 'manual' }]);
   });
 
   it('[T-app-054] shows 422 Problem.errors[] next to their fields and keeps the form on other failures', async () => {

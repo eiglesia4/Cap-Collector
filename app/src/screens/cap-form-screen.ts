@@ -2,7 +2,8 @@
 // (`ai-prefilled` arrives with the capture flow in V2). Photos: pick → resize to WebP ≤ 1024 px (ADR-006) → presigned
 // upload (`POST /uploads` + PUT) → `ImageRef`. Fields in SCREENS.md order with inline errors from the shared
 // `CapInput` schema and from a 422's `Problem.errors[]`. Save → `POST /caps` or a `PATCH` holding only the changed
-// fields; "Save and flag needs review" sets `status: needsReview`. Leaving with unsaved changes asks first.
+// fields. New cap: "Save and flag needs review" sets `status: needsReview`; edit: a "Needs review" toggle pre-filled
+// from the cap's status, sent only when changed (architect review, CAP-25, 2026-11-08). Leaving unsaved asks first.
 import {
   Cap,
   CapType as CapTypeEnum,
@@ -136,7 +137,13 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     return el;
   };
 
+  // Edit mode: "Needs review" toggle, on for a cap that is not `complete` (an `unidentified` one included).
+  const initialFlag = cap !== undefined && cap.status !== 'complete';
+  const reviewToggle = h('input', { attrs: { type: 'checkbox', id: 'cap-needs-review' } });
+  reviewToggle.checked = initialFlag;
+
   const dirty = () =>
+    reviewToggle.checked !== initialFlag ||
     !sameValues(values, initialValues) ||
     !sameImages(images, initialImages) ||
     slots.top.pending !== null ||
@@ -486,6 +493,15 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     flagButton.disabled = busy();
   }
 
+  /**
+   * Status of an edit save: the cap's own unless the "Needs review" toggle changed (on → needsReview, off → complete),
+   * so nothing is overwritten without an explicit tick (CLAUDE.md § Invariantes, ADR-003; decided 2026-11-08).
+   */
+  function editStatus(current: Cap): CapStatus {
+    if (reviewToggle.checked === initialFlag) return current.status;
+    return reviewToggle.checked ? 'needsReview' : 'complete';
+  }
+
   async function save(status: CapStatus): Promise<void> {
     if (busy()) return;
     submitted = true;
@@ -495,9 +511,6 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       showErrors();
       return;
     }
-    // SPEC-GAP CAP-25: the story only defines "Save" (status complete) and "Save and flag needs review". In edit mode
-    // plain Save therefore also marks a `needsReview` / `unidentified` cap `complete` (it is the user's explicit
-    // review); the PATCH carries `status` only when it actually changes.
     const result = validate(values, images, status);
     showErrors();
     if (!result.ok) {
@@ -552,7 +565,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   // Cancel is a real link (SCREENS.md § Navigation: Cancel → Scan; Edit goes back to the cap's detail). With unsaved
   // changes the click is held here — before the router's document listener — until the user confirms.
   // SPEC-GAP CAP-25: the router has no leave hook, so the browser's own Back button (Mac/web) is not guarded; the
-  // form is modal (no tab bar), and on the iPhone Cancel is the only way out.
+  // form is modal (no tab bar), and on the iPhone Cancel is the only way out. Accepted for V1 (architect, 2026-11-08).
   const leaveTo = cap ? pathFor('capDetail', { id: cap.capId }) : pathFor('scan');
   async function confirmLeave(): Promise<void> {
     const discard = await ConfirmSheet(el, {
@@ -594,7 +607,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       on: {
         submit: (e) => {
           e.preventDefault();
-          void save('complete');
+          void save(cap ? editStatus(cap) : 'complete');
         },
       },
     },
@@ -633,7 +646,8 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       ),
     ),
     formError,
-    h('div', { class: 'form-actions' }, saveButton, flagButton),
+    mode === 'edit' && h('label', { class: 'check' }, reviewToggle, t('form.needsReview')),
+    h('div', { class: 'form-actions' }, saveButton, mode === 'edit' ? false : flagButton),
   );
 
   const el = h(
