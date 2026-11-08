@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-50: cap location API — `PUT /caps/{id}/location` in one transaction (cap, GSI1, `LOCK#`, history) with `swap`, `DELETE` to clear (idempotent), location accepted on `POST /caps`; 409 names the occupant, 404 unknown letter, 422 geometry or kind mismatch.
 - CAP-41: scan screen and capture flow — circular guide, Shoot / Library (web: Upload photo), optional underside, upload, dHash, `POST /scans/analyse`, routing to the three outcomes, 503 sheet, "Use AI identification" setting; manual entry pre-filled from a scan.
 - CAP-55: app dependencies for client-side insert-card PDFs — `pdf-lib` ^1.17.1, `qrcode` ^1.5.4 (+ `@types/qrcode` dev); used by CAP-54.
 - CAP-51: operations — required `ops` config (`budgetEur`, `logRetentionDays`; naeva.dev 10 / 30); alarms on the
