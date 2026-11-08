@@ -77,7 +77,10 @@ export interface InstallationConfig {
   readonly domains?: Domains;
   /** Vision identification and duplicate detection (ADR-004, ADR-008 §7, CAP-40). Required: scans-analyse needs it. */
   readonly ai: AiConfig;
-  /** Operations (CAP-51, EP-09): monthly budget and log retention. Required: every deployment has logs and costs. */
+  /**
+   * Operations (CAP-51, CAP-57, EP-09): monthly budget, log retention and table backups. Required: every deployment
+   * has logs, costs and data.
+   */
   readonly ops: OpsConfig;
 }
 
@@ -86,6 +89,8 @@ export interface OpsConfig {
   readonly budgetEur: number;
   /** Retention of every Lambda log group: one of the values CloudWatch Logs accepts (1, 3, 5, 7, 14, 30…). */
   readonly logRetentionDays: RetentionDays;
+  /** Days AWS Backup keeps each daily recovery point of the table (CAP-57; naeva.dev: 35). Whole days, ≥ 1. */
+  readonly backupRetentionDays: number;
 }
 
 /** Retention values CloudWatch Logs accepts, "never expire" excluded (the one cost that grows for ever). */
@@ -182,12 +187,14 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
   };
 }
 
-/** `ops` is required: a positive budget and a retention CloudWatch accepts (T-infra-032). */
+/** `ops` is required: a positive budget, a retention CloudWatch accepts and whole backup days (T-infra-032/036). */
 function validateOps(file: string, value: unknown): OpsConfig {
   if (typeof value !== 'object' || value === null) {
-    throw new Error(`${file}: "ops" is required: { "budgetEur": 10, "logRetentionDays": 30 }`);
+    throw new Error(
+      `${file}: "ops" is required: { "budgetEur": 10, "logRetentionDays": 30, "backupRetentionDays": 35 }`,
+    );
   }
-  const { budgetEur, logRetentionDays } = value as Record<string, unknown>;
+  const { budgetEur, logRetentionDays, backupRetentionDays } = value as Record<string, unknown>;
   if (typeof budgetEur !== 'number' || !Number.isFinite(budgetEur) || budgetEur <= 0) {
     throw new Error(`${file}: "ops.budgetEur" must be a positive number (monthly budget)`);
   }
@@ -196,7 +203,10 @@ function validateOps(file: string, value: unknown): OpsConfig {
       `${file}: "ops.logRetentionDays" must be one of ${LOG_RETENTION_DAYS.join(', ')} (CloudWatch Logs)`,
     );
   }
-  return { budgetEur, logRetentionDays: logRetentionDays as RetentionDays };
+  if (typeof backupRetentionDays !== 'number' || !Number.isInteger(backupRetentionDays) || backupRetentionDays < 1) {
+    throw new Error(`${file}: "ops.backupRetentionDays" must be a whole number of days ≥ 1 (AWS Backup retention)`);
+  }
+  return { budgetEur, logRetentionDays: logRetentionDays as RetentionDays, backupRetentionDays };
 }
 
 /** `ai` is required: a bare model id or inference profile id, and an integer threshold 0…64 (T-infra-030). */

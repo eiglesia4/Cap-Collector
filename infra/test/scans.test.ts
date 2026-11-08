@@ -35,7 +35,7 @@ const configWith = (modelId: string): InstallationConfig => ({
   region: 'test-region-1',
   app_origins: [],
   ai: { modelId, dhashThreshold: 10 },
-  ops: { budgetEur: 10, logRetentionDays: 30 },
+  ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 });
 
 // esbuild wants entries under the project root, so fixtures live in the git-ignored infra/cdk.out/ — in a directory
@@ -157,7 +157,7 @@ describe('scans infra (CAP-40)', () => {
         JSON.stringify({
           config_version: 'v',
           region: 'r',
-          ops: { budgetEur: 1, logRetentionDays: 1 },
+          ops: { budgetEur: 1, logRetentionDays: 1, backupRetentionDays: 1 },
           ...(ai !== undefined && { ai }),
         }),
       );
