@@ -7,6 +7,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-46: `fflate` ^0.8.3 in `app` (tiny, dependency-free ESM zip) for building `request.zip` exchange bundles on the
+  client (CAP-45).
 - CAP-37: scans API (ADR-004) — `POST /scans/analyse`: dHash Hamming over the user's live caps (≤ `CAP_DHASH_THRESHOLD`,
   default 10 → `duplicate` with the AI never called), `useAi=false` → `unidentified`, `VisionAdapter` interface with a
   stub (unavailable → Scan stored, 503), brand + variant re-check over GSI2; every call stores a `Scan`; `GET /scans`
