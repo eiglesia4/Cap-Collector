@@ -84,7 +84,7 @@ export interface CapRepository {
   listAll(uid: string, opts?: { includeDeleted?: boolean }): Promise<Cap[]>;
   /** History of one cap, oldest first. */
   history(capId: string): Promise<CapHistory[]>;
-  /** GSI1: live caps on one sheet, by pocket. */
+  /** GSI1: live caps on one sheet, by pocket (tombstoned rows are dropped even if a stale GSI1 key survived). */
   listGsi1(albumId: string, sheet: number): Promise<SheetEntry[]>;
   /** GSI2: live caps of a brand (normalised), optionally narrowed to one variant. */
   listGsi2(brand: string, variant?: string): Promise<CapIndexEntry[]>;
@@ -96,8 +96,18 @@ export interface AlbumRepository {
   get(uid: string, albumId: string): Promise<Album | undefined>;
   byLetter(uid: string, letter: string): Promise<Album | undefined>;
   list(uid: string): Promise<Album[]>;
-  /** Create or replace. */
+  /** Create or replace, unconditionally (seeding and tests; the API writes through `create` / `update`). */
   put(uid: string, album: Album): Promise<void>;
+  /**
+   * Stores a new album (CAP-49). Conflict when another album of the user already uses its letter or the id exists.
+   * The letter has no key of its own in data-model.md, so uniqueness is a read-then-conditional-put.
+   */
+  create(uid: string, album: Album): Promise<void>;
+  /**
+   * Replaces the album (CAP-49). Conflict when the stored `updatedAt` is no longer `prevUpdatedAt` (a concurrent
+   * edit won) or when the album's letter now belongs to another album.
+   */
+  update(uid: string, album: Album, prevUpdatedAt: string): Promise<void>;
 }
 
 export interface ScanRepository {

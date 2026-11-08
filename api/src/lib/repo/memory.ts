@@ -175,6 +175,7 @@ export class InMemoryCapRepository implements CapRepository {
   async listGsi1(albumId: string, sheet: number): Promise<SheetEntry[]> {
     return this.table
       .queryIndex('gsi1', gsi1Pk(albumId, sheet))
+      .filter((i) => i.deletedAt === undefined)
       .map((i) => ({ ...toIndexEntry(i), pocket: pocketFromGsi1Sk(String(i.gsi1sk)) }));
   }
 
@@ -216,6 +217,21 @@ export class InMemoryAlbumRepository implements AlbumRepository {
 
   async put(uid: string, album: Album): Promise<void> {
     this.table.put({ ...album, pk: userPk(uid), sk: albumSk(album.albumId) });
+  }
+
+  async create(uid: string, album: Album): Promise<void> {
+    if (await this.byLetter(uid, album.letter)) throw new Conflict(`album letter ${album.letter} is already used`);
+    this.table.transact([
+      { op: 'put', item: { ...album, pk: userPk(uid), sk: albumSk(album.albumId) }, ifNotExists: true },
+    ]);
+  }
+
+  async update(uid: string, album: Album, prevUpdatedAt: string): Promise<void> {
+    const other = await this.byLetter(uid, album.letter);
+    if (other && other.albumId !== album.albumId) throw new Conflict(`album letter ${album.letter} is already used`);
+    this.table.transact([
+      { op: 'put', item: { ...album, pk: userPk(uid), sk: albumSk(album.albumId) }, ifUpdatedAt: prevUpdatedAt },
+    ]);
   }
 }
 

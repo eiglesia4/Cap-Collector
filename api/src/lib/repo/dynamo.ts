@@ -1,6 +1,6 @@
 // DynamoDB repositories for the deployed Lambdas (data-model.md: single table, GSI1 location, GSI2 brand). Writes are
 // the items.ts plan sent as one TransactWriteItems (cap + HIST# + LOCK#, ADR-006); keys come only from shared/keys.ts;
-// cursors are base64url(LastEvaluatedKey). Scans are real since CAP-37, exchange since CAP-44; albums are stubs until their story.
+// cursors are base64url(LastEvaluatedKey). Scans are real since CAP-37, exchange since CAP-44, albums since CAP-49.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -19,6 +19,7 @@ import {
   INDEXES,
   type Scan,
   SK_PREFIX,
+  albumSk,
   capPk,
   capSk,
   exchangeSk,
@@ -28,7 +29,7 @@ import {
 
 import { refreshKey } from '../../auth/keys.js';
 import type { Config } from '../config.js';
-import { Conflict, NotImplemented } from '../errors.js';
+import { Conflict } from '../errors.js';
 import {
   type Item,
   type Op,
@@ -206,7 +207,9 @@ export class DynamoCapRepository implements CapRepository {
       KeyConditionExpression: 'gsi1pk = :pk',
       ExpressionAttributeValues: { ':pk': gsi1Pk(albumId, sheet) },
     });
-    return items.map((i) => ({ ...toIndexEntry(i), pocket: pocketFromGsi1Sk(String(i.gsi1sk)) }));
+    return items
+      .filter((i) => i.deletedAt === undefined)
+      .map((i) => ({ ...toIndexEntry(i), pocket: pocketFromGsi1Sk(String(i.gsi1sk)) }));
   }
 
   async listGsi2(brand: string, variant?: string): Promise<CapIndexEntry[]> {
@@ -233,22 +236,78 @@ export class DynamoCapRepository implements CapRepository {
   }
 }
 
-/** Rejects like any failed repository call (never throws synchronously). */
-const notYet = (what: string): Promise<never> => Promise.reject(new NotImplemented(`${what} lands with its own story`));
-
-/** Stub until the albums story (EP-03). */
+/** Albums under the user partition, `ALBUM#<albumId>` (data-model.md; CAP-49). A handful per user: list reads them all. */
 export class DynamoAlbumRepository implements AlbumRepository {
-  get(_uid: string, _albumId: string): Promise<Album | undefined> {
-    return notYet('DynamoAlbumRepository.get');
+  constructor(
+    private readonly doc: DocSender,
+    private readonly tableName: string,
+  ) {}
+
+  async get(uid: string, albumId: string): Promise<Album | undefined> {
+    const r = (await this.doc.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk: userPk(uid), sk: albumSk(albumId) } }),
+    )) as { Item?: Item };
+    return r.Item && stripKeys<Album>(r.Item);
   }
-  byLetter(_uid: string, _letter: string): Promise<Album | undefined> {
-    return notYet('DynamoAlbumRepository.byLetter');
+
+  async byLetter(uid: string, letter: string): Promise<Album | undefined> {
+    return (await this.list(uid)).find((a) => a.letter === letter);
   }
-  list(_uid: string): Promise<Album[]> {
-    return notYet('DynamoAlbumRepository.list');
+
+  async list(uid: string): Promise<Album[]> {
+    const out: Album[] = [];
+    let start: Record<string, unknown> | undefined;
+    do {
+      const r = (await this.doc.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          ExpressionAttributeValues: { ':pk': userPk(uid), ':prefix': SK_PREFIX.album },
+          ...(start ? { ExclusiveStartKey: start } : {}),
+        }),
+      )) as QueryOut;
+      out.push(...(r.Items ?? []).map((i) => stripKeys<Album>(i)));
+      start = r.LastEvaluatedKey;
+    } while (start);
+    return out;
   }
-  put(_uid: string, _album: Album): Promise<void> {
-    return notYet('DynamoAlbumRepository.put');
+
+  async put(uid: string, album: Album): Promise<void> {
+    await this.doc.send(new PutCommand({ TableName: this.tableName, Item: this.item(uid, album) }));
+  }
+
+  // SPEC-GAP CAP-49: the story asks for a put conditional on the letter, but data-model.md has no letter key (and keys
+  // are never invented), so uniqueness is byLetter + a put conditional on the new id. Two concurrent creates of the
+  // same letter could both pass; acceptable for the single allowed user, and the architect may add a key later.
+  async create(uid: string, album: Album): Promise<void> {
+    if (await this.byLetter(uid, album.letter)) throw new Conflict(`album letter ${album.letter} is already used`);
+    await this.conditionalPut(this.item(uid, album), 'attribute_not_exists(pk)', {});
+  }
+
+  async update(uid: string, album: Album, prevUpdatedAt: string): Promise<void> {
+    const other = await this.byLetter(uid, album.letter);
+    if (other && other.albumId !== album.albumId) throw new Conflict(`album letter ${album.letter} is already used`);
+    await this.conditionalPut(this.item(uid, album), 'updatedAt = :prev', { ':prev': prevUpdatedAt });
+  }
+
+  private item(uid: string, album: Album): Item {
+    return { ...album, pk: userPk(uid), sk: albumSk(album.albumId) };
+  }
+
+  private async conditionalPut(item: Item, condition: string, values: Record<string, unknown>): Promise<void> {
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: item,
+          ConditionExpression: condition,
+          ...(Object.keys(values).length > 0 ? { ExpressionAttributeValues: values } : {}),
+        }),
+      );
+    } catch (e) {
+      if (errorName(e) === 'ConditionalCheckFailedException') throw new Conflict('The album changed or already exists');
+      throw e;
+    }
   }
 }
 
@@ -451,7 +510,7 @@ export class DynamoRefreshTokenRepository implements RefreshTokenRepository {
 export function createDynamoRepositories(doc: DocSender, tableName: string): Repositories {
   return {
     caps: new DynamoCapRepository(doc, tableName),
-    albums: new DynamoAlbumRepository(),
+    albums: new DynamoAlbumRepository(doc, tableName),
     scans: new DynamoScanRepository(doc, tableName),
     exchange: new DynamoExchangeRepository(doc, tableName),
     refreshTokens: new DynamoRefreshTokenRepository(doc, tableName),
