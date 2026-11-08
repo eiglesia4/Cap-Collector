@@ -18,7 +18,7 @@ export function createRouter({ window: win, onRoute }: RouterOptions): Router {
   let current: RouteMatch | null = null;
 
   function resolve(): void {
-    let match = matchRoute(win.location.pathname);
+    let match = matchRoute(win.location.pathname, win.location.search);
     if (!match) {
       win.history.replaceState(null, '', '/');
       match = matchRoute('/');
@@ -30,7 +30,7 @@ export function createRouter({ window: win, onRoute }: RouterOptions): Router {
 
   function navigate(path: string, options: { replace?: boolean } = {}): void {
     if (options.replace) win.history.replaceState(null, '', path);
-    else if (path !== win.location.pathname) win.history.pushState(null, '', path);
+    else if (path !== win.location.pathname + win.location.search) win.history.pushState(null, '', path);
     resolve();
   }
 

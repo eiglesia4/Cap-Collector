@@ -1,6 +1,8 @@
-// Settings skeleton (CAP-21): API URL override (development builds only), app version, AI on/off placeholder,
+// Settings skeleton (CAP-21): API URL override (development builds only), app version, "Use AI identification"
+// (CAP-41: on by default, kept in the platform store, sent as `useAi` by the capture flow),
 // a connection check against GET /healthz, and Sign out (CAP-22: clears the stored session; the shell then shows
 // the sign-in screen).
+import { readUseAi, writeUseAi } from '../capture/ai-setting.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import { ConfigError } from '../config.js';
 import type { Screen } from '../context.js';
@@ -62,6 +64,10 @@ export const SettingsScreen: Screen = (ctx) => {
     t('settings.checkApi'),
   );
 
+  const ai = h('input', { attrs: { type: 'checkbox', name: 'ai', checked: true } });
+  void readUseAi(ctx.platform.store).then((on) => (ai.checked = on));
+  ai.addEventListener('change', () => void writeUseAi(ctx.platform.store, ai.checked));
+
   return h(
     'section',
     { class: 'screen' },
@@ -69,12 +75,7 @@ export const SettingsScreen: Screen = (ctx) => {
     ctx.config.dev && apiSection(),
     check,
     status,
-    h(
-      'label',
-      { class: 'field field--row' },
-      h('input', { attrs: { type: 'checkbox', disabled: true, name: 'ai' } }),
-      h('span', {}, t('settings.ai')),
-    ),
+    h('label', { class: 'field field--row' }, ai, h('span', {}, t('settings.ai'))),
     h('small', { class: 'muted' }, t('settings.aiHint')),
     h('dl', { class: 'meta' }, h('dt', {}, t('settings.version')), h('dd', {}, ctx.config.version)),
     ctx.session.signedIn() &&

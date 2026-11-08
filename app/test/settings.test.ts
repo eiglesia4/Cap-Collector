@@ -1,8 +1,10 @@
-// Tests for the Settings skeleton: dev-only API URL override, connection check, version, AI placeholder (CAP-21).
+// Tests for the Settings skeleton: dev-only API URL override, connection check, version (CAP-21) and the
+// "Use AI identification" toggle (CAP-41).
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiClient } from '../src/api/client';
 import { NetworkError } from '../src/api/errors';
+import { readUseAi, USE_AI_KEY } from '../src/capture/ai-setting';
 import { matchRoute } from '../src/router/routes';
 import { SettingsScreen } from '../src/screens/settings-screen';
 import { t } from '../src/i18n/i18n';
@@ -26,7 +28,6 @@ describe('settings screen', () => {
     const { el, ctx, status } = await render();
     expect(el.querySelector('h1')?.textContent).toBe(t('settings.title'));
     expect(el.querySelector('dd')?.textContent).toBe('1.2.3');
-    expect(el.querySelector<HTMLInputElement>('input[name="ai"]')?.disabled).toBe(true);
 
     const input = el.querySelector<HTMLInputElement>('#api-url');
     const form = el.querySelector('form');
@@ -63,5 +64,29 @@ describe('settings screen', () => {
     prod.el.querySelector<HTMLButtonElement>('button[type="button"]')?.click();
     expect(prod.status()).toBe(t('settings.apiNotConfigured'));
     expect(prod.ctx.api.healthz).not.toHaveBeenCalled();
+  });
+
+  it('[T-app-073] "Use AI identification" is on by default, persists in the platform store and reads back', async () => {
+    const { el, ctx } = await render();
+    const ai = el.querySelector<HTMLInputElement>('input[name="ai"]');
+    if (!ai) throw new Error('no AI toggle');
+    await flush();
+    expect([ai.disabled, ai.checked]).toEqual([false, true]);
+    expect(await readUseAi(ctx.platform.store)).toBe(true);
+
+    ai.checked = false;
+    ai.dispatchEvent(new Event('change'));
+    await flush();
+    expect(await ctx.platform.store.get(USE_AI_KEY)).toBe('off');
+    expect(await readUseAi(ctx.platform.store)).toBe(false);
+    // A new Settings screen shows the stored choice.
+    const again = SettingsScreen(ctx, matchRoute('/settings') ?? (undefined as never));
+    await flush();
+    expect(again.querySelector<HTMLInputElement>('input[name="ai"]')?.checked).toBe(false);
+
+    ai.checked = true;
+    ai.dispatchEvent(new Event('change'));
+    await flush();
+    expect(await ctx.platform.store.get(USE_AI_KEY)).toBeNull();
   });
 });

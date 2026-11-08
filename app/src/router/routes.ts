@@ -11,6 +11,8 @@ export type RouteName =
   | 'capDetail'
   | 'capEdit'
   | 'newCap'
+  | 'scanDuplicate'
+  | 'scanReview'
   | 'albums'
   | 'exchange'
   | 'settings'
@@ -33,6 +35,9 @@ export const ROUTES: readonly RouteDef[] = [
   { name: 'capDetail', pattern: '/cap/:id', tab: 'collection' },
   { name: 'capEdit', pattern: '/cap/:id/edit', tab: 'collection', modal: true },
   { name: 'newCap', pattern: '/new', tab: 'scan', modal: true },
+  // Capture outcomes (CAP-41 routes there; the screens are CAP-42 "Already in collection" and CAP-43 "AI review").
+  { name: 'scanDuplicate', pattern: '/scan/duplicate', tab: 'scan', modal: true },
+  { name: 'scanReview', pattern: '/scan/review', tab: 'scan', modal: true },
   { name: 'albums', pattern: '/albums', tab: 'collection' },
   { name: 'exchange', pattern: '/exchange', tab: 'collection' },
   { name: 'settings', pattern: '/settings', tab: 'collection' },
@@ -43,6 +48,9 @@ export const ROUTES: readonly RouteDef[] = [
 export interface RouteMatch {
   readonly route: RouteDef;
   readonly params: Readonly<Record<string, string>>;
+  /** Query string parameters (`/new?scanId=…`, CAP-41). */
+  readonly query: Readonly<Record<string, string>>;
+  /** Pathname, plus the query string when there is one. */
   readonly path: string;
 }
 
@@ -51,7 +59,7 @@ function segments(path: string): string[] {
 }
 
 /** Match a pathname against ROUTES; null when no route matches (the router then falls back to Collection). */
-export function matchRoute(pathname: string): RouteMatch | null {
+export function matchRoute(pathname: string, search = ''): RouteMatch | null {
   const parts = segments(pathname);
   for (const route of ROUTES) {
     const pattern = segments(route.pattern);
@@ -65,7 +73,11 @@ export function matchRoute(pathname: string): RouteMatch | null {
       }
       return seg === part;
     });
-    if (ok) return { route, params, path: '/' + parts.join('/') };
+    if (ok) {
+      const query = Object.fromEntries(new URLSearchParams(search));
+      const qs = new URLSearchParams(query).toString();
+      return { route, params, query, path: '/' + parts.join('/') + (qs === '' ? '' : `?${qs}`) };
+    }
   }
   return null;
 }
