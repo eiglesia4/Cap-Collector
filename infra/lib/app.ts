@@ -2,21 +2,20 @@
  * Composition of the CDK app, separate from bin/app.ts so tests synthesize exactly what the CLI does.
  * Order: resolve deployment → require its config file (+ domains switch) → account guard → stacks → app-level tags.
  */
-import { App, Tags } from 'aws-cdk-lib';
+import { App, Aspects, Tags } from 'aws-cdk-lib';
 
 import {
   applyDomainsSwitch,
   assertAccountMatchesDeployment,
   type Deployment,
+  deploymentTags,
   loadInstallationConfig,
-  PROJECT_TAG_VALUE,
   resolveDeployment,
   resourceName,
-  TAG_KEYS,
-  USER_NAME_TAG_VALUE,
 } from './config.js';
 import { CollectorsDataStack } from './collectors-data-stack.js';
 import { CollectorsApiStack } from './collectors-api-stack.js';
+import { TagCdkProviders } from './ops.js';
 
 export interface BuiltApp {
   readonly app: App;
@@ -53,11 +52,10 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
   api.addStackDependency(data);
 
   // AWS tagging (CONVENTIONS.md § AWS tagging): once, at app level, so every current and future stack and every
-  // taggable construct inherits the tags — never per construct.
-  Tags.of(app).add(TAG_KEYS.project, PROJECT_TAG_VALUE);
-  Tags.of(app).add(TAG_KEYS.userName, USER_NAME_TAG_VALUE);
-  Tags.of(app).add(TAG_KEYS.installation, deployment.installation);
-  Tags.of(app).add(TAG_KEYS.stage, deployment.stage);
-  Tags.of(app).add(TAG_KEYS.configVersion, config.config_version);
+  // taggable construct inherits the tags — never per construct. CDK's own provider Lambdas are raw resources that
+  // Tags.of does not reach; the aspect gives them the same tags (CAP-51, T-infra-035).
+  const tags = deploymentTags(deployment, config.config_version);
+  for (const [key, value] of Object.entries(tags)) Tags.of(app).add(key, value);
+  Aspects.of(app).add(new TagCdkProviders(tags));
   return { app, deployment, data, api };
 }

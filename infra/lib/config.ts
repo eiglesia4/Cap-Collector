@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { App } from 'aws-cdk-lib';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 /** Lowercase, digits, hyphens: it goes into bucket and table names. */
 const INSTALLATION_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -45,6 +46,17 @@ export const TAG_KEYS = {
 export const PROJECT_TAG_VALUE = 'EIM_CAP';
 export const USER_NAME_TAG_VALUE = 'eiglesia4';
 
+/** The tags every taggable resource carries (CONVENTIONS § AWS tagging), applied once in app.ts. */
+export function deploymentTags(deployment: Deployment, configVersion: string): Readonly<Record<string, string>> {
+  return {
+    [TAG_KEYS.project]: PROJECT_TAG_VALUE,
+    [TAG_KEYS.userName]: USER_NAME_TAG_VALUE,
+    [TAG_KEYS.installation]: deployment.installation,
+    [TAG_KEYS.stage]: deployment.stage,
+    [TAG_KEYS.configVersion]: configVersion,
+  };
+}
+
 /** Directory holding `<installation>.<stage>.json` files. */
 export const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'config');
 
@@ -65,7 +77,21 @@ export interface InstallationConfig {
   readonly domains?: Domains;
   /** Vision identification and duplicate detection (ADR-004, ADR-008 §7, CAP-40). Required: scans-analyse needs it. */
   readonly ai: AiConfig;
+  /** Operations (CAP-51, EP-09): monthly budget and log retention. Required: every deployment has logs and costs. */
+  readonly ops: OpsConfig;
 }
+
+export interface OpsConfig {
+  /** Monthly AWS Budget, filtered by `project=EIM_CAP`. Sent to the Budgets API as USD (config README). */
+  readonly budgetEur: number;
+  /** Retention of every Lambda log group: one of the values CloudWatch Logs accepts (1, 3, 5, 7, 14, 30…). */
+  readonly logRetentionDays: RetentionDays;
+}
+
+/** Retention values CloudWatch Logs accepts, "never expire" excluded (the one cost that grows for ever). */
+export const LOG_RETENTION_DAYS: readonly number[] = Object.values(RetentionDays)
+  .filter((v): v is number => typeof v === 'number' && v !== RetentionDays.INFINITE)
+  .sort((a, b) => a - b);
 
 export interface AiConfig {
   /** Bedrock model id or cross-region inference profile id (Claude Haiku-class vision model, ADR-002/ADR-008 §7). */
@@ -152,7 +178,25 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
     app_origins: origins,
     ...(domains && { domains }),
     ai: validateAi(file, raw.ai),
+    ops: validateOps(file, raw.ops),
   };
+}
+
+/** `ops` is required: a positive budget and a retention CloudWatch accepts (T-infra-032). */
+function validateOps(file: string, value: unknown): OpsConfig {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${file}: "ops" is required: { "budgetEur": 10, "logRetentionDays": 30 }`);
+  }
+  const { budgetEur, logRetentionDays } = value as Record<string, unknown>;
+  if (typeof budgetEur !== 'number' || !Number.isFinite(budgetEur) || budgetEur <= 0) {
+    throw new Error(`${file}: "ops.budgetEur" must be a positive number (monthly budget)`);
+  }
+  if (typeof logRetentionDays !== 'number' || !LOG_RETENTION_DAYS.includes(logRetentionDays)) {
+    throw new Error(
+      `${file}: "ops.logRetentionDays" must be one of ${LOG_RETENTION_DAYS.join(', ')} (CloudWatch Logs)`,
+    );
+  }
+  return { budgetEur, logRetentionDays: logRetentionDays as RetentionDays };
 }
 
 /** `ai` is required: a bare model id or inference profile id, and an integer threshold 0…64 (T-infra-030). */

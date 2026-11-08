@@ -44,6 +44,7 @@ const BASE = {
   region: 'eu-west-1',
   app_origins: ['capacitor://localhost'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+  ops: { budgetEur: 10, logRetentionDays: 30 },
 };
 const DOMAINS = { web: 'caps.naevatec.com', api: 'api.caps.naevatec.com' };
 
