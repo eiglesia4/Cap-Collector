@@ -23,7 +23,7 @@ import { useAwsTestEnv } from './support/aws-env.js';
 useAwsTestEnv();
 
 /**
- * Contract routes whose handler belongs to a later story (V2 scans, V3 location/albums/exchange). SPEC-GAP CAP-30: the
+ * Contract routes whose handler belongs to a later story (V2 scans, V3 location/albums). SPEC-GAP CAP-30: the
  * story asks for "every ROUTES[].handler has a file", which cannot hold until those stories land; this list must
  * shrink as each one merges (T-api-039 fails if a listed handler appears or an unlisted one is missing).
  */
@@ -35,9 +35,6 @@ const NOT_YET_LANDED = [
   'albums-patch',
   'albums-sheet',
   'albums-next-free',
-  'exchange-requests-list',
-  'exchange-requests-create',
-  'exchange-requests-patch',
 ];
 
 const server = createLocalServer({ mode: 'fake', defaultUid: 'local-user' });
@@ -172,5 +169,37 @@ describe('api:local', () => {
       ['unidentified', true],
     ]);
     setVisionAdapter(undefined);
+  });
+
+  it('[T-api-057] api:local exchange flow: create → answered → reviewed round-trips and GET /exchange/requests reflects each step', async () => {
+    setRepositories(createMemoryRepositories());
+    const send = async (method: string, path: string, body?: unknown) => {
+      const res = await fetch(`${base}${path}`, { method, ...(body ? { body: JSON.stringify(body) } : {}) });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    const statuses = async (q = '') =>
+      ((await send('GET', `/exchange/requests${q}`)).body as unknown as { requestId: string; status: string }[]).map(
+        (i) => i.status,
+      );
+    const requestId = newId();
+
+    expect(await send('POST', '/exchange/requests', { requestId, dhash: 'a3f0c81e7b2d9f44' })).toMatchObject({
+      status: 201,
+      body: { requestId, status: 'waiting' },
+    });
+    expect(await statuses()).toEqual(['waiting']);
+
+    expect(
+      await send('PATCH', `/exchange/requests/${requestId}`, { status: 'answered', provider: 'gemini' }),
+    ).toMatchObject({ status: 200, body: { status: 'answered', provider: 'gemini' } });
+    expect(await statuses()).toEqual(['answered']);
+    expect(await statuses('?status=waiting')).toEqual([]);
+
+    expect(await send('PATCH', `/exchange/requests/${requestId}`, { status: 'reviewed' })).toMatchObject({
+      status: 200,
+      body: { status: 'reviewed', provider: 'gemini' },
+    });
+    expect(await statuses('?status=reviewed')).toEqual(['reviewed']);
+    expect((await send('PATCH', `/exchange/requests/${requestId}`, { status: 'reviewed' })).status).toBe(409);
   });
 });

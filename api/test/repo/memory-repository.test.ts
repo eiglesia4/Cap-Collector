@@ -94,9 +94,18 @@ describe('in-memory repositories', () => {
     await expect(repos.scans.list(uid, { cursor: p1.cursor!.slice(2) })).rejects.toBeInstanceOf(BadRequest);
 
     const req = { requestId: newId(), createdAt: t, status: 'waiting' as const, dhash: '00000000000000ff' };
-    await repos.exchange.put(uid, req);
+    await repos.exchange.create(uid, req, scans[0]);
     expect(await repos.exchange.get(uid, req.requestId)).toEqual(req);
-    await repos.exchange.put(uid, { ...req, status: 'answered' });
+    expect((await repos.scans.get(uid, scans[0]!.scanId))?.exchangeRequestId).toBe(req.requestId);
+    await expect(repos.exchange.create(uid, req)).rejects.toBeInstanceOf(Conflict);
+    const ghostScan = { ...scans[0]!, scanId: newId() };
+    await expect(repos.exchange.create(uid, { ...req, requestId: newId() }, ghostScan)).rejects.toBeInstanceOf(
+      Conflict,
+    );
+    await repos.exchange.update(uid, { ...req, status: 'answered' }, 'waiting');
+    await expect(repos.exchange.update(uid, { ...req, status: 'reviewed' }, 'waiting')).rejects.toBeInstanceOf(
+      Conflict,
+    );
     expect((await repos.exchange.list(uid)).map((r) => r.status)).toEqual(['answered']);
   });
 });

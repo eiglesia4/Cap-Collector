@@ -1,6 +1,6 @@
 // DynamoDB repositories for the deployed Lambdas (data-model.md: single table, GSI1 location, GSI2 brand). Writes are
 // the items.ts plan sent as one TransactWriteItems (cap + HIST# + LOCK#, ADR-006); keys come only from shared/keys.ts;
-// cursors are base64url(LastEvaluatedKey). Scans are real since CAP-37; albums and exchange are stubs until their stories.
+// cursors are base64url(LastEvaluatedKey). Scans are real since CAP-37, exchange since CAP-44; albums are stubs until their story.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -21,6 +21,7 @@ import {
   SK_PREFIX,
   capPk,
   capSk,
+  exchangeSk,
   scanSk,
   userPk,
 } from '@capcollector/shared';
@@ -41,6 +42,7 @@ import {
   planPatch,
   pocketFromGsi1Sk,
   stripKeys,
+  toExchangeItem,
   toIndexEntry,
   tombstone,
 } from './items.js';
@@ -305,16 +307,84 @@ export class DynamoScanRepository implements ScanRepository {
   }
 }
 
-/** Stub until the exchange story (EP-07). */
+/** Exchange requests under the user partition, `EXCHANGE#<requestId>` with `ttl` (data-model.md; CAP-44). */
 export class DynamoExchangeRepository implements ExchangeRepository {
-  put(_uid: string, _item: ExchangeRequestItem): Promise<void> {
-    return notYet('DynamoExchangeRepository.put');
+  constructor(
+    private readonly doc: DocSender,
+    private readonly tableName: string,
+  ) {}
+
+  /** One transaction: the new item (must not exist) + `SET exchangeRequestId` on the scan (must exist). */
+  async create(uid: string, item: ExchangeRequestItem, linkScan?: Scan): Promise<void> {
+    const pk = userPk(uid);
+    const items: TransactItem[] = [
+      {
+        Put: {
+          TableName: this.tableName,
+          Item: { ...item, pk, sk: exchangeSk(item.requestId) },
+          ConditionExpression: 'attribute_not_exists(pk)',
+        },
+      },
+    ];
+    if (linkScan) {
+      items.push({
+        Update: {
+          TableName: this.tableName,
+          Key: { pk, sk: scanSk(linkScan.ts, linkScan.scanId) },
+          UpdateExpression: 'SET exchangeRequestId = :rid',
+          ConditionExpression: 'attribute_exists(pk)',
+          ExpressionAttributeValues: { ':rid': item.requestId },
+        },
+      });
+    }
+    try {
+      await this.doc.send(new TransactWriteCommand({ TransactItems: items }));
+    } catch (e) {
+      if (errorName(e) === 'TransactionCanceledException') throw new Conflict('The exchange request already exists');
+      throw e;
+    }
   }
-  get(_uid: string, _requestId: string): Promise<ExchangeRequestItem | undefined> {
-    return notYet('DynamoExchangeRepository.get');
+
+  async get(uid: string, requestId: string): Promise<ExchangeRequestItem | undefined> {
+    const r = (await this.doc.send(
+      new GetCommand({ TableName: this.tableName, Key: { pk: userPk(uid), sk: exchangeSk(requestId) } }),
+    )) as { Item?: Record<string, unknown> };
+    return r.Item && toExchangeItem(r.Item);
   }
-  list(_uid: string): Promise<ExchangeRequestItem[]> {
-    return notYet('DynamoExchangeRepository.list');
+
+  async update(uid: string, item: ExchangeRequestItem, prevStatus: ExchangeRequestItem['status']): Promise<void> {
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: { ...item, pk: userPk(uid), sk: exchangeSk(item.requestId) },
+          ConditionExpression: '#status = :prev',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: { ':prev': prevStatus },
+        }),
+      );
+    } catch (e) {
+      if (errorName(e) === 'ConditionalCheckFailedException') throw new Conflict('The exchange request changed');
+      throw e;
+    }
+  }
+
+  async list(uid: string): Promise<ExchangeRequestItem[]> {
+    const out: ExchangeRequestItem[] = [];
+    let start: Record<string, unknown> | undefined;
+    do {
+      const r = (await this.doc.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          ExpressionAttributeValues: { ':pk': userPk(uid), ':prefix': SK_PREFIX.exchange },
+          ...(start ? { ExclusiveStartKey: start } : {}),
+        }),
+      )) as QueryOut;
+      out.push(...(r.Items ?? []).map((i) => toExchangeItem(i)));
+      start = r.LastEvaluatedKey;
+    } while (start);
+    return out;
   }
 }
 
@@ -383,7 +453,7 @@ export function createDynamoRepositories(doc: DocSender, tableName: string): Rep
     caps: new DynamoCapRepository(doc, tableName),
     albums: new DynamoAlbumRepository(),
     scans: new DynamoScanRepository(doc, tableName),
-    exchange: new DynamoExchangeRepository(),
+    exchange: new DynamoExchangeRepository(doc, tableName),
     refreshTokens: new DynamoRefreshTokenRepository(doc, tableName),
   };
 }
