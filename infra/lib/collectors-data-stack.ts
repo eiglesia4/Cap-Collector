@@ -33,6 +33,7 @@ import type { Construct } from 'constructs';
 
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
 import { CERTIFICATE_SETTINGS, SECRET_ENV, type SecretName, type SettingName } from './routes.js';
+import { addTableBackup } from './backup.js';
 import { retainProviderLogs } from './ops.js';
 import { TABLE_DEFINITION } from './table-definition.js';
 
@@ -49,6 +50,12 @@ export const SPA_FALLBACK_STATUSES = [403, 404] as const;
 
 /** Images move to Standard-IA after this many days (story CAP-13). */
 export const IMAGES_IA_AFTER_DAYS = 90;
+
+/** Overwritten or deleted photos (noncurrent versions) are expired after this many days (CAP-57). */
+export const IMAGES_NONCURRENT_EXPIRY_DAYS = 90;
+
+/** Multipart uploads never completed are aborted after this many days (CAP-13, kept by CAP-57). */
+export const ABORT_MULTIPART_AFTER_DAYS = 7;
 
 const str = (name: string) => ({ name, type: AttributeType.STRING });
 
@@ -79,7 +86,7 @@ export class CollectorsDataStack extends Stack {
     const removalPolicy = disposable ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
 
     // Static web for the Mac (ADR-001, ADR-008 §3): a private bucket read only by CloudFront through Origin Access
-    // Control (CAP-16). No website hosting, no public policy.
+    // Control (CAP-16). No website hosting, no public policy. Not versioned, so no noncurrent-version rule (CAP-57).
     this.webBucket = new Bucket(this, 'Web', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
@@ -125,7 +132,10 @@ export class CollectorsDataStack extends Stack {
     });
     this.webUrl = `https://${webDomain ?? this.distribution.distributionDomainName}`;
 
-    // Cap photos (WebP ≤ 1024 px, uploaded with presigned PUT from the app). Private, versioned, IA after 90 days.
+    // Cap photos (WebP ≤ 1024 px, uploaded with presigned PUT from the app). Private, versioned, IA after 90 days;
+    // noncurrent versions (overwritten / deleted photos) expire after 90 days so they don't accumulate (CAP-57). They
+    // are expired, not moved to IA first: S3 rejects a noncurrent transition on the same day as the expiry, and IA
+    // bills a 30-day minimum, so the transition CAP-13 had for them would only add cost.
     // CORS allows the origins declared in infra/config/<installation>.<stage>.json plus this stack's own web URL:
     // the custom domain when config declares one (CAP-29), else the CloudFront origin (CAP-16).
     this.imagesBucket = new Bucket(this, 'Images', {
@@ -140,10 +150,8 @@ export class CollectorsDataStack extends Stack {
           transitions: [
             { storageClass: StorageClass.INFREQUENT_ACCESS, transitionAfter: Duration.days(IMAGES_IA_AFTER_DAYS) },
           ],
-          noncurrentVersionTransitions: [
-            { storageClass: StorageClass.INFREQUENT_ACCESS, transitionAfter: Duration.days(IMAGES_IA_AFTER_DAYS) },
-          ],
-          abortIncompleteMultipartUploadAfter: Duration.days(7),
+          noncurrentVersionExpiration: Duration.days(IMAGES_NONCURRENT_EXPIRY_DAYS),
+          abortIncompleteMultipartUploadAfter: Duration.days(ABORT_MULTIPART_AFTER_DAYS),
         },
       ],
       cors: [
@@ -180,6 +188,9 @@ export class CollectorsDataStack extends Stack {
         nonKeyAttributes: [...gsi.nonKeyAttributes],
       });
     }
+
+    // Daily AWS Backup of the table (CAP-57); the vault follows the stack's removal policy.
+    addTableBackup(this, deployment, this.table, config.ops.backupRetentionDays, removalPolicy);
 
     // API settings filled by hand (CAP-15): created here, not in CollectorsApi, so they exist before the API stack
     // resolves them at deploy time. SPEC-GAP CAP-15: plain String parameters, because CloudFormation cannot create a

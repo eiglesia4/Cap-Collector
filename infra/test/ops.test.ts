@@ -80,15 +80,22 @@ describe('Operations', () => {
       );
       return loadInstallationConfig(deployment, dir);
     };
-    expect(load({ budgetEur: 7.5, logRetentionDays: 14 }).ops).toEqual({ budgetEur: 7.5, logRetentionDays: 14 });
+    expect(load({ budgetEur: 7.5, logRetentionDays: 14, backupRetentionDays: 7 }).ops).toEqual({
+      budgetEur: 7.5,
+      logRetentionDays: 14,
+      backupRetentionDays: 7,
+    });
     expect(() => load()).toThrow(/"ops" is required/);
     for (const budgetEur of [0, -1, '10', Number.NaN]) {
-      expect(() => load({ budgetEur, logRetentionDays: 30 }), String(budgetEur)).toThrow(/"ops\.budgetEur"/);
+      expect(() => load({ budgetEur, logRetentionDays: 30, backupRetentionDays: 35 }), String(budgetEur)).toThrow(
+        /"ops\.budgetEur"/,
+      );
     }
     for (const logRetentionDays of [0, 31, 9999, '30']) {
-      expect(() => load({ budgetEur: 10, logRetentionDays }), String(logRetentionDays)).toThrow(
-        /"ops\.logRetentionDays"/,
-      );
+      expect(
+        () => load({ budgetEur: 10, logRetentionDays, backupRetentionDays: 35 }),
+        String(logRetentionDays),
+      ).toThrow(/"ops\.logRetentionDays"/);
     }
   });
 
@@ -187,6 +194,7 @@ describe('Operations', () => {
       'AWS::ApiGatewayV2::Authorizer',
       'AWS::ApiGatewayV2::Integration',
       'AWS::ApiGatewayV2::Route',
+      'AWS::Backup::BackupSelection',
       'AWS::CloudFront::OriginAccessControl',
       'AWS::IAM::Policy',
       'AWS::Lambda::Permission',
@@ -199,9 +207,13 @@ describe('Operations', () => {
       installation: deployment.installation,
       stage: deployment.stage,
     };
-    /** Tags as a map, whatever the shape: `[{Key, Value}]`, `{key: value}` (SSM, API Gateway) or Budget ResourceTags. */
+    /**
+     * Tags as a map, whatever the shape: `[{Key, Value}]`, `{key: value}` (SSM, API Gateway), Budget ResourceTags or
+     * the Backup vault / plan's own property names (CAP-57).
+     */
     const tagsOf = (r: Resource): Record<string, unknown> => {
-      const raw = r.Properties?.Tags ?? r.Properties?.ResourceTags;
+      const p = r.Properties;
+      const raw = p?.Tags ?? p?.ResourceTags ?? p?.BackupVaultTags ?? p?.BackupPlanTags;
       if (Array.isArray(raw)) {
         return Object.fromEntries(
           (raw as Record<string, unknown>[]).map((t) => [t.Key ?? t.key, t.Value ?? t.value] as const),

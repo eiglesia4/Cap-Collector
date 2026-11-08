@@ -5,7 +5,7 @@ CONVENTIONS.md § Deployment targets; per-target settings: [`config/`](config/RE
 
 | Stack            | What                                                                                                                                       | Story                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
-| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table, the SSM settings                                            | CAP-13, CAP-15, CAP-29         |
+| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table + its AWS Backup plan, the SSM settings                      | CAP-13, CAP-15, CAP-29, CAP-57 |
 | `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer, alarms + budget | CAP-15, CAP-29, CAP-40, CAP-51 |
 
 ## Deploy (Edu)
@@ -66,6 +66,49 @@ topic: they exist only while `alert-email` is not `unset`.
 Log groups: every Lambda keeps its logs `ops.logRetentionDays` (config). CDK's own helper Lambda for emptying the
 buckets of `dev` gets the same retention through a `LogRetention` resource, which also works on a stack deployed
 before CAP-51 whose log group already exists.
+
+## Backups (CAP-57): what is kept and how to restore
+
+Backups are the last line against a **bug** that corrupts or wipes data, not against the user: a deleted cap is a
+tombstone with its history (ADR-006), restored from the app.
+
+| What                        | Kept                                                                                     | Where                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Table, any second           | point-in-time recovery, last 35 days (DynamoDB PITR, on since CAP-13)                    | the table itself                                      |
+| Table, daily                | AWS Backup at 03:00 UTC, `ops.backupRetentionDays` days (naeva.dev: 35), no cold storage | vault `cap-<inst>-<stage>`, plan `cap-<inst>-<stage>` |
+| Overwritten / deleted photo | the noncurrent version, 90 days (images bucket is versioned)                             | the images bucket (`ListObjectVersions`)              |
+
+Cost: a table well under 1 GB costs cents a month in Backup storage; the noncurrent photos are bounded at 90 days.
+On `dev` the vault is `DESTROY` like the rest of the stack, but CloudFormation cannot delete a vault that still holds
+recovery points: delete them first (console, or `aws backup delete-recovery-point`) before `cdk destroy`.
+
+**Every restore goes to a NEW table; never overwrite the live one.** Both paths below create `<live name>-restored-<date>`:
+
+```bash
+# A. Point in time (any second of the last 35 days)
+aws dynamodb restore-table-to-point-in-time --profile <profile> \
+  --source-table-name cap-<inst>-<stage>-table \
+  --target-table-name cap-<inst>-<stage>-table-restored-<yyyymmdd> \
+  --restore-date-time <ISO-8601 UTC>
+
+# B. A daily recovery point of the vault
+aws backup list-recovery-points-by-backup-vault --profile <profile> --backup-vault-name cap-<inst>-<stage>
+aws backup get-recovery-point-restore-metadata --profile <profile> \
+  --backup-vault-name cap-<inst>-<stage> --recovery-point-arn <arn>
+aws backup start-restore-job --profile <profile> --recovery-point-arn <arn> \
+  --iam-role-arn <a role with AWSBackupServiceRolePolicyForRestores, e.g. AWSBackupDefaultServiceRole> \
+  --metadata '{"TargetTableName":"cap-<inst>-<stage>-table-restored-<yyyymmdd>"}'
+```
+
+The stack's selection role can only back up, not restore; the console's "Restore" creates
+`AWSBackupDefaultServiceRole` the first time. A restored table has the keys and GSIs but **not** PITR, TTL, deletion protection or tags; it is not part of any
+stack. Then, either:
+
+- **Copy back what was lost** (usual case: a few items): read them from the restored table and write them to the live
+  one, then delete the restored table; or
+- **Repoint the API** to it: the functions read `CAP_TABLE_NAME`, which today is the `CollectorsData` table's name
+  and not a config setting, so the only way is `aws lambda update-function-configuration` on each function — the
+  next deploy puts the live table back. A config override for this is a follow-up (CAP-57 PR, Pending).
 
 ## Custom domains (CAP-29, once per target)
 
