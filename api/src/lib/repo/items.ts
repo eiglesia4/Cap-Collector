@@ -6,6 +6,7 @@ import {
   type AlbumLocation,
   type Cap,
   type CapHistory,
+  type ExchangeRequestItem,
   brandGsi2,
   capPk,
   capSk,
@@ -35,6 +36,15 @@ export function stripKeys<T>(item: Record<string, unknown>): T {
   const out: Record<string, unknown> = { ...item };
   for (const a of STORAGE_ATTRIBUTES) delete out[a];
   return out as T;
+}
+
+/**
+ * An `EXCHANGE#` item as the entity: unlike other items, `ttl` is part of the shared `ExchangeRequestItem` (the
+ * service reports past-ttl items as `expired`, CAP-44), so it survives the key strip.
+ */
+export function toExchangeItem(item: Record<string, unknown>): ExchangeRequestItem {
+  const out = stripKeys<ExchangeRequestItem>(item);
+  return typeof item.ttl === 'number' ? { ...out, ttl: item.ttl } : out;
 }
 
 const isLive = (cap: Cap) => cap.deletedAt === undefined;
