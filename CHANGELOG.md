@@ -100,6 +100,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Changed
 
+- CAP-47 (method): after rebasing a `CAP-*` branch, push with `git push --force-with-lease origin CAP-<n>-<slug>`
+  (never plain `--force`, never `main`); `/revise` keeps both sides of additive conflicts (`app.css`, `CHANGELOG.md`)
+  and regenerates `TEST.md` with `npm run catalog`.
 - CAP-34: method — `dev-infra` (`area-infra`) owns `infra/**` and `deploy/**`; `integrator` keeps merges, releases,
   dependencies, root configs, CI, hooks, tools, CHANGELOG and TEST.md under the new label `area-integration`
   (OWNERSHIP.md, CLAUDE.md, CODEOWNERS, `/next`, method.md).
