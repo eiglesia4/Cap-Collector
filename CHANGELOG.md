@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-25: cap form (SCREENS.md #5, ADR-003 modes `empty | edit`) on `/new` and `/cap/:id/edit` — brand autocomplete,
+  ISO country search, enum selects, tag chips, inline `CapInput` validation and 422 `Problem.errors[]` per field;
+  photos resized client-side to WebP ≤ 1024 px and uploaded via presigned PUT with retry; `POST /caps` or a PATCH with
+  only the changed fields; in edit mode a "Needs review" toggle sends `status` only when it changes (T-app-048…059).
 - CAP-28: native Sign in with Apple sheet on iPhone (`@capacitor-community/apple-sign-in`, `clientId` = bundle id,
   PKCE nonce/state; cancel by error code 1001, message as fallback); on 403 the sign-in screen shows the Apple `sub`
   decoded locally with Copy for the allow-list; `App.entitlements` + Xcode `CODE_SIGN_ENTITLEMENTS` and

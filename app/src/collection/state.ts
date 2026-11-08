@@ -48,3 +48,14 @@ export function forgetCap(ctx: Pick<AppContext, 'api'>, capId: string): void {
   state.pager.remove(capId);
   if (state.recent !== null) state.recent = state.recent.filter((c) => c.capId !== capId);
 }
+
+/**
+ * A cap was created or edited (CAP-25): the loaded pages and the "Recently added" strip are stale, so the next visit
+ * to Collection reloads them (keeping the query).
+ */
+export function invalidateCollection(ctx: Pick<AppContext, 'api'>): void {
+  const state = collectionState(ctx);
+  state.started = false;
+  state.recent = null;
+  state.scrollY = 0;
+}
