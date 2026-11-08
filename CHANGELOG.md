@@ -7,6 +7,16 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-31: the share link is the HTTPS mirror `<VITE_WEB_URL>/cap/<capId>` on iPhone and Mac (amended ADR-008 §5);
+  new optional `VITE_WEB_URL` (bare https origin, validated at load); without it the web falls back to
+  `location.origin` and the iPhone shares text only; `collectors://` share branch removed (T-app-060, T-app-061).
+- CAP-40: infra for scans — required `ai: { modelId, dhashThreshold }` in `infra/config/*.json` (naeva/dev:
+  `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, threshold 10); new grant `bedrock` (`bedrock:InvokeModel` on the
+  configured model / inference profile only) for `scans-analyse`, which also gets `images-get`, `CAP_BEDROCK_MODEL_ID`,
+  `CAP_DHASH_THRESHOLD` and 1024 MB / 20 s; cost guard: daily Bedrock invocations alarm (> 300) on the new
+  `cap-<inst>-<stage>-alerts` topic, e-mail from SSM `alert-email` (T-infra-028…031).
+- CAP-32: `@capacitor/app` 8.1.2 in `app` (same major as `@capacitor/core`) for `collectors://` deep links (CAP-33);
+  SPM `Package.swift` synced; the root Capacitor import boundary already covers `@capacitor/*`.
 - CAP-25: cap form (SCREENS.md #5, ADR-003 modes `empty | edit`) on `/new` and `/cap/:id/edit` — brand autocomplete,
   ISO country search, enum selects, tag chips, inline `CapInput` validation and 422 `Problem.errors[]` per field;
   photos resized client-side to WebP ≤ 1024 px and uploaded via presigned PUT with retry; `POST /caps` or a PATCH with
@@ -93,6 +103,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Changed
 
+- CAP-47 (method): after rebasing a `CAP-*` branch, push with `git push --force-with-lease origin CAP-<n>-<slug>`
+  (never plain `--force`, never `main`); `/revise` keeps both sides of additive conflicts (`app.css`, `CHANGELOG.md`)
+  and regenerates `TEST.md` with `npm run catalog`.
 - CAP-34: method — `dev-infra` (`area-infra`) owns `infra/**` and `deploy/**`; `integrator` keeps merges, releases,
   dependencies, root configs, CI, hooks, tools, CHANGELOG and TEST.md under the new label `area-integration`
   (OWNERSHIP.md, CLAUDE.md, CODEOWNERS, `/next`, method.md).

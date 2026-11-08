@@ -9,8 +9,11 @@
  */
 import { ROUTES as CONTRACT_ROUTES, type RouteDef } from '@capcollector/shared';
 
-/** `table` = read/write on the table and its GSIs; `images-put` / `images-get` = presign PUT / GET on the images bucket. */
-export type Grant = 'table' | 'images-put' | 'images-get';
+/**
+ * `table` = read/write on the table and its GSIs; `images-put` / `images-get` = presign PUT / GET on the images bucket;
+ * `bedrock` = `bedrock:InvokeModel` on the configured model only (config `ai.modelId`, CAP-40).
+ */
+export type Grant = 'table' | 'images-put' | 'images-get' | 'bedrock';
 
 /** SSM-backed settings (CollectorsData creates the parameters, Edu fills them): the env var each one becomes. */
 export const SECRET_ENV = {
@@ -29,12 +32,31 @@ export type SecretName = keyof typeof SECRET_ENV;
 export const CERTIFICATE_SETTINGS = ['webCertificateArn', 'apiCertificateArn'] as const;
 export type CertificateSettingName = (typeof CERTIFICATE_SETTINGS)[number];
 
+/**
+ * SSM-backed settings for notifications (CAP-40), read by CollectorsApi, never by a Lambda: the e-mail subscribed to
+ * the alerts topic. `unset` → the topic exists without a subscription.
+ */
+export const NOTIFICATION_SETTINGS = ['alertEmail'] as const;
+export type NotificationSettingName = (typeof NOTIFICATION_SETTINGS)[number];
+
 /** Every SSM parameter CollectorsData creates with the `unset` placeholder. */
-export type SettingName = SecretName | CertificateSettingName;
+export type SettingName = SecretName | CertificateSettingName | NotificationSettingName;
+
+/** Values from `config.ai` a function may receive (CAP-40), and the env var each one becomes. */
+export const AI_ENV = {
+  bedrockModelId: 'CAP_BEDROCK_MODEL_ID',
+  dhashThreshold: 'CAP_DHASH_THRESHOLD',
+} as const;
+export type AiEnvName = keyof typeof AI_ENV;
 
 export interface Wiring {
   readonly grants: readonly Grant[];
   readonly secrets?: readonly SecretName[];
+  /** Config values passed as env vars (CAP-40). */
+  readonly config?: readonly AiEnvName[];
+  /** Overrides of the default sizing (FUNCTION_MEMORY_MB / FUNCTION_TIMEOUT_SECONDS) for a heavier handler. */
+  readonly memoryMb?: number;
+  readonly timeoutSeconds?: number;
 }
 
 /** A contract route plus its wiring. */
@@ -64,8 +86,14 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
   'caps-location-put': T,
   'caps-location-delete': T,
 
-  // Bedrock access for scans-analyse comes with its V2 story.
-  'scans-analyse': T,
+  // CAP-40 (ADR-004, ADR-008 §7): scans-analyse reads the photos, compares dHashes against the table and only then
+  // calls Bedrock; 1024 MB / 20 s for the model call plus two S3 reads.
+  'scans-analyse': {
+    grants: ['table', 'images-get', 'bedrock'],
+    config: ['bedrockModelId', 'dhashThreshold'],
+    memoryMb: 1024,
+    timeoutSeconds: 20,
+  },
   'scans-list': T,
 
   'albums-list': T,
@@ -86,10 +114,7 @@ export function wireRoutes(
   routes: readonly RouteDef[],
   wiring: Readonly<Record<string, Wiring>> = WIRING,
 ): readonly Route[] {
-  return routes.map((r) => {
-    const w = wiring[r.handler] ?? NONE;
-    return { ...r, grants: w.grants, ...(w.secrets && { secrets: w.secrets }) };
-  });
+  return routes.map((r) => ({ ...r, ...(wiring[r.handler] ?? NONE) }));
 }
 
 export const ROUTES: readonly Route[] = wireRoutes(CONTRACT_ROUTES);

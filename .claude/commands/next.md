@@ -25,7 +25,7 @@ Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en ord
 
 5. **Si la spec no cubre algo o te obliga a cambiarla:** no la cambies. Decisión conservadora, `// SPEC-GAP CAP-<n>: …` en el código, y a la sección "Spec deviations" del paso 7.
 
-6. **PR.** `git fetch origin && git rebase origin/main`, luego `gh pr create --base main --title "CAP-<n>: <summary>"`. Cuerpo **en inglés** con: Done · Tests (IDs) · Spec covered · Deviations. Un PR por historia. Sin líneas de coautoría: el autor del commit es Edu (`git config` de la máquina).
+6. **PR.** `git fetch origin && git rebase origin/main` y, como la rama ya está en origin, `git push --force-with-lease origin CAP-<n>-<slug>` (solo ramas `CAP-*`; nunca `--force` a secas); luego `gh pr create --base main --title "CAP-<n>: <summary>"`. Cuerpo **en inglés** con: Done · Tests (IDs) · Spec covered · Deviations. Un PR por historia. Sin líneas de coautoría: el autor del commit es Edu (`git config` de la máquina).
 
 7. **Cerrar el bucle en Jira** (comentario **en inglés** con exactamente estas secciones; las lee el dashboard):
 

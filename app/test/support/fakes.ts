@@ -49,7 +49,13 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   };
 }
 
-export const TEST_CONFIG: AppConfig = { apiUrl: 'https://api.test', version: '1.2.3', dev: true, apple: null };
+export const TEST_CONFIG: AppConfig = {
+  apiUrl: 'https://api.test',
+  version: '1.2.3',
+  dev: true,
+  apple: null,
+  webUrl: null,
+};
 
 export async function shellContext(
   overrides: {

@@ -18,6 +18,15 @@ const ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/;
 /** Free text (dev, prod, test…); only its shape is checked. */
 const STAGE_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
 /** A bare DNS name (no scheme, no path, no trailing dot), lowercase: what CloudFront and API Gateway accept. */
+/**
+ * A Bedrock model id (`anthropic.claude-…-v1:0`) or a cross-region inference profile id (`eu.anthropic.…`); never an
+ * ARN, which would carry an account or a region (CONVENTIONS: nothing account-specific is committed).
+ */
+const MODEL_ID_RE = /^([a-z]{2,6}\.)?[a-z0-9-]+\.[a-z0-9][a-z0-9.:-]*$/;
+/** Geography prefixes of Bedrock cross-region inference profiles (`eu.`, `us.`, `apac.`, `global.`…). */
+const INFERENCE_PROFILE_PREFIX_RE = /^(eu|us|us-gov|apac|jp|au|ca|global)\./;
+/** A 64-bit dHash: Hamming distances go from 0 to 64 (ADR-004). */
+export const DHASH_BITS = 64;
 const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 /**
@@ -54,7 +63,22 @@ export interface InstallationConfig {
    * their default CloudFront / API Gateway URLs. DNS stays at GoDaddy; the certificates come from SSM.
    */
   readonly domains?: Domains;
+  /** Vision identification and duplicate detection (ADR-004, ADR-008 §7, CAP-40). Required: scans-analyse needs it. */
+  readonly ai: AiConfig;
 }
+
+export interface AiConfig {
+  /** Bedrock model id or cross-region inference profile id (Claude Haiku-class vision model, ADR-002/ADR-008 §7). */
+  readonly modelId: string;
+  /** Hamming distance ≤ this → "Already in collection", no AI call (ADR-004; start at 10, tuned from Scan items). */
+  readonly dhashThreshold: number;
+}
+
+/** True for an inference profile id (`eu.anthropic.…`): IAM must allow the profile and the models it routes to. */
+export const isInferenceProfile = (modelId: string): boolean => INFERENCE_PROFILE_PREFIX_RE.test(modelId);
+
+/** The foundation model behind a model id: the inference profile prefix removed, if any. */
+export const foundationModelId = (modelId: string): string => modelId.replace(INFERENCE_PROFILE_PREFIX_RE, '');
 
 export interface Domains {
   /** Host of the web build on CloudFront, e.g. `caps.naevatec.com` (certificate in us-east-1). */
@@ -127,7 +151,31 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
     config_version: raw.config_version,
     app_origins: origins,
     ...(domains && { domains }),
+    ai: validateAi(file, raw.ai),
   };
+}
+
+/** `ai` is required: a bare model id or inference profile id, and an integer threshold 0…64 (T-infra-030). */
+function validateAi(file: string, value: unknown): AiConfig {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${file}: "ai" is required: { "modelId": "<bedrock model id>", "dhashThreshold": 10 }`);
+  }
+  const { modelId, dhashThreshold } = value as Record<string, unknown>;
+  if (typeof modelId !== 'string' || !MODEL_ID_RE.test(modelId)) {
+    throw new Error(
+      `${file}: "ai.modelId" must be a Bedrock model id or inference profile id like ` +
+        '"eu.anthropic.claude-haiku-4-5-20251001-v1:0" (never an ARN)',
+    );
+  }
+  if (
+    typeof dhashThreshold !== 'number' ||
+    !Number.isInteger(dhashThreshold) ||
+    dhashThreshold < 0 ||
+    dhashThreshold > DHASH_BITS
+  ) {
+    throw new Error(`${file}: "ai.dhashThreshold" must be an integer from 0 to ${DHASH_BITS} (Hamming distance)`);
+  }
+  return { modelId, dhashThreshold };
 }
 
 /** `domains` is all or nothing: both hosts, both bare lowercase DNS names (T-infra-026). */
