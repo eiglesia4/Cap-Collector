@@ -20,7 +20,8 @@
     "@capacitor/ios": "^8.6.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
-    "@capcollector/shared": "*"
+    "@capcollector/shared": "*",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
