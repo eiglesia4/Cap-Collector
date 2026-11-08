@@ -33,6 +33,7 @@ import type { Construct } from 'constructs';
 
 import { type Deployment, type InstallationConfig, resourceName } from './config.js';
 import { CERTIFICATE_SETTINGS, SECRET_ENV, type SecretName, type SettingName } from './routes.js';
+import { retainProviderLogs } from './ops.js';
 import { TABLE_DEFINITION } from './table-definition.js';
 
 export type CollectorsDataStackProps = StackProps & {
@@ -219,5 +220,9 @@ export class CollectorsDataStack extends Stack {
         description: `GoDaddy CNAME value for ${webDomain}`,
       });
     }
+
+    // CAP-51: the S3 auto-delete provider (dev only) is a Lambda CDK creates itself; its log group gets the configured
+    // retention too, so no log group in this stack is "never expire".
+    retainProviderLogs(this, config.ops.logRetentionDays, removalPolicy);
   }
 }

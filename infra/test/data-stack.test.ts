@@ -42,6 +42,7 @@ const stackFor = (stage: string) =>
         region: 'test-region-1',
         app_origins: ['capacitor://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+        ops: { budgetEur: 10, logRetentionDays: 30 },
       },
     }),
   );
@@ -183,6 +184,7 @@ describe('CollectorsData stack', () => {
           config_version: 'v',
           region: 'r',
           ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+          ops: { budgetEur: 10, logRetentionDays: 30 },
           ...extra,
         }),
       );

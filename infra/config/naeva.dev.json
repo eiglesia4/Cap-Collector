@@ -3,5 +3,6 @@
   "region": "eu-west-1",
   "app_origins": ["capacitor://localhost", "http://localhost:5173"],
   "domains": { "web": "caps.naevatec.com", "api": "api.caps.naevatec.com" },
-  "ai": { "modelId": "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "dhashThreshold": 10 }
+  "ai": { "modelId": "eu.anthropic.claude-haiku-4-5-20251001-v1:0", "dhashThreshold": 10 },
+  "ops": { "budgetEur": 10, "logRetentionDays": 30 }
 }
