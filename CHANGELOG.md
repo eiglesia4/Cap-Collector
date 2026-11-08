@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-31: the share link is the HTTPS mirror `<VITE_WEB_URL>/cap/<capId>` on iPhone and Mac (amended ADR-008 §5);
+  new optional `VITE_WEB_URL` (bare https origin, validated at load); without it the web falls back to
+  `location.origin` and the iPhone shares text only; `collectors://` share branch removed (T-app-060, T-app-061).
 - CAP-40: infra for scans — required `ai: { modelId, dhashThreshold }` in `infra/config/*.json` (naeva/dev:
   `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, threshold 10); new grant `bedrock` (`bedrock:InvokeModel` on the
   configured model / inference profile only) for `scans-analyse`, which also gets `images-get`, `CAP_BEDROCK_MODEL_ID`,

@@ -242,7 +242,7 @@ describe('sign-in screen and guard', () => {
   });
 
   it('[T-app-024] the development skip exists only in development builds', async () => {
-    const prodConfig = { apiUrl: 'https://api.test', version: '1', dev: false, apple: null };
+    const prodConfig = { apiUrl: 'https://api.test', version: '1', dev: false, apple: null, webUrl: null };
     const ctx = await shellContext({ config: prodConfig, signedIn: false });
     const app = mount('/', ctx);
     expect(root.querySelector('.sign-in button.button--secondary')).toBeNull();

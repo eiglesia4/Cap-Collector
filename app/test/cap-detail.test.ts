@@ -4,14 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApiClient, RequestOptions } from '../src/api/client';
 import { HttpError, NetworkError } from '../src/api/errors';
-import { capLink, shareRequest, shareText } from '../src/cap/share';
+import { capLink, linkOrigin, shareRequest, shareText } from '../src/cap/share';
 import { collectionState } from '../src/collection/state';
 import type { AppContext } from '../src/context';
 import { t } from '../src/i18n/i18n';
 import { matchRoute } from '../src/router/routes';
 import { CapDetailScreen, changesLine, formatDate, sameBrand, variantsOf } from '../src/screens/cap-detail-screen';
 import { ulid, wireCap, wirePage } from './support/caps';
-import { fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
+import { TEST_CONFIG, fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
 
 const ID = ulid(1);
 
@@ -59,7 +59,7 @@ const HISTORY: CapHistory[] = [
 
 type Route = (path: string, method: string) => unknown;
 
-async function mount(respond: Route, kind: 'web' | 'native' = 'native', id = ID) {
+async function mount(respond: Route, kind: 'web' | 'native' = 'native', id = ID, webUrl: string | null = null) {
   const calls: { path: string; method: string }[] = [];
   const request = vi.fn(async <T>(path: string, options: RequestOptions<T>): Promise<T> => {
     const method = options.method ?? 'GET';
@@ -70,7 +70,12 @@ async function mount(respond: Route, kind: 'web' | 'native' = 'native', id = ID)
   });
   const platform = fakePlatform(kind);
   const api = fakeApi({ request: request as ApiClient['request'] });
-  const ctx: AppContext = { ...(await shellContext({ api, platform })), navigate: vi.fn(), skipSignIn: vi.fn() };
+  const config = { ...TEST_CONFIG, webUrl };
+  const ctx: AppContext = {
+    ...(await shellContext({ api, platform, config })),
+    navigate: vi.fn(),
+    skipSignIn: vi.fn(),
+  };
   const route = matchRoute(`/cap/${id}`);
   if (!route) throw new Error('no route');
   const el = CapDetailScreen(ctx, route);
@@ -301,28 +306,52 @@ describe('cap detail', () => {
     expect(text(many.el, '.detail-variants h2')).toBe(t('capDetail.variants', { count: 2 }));
   });
 
-  it('[T-app-043] share text is brand · variant · country · year with the app deep link (iPhone) or the web URL', async () => {
+  it('[T-app-043] share text is brand · variant · country · year with the HTTPS link to the cap', async () => {
     const cap = Cap.parse(FULL);
     expect(shareText(cap)).toBe('Mahou · Clásica · ES · 2023');
     expect(shareText(Cap.parse(wireCap(5, { brand: 'Chimay', year: 1999 })))).toBe('Chimay · 1999');
-    expect(capLink(cap, 'native', 'https://caps.test')).toBe(`collectors://cap/${ID}`);
-    expect(capLink(cap, 'web', 'https://caps.test')).toBe(`https://caps.test/cap/${ID}`);
-    expect(shareRequest(cap, 'web', 'https://caps.test')).toEqual({
+    expect(capLink(cap, 'https://caps.test')).toBe(`https://caps.test/cap/${ID}`);
+    expect(shareRequest(cap, 'https://caps.test')).toEqual({
       title: 'Mahou',
       text: 'Mahou · Clásica · ES · 2023',
       url: `https://caps.test/cap/${ID}`,
     });
 
-    const { el, platform } = await mount(standard);
+    const { el, platform } = await mount(standard, 'native', ID, 'https://caps.naevatec.com');
     el.querySelector<HTMLButtonElement>('[data-action="share"]')?.click();
     expect(platform.share).toHaveBeenCalledWith({
       title: 'Mahou',
       text: 'Mahou · Clásica · ES · 2023',
-      url: `collectors://cap/${ID}`,
+      url: `https://caps.naevatec.com/cap/${ID}`,
     });
     // A share sheet that throws is swallowed.
     vi.mocked(platform.share).mockRejectedValueOnce(new Error('boom'));
     el.querySelector<HTMLButtonElement>('[data-action="share"]')?.click();
     await flush();
+  });
+
+  it('[T-app-060] share link: VITE_WEB_URL on iPhone and Mac; web falls back to its origin; iPhone without it shares text only', async () => {
+    // No collectors:// link any more (ADR-008 §5 as amended; the scheme is V2).
+    expect(linkOrigin('native', 'https://caps.naevatec.com', 'capacitor://localhost')).toBe(
+      'https://caps.naevatec.com',
+    );
+    expect(linkOrigin('web', 'https://caps.naevatec.com', 'https://d111.cloudfront.net')).toBe(
+      'https://caps.naevatec.com',
+    );
+    expect(linkOrigin('web', null, 'https://d111.cloudfront.net')).toBe('https://d111.cloudfront.net');
+    expect(linkOrigin('native', null, 'capacitor://localhost')).toBeNull();
+    expect(capLink(Cap.parse(FULL), null)).toBeUndefined();
+    expect(shareRequest(Cap.parse(FULL), null)).toEqual({ title: 'Mahou', text: 'Mahou · Clásica · ES · 2023' });
+
+    const share = async (kind: 'web' | 'native', webUrl: string | null) => {
+      const { el, platform } = await mount(standard, kind, ID, webUrl);
+      el.querySelector<HTMLButtonElement>('[data-action="share"]')?.click();
+      return vi.mocked(platform.share).mock.calls[0]?.[0];
+    };
+    expect((await share('web', 'https://caps.naevatec.com'))?.url).toBe(`https://caps.naevatec.com/cap/${ID}`);
+    expect((await share('web', null))?.url).toBe(`${window.location.origin}/cap/${ID}`);
+    const native = await share('native', null);
+    expect(native).toEqual({ title: 'Mahou', text: 'Mahou · Clásica · ES · 2023' });
+    expect(JSON.stringify(native)).not.toContain('collectors:');
   });
 });
