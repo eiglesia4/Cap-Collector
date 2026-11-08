@@ -16,7 +16,7 @@ npm run diff                       # from the repo root (builds shared first)
 npm run deploy                     # CollectorsData first, then CollectorsApi
 ```
 
-**First deploy of `CollectorsApi`:** `CollectorsData` creates three SSM parameters with the value `unset`; the API
+**First deploy of `CollectorsApi`:** `CollectorsData` creates its SSM parameters with the value `unset`; the API
 reads them at deploy time and must refuse `unset`. Fill them before relying on Sign in with Apple (CAP-19), then run
 `npm run deploy` again so CloudFormation resolves the new values:
 
@@ -24,6 +24,22 @@ reads them at deploy time and must refuse `unset`. Fill them before relying on S
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/allowed-apple-subs --value '<apple sub>'
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/apple-client-ids  --value 'com.naevatec.collectors,<web service id>'
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/session-secret    --value "$(openssl rand -base64 48)"
+```
+
+**Alerts (CAP-40):** `CollectorsApi` creates the topic `cap-<inst>-<stage>-alerts` and an alarm when Bedrock is
+invoked more than 300 times in a day (cost guard). The e-mail comes from `/cap/<inst>/<stage>/alert-email`; while it is
+`unset` the topic has no subscription. Set it, redeploy `CollectorsApi`, and confirm the e-mail AWS sends:
+
+```bash
+aws ssm put-parameter --overwrite --name /cap/naeva/dev/alert-email --value '<your e-mail>'
+```
+
+**Bedrock model (CAP-40):** `ai.modelId` in `config/<inst>.<stage>.json`. Check what the region offers (and enable
+model access in the Bedrock console once); in eu-west-1 recent Claude models come as `eu.` inference profiles:
+
+```bash
+aws bedrock list-inference-profiles --region eu-west-1 --query "inferenceProfileSummaries[?contains(inferenceProfileId,'haiku')].inferenceProfileId"
+aws bedrock list-foundation-models  --region eu-west-1 --by-output-modality TEXT --query "modelSummaries[?contains(modelId,'haiku')].modelId"
 ```
 
 CloudFormation leaves these values alone as long as the parameter definitions in `collectors-data-stack.ts` do not
