@@ -50,6 +50,7 @@
   "capDetail.edit": "Edit",
   "capDetail.more": "More actions",
   "capDetail.share": "Share",
+  "capDetail.reidentify": "Re-identify with AI",
   "capDetail.delete": "Delete",
   "capDetail.deleteConfirm": "Delete {name}? It leaves your collection and frees its pocket.",
   "capDetail.deleted": "Deleted",
@@ -227,5 +228,19 @@
   "scanDuplicate.updated": "Cap updated",
   "scanDuplicate.updateFailed": "Couldn’t update the cap. Try again.",
   "scanReview.title": "AI review",
-  "scanOutcome.placeholder": "This screen is coming soon."
+  "review.unsure": "Unsure",
+  "review.unsureConfidence": "Unsure · {percent} %",
+  "review.aiSuggests": "AI suggests: {value}",
+  "review.accept": "Accept",
+  "review.askAgain": "Ask again",
+  "review.addUnderside": "Add underside photo",
+  "review.asking": "Asking the AI again…",
+  "review.updated": "Updated the fields you have not edited.",
+  "review.notIdentified": "The AI could not identify it this time. Your values are kept.",
+  "review.askFailed": "Couldn’t ask the AI again.",
+  "reidentify.title": "Re-identify",
+  "reidentify.asking": "Asking the AI…",
+  "reidentify.nothing": "The AI has nothing different to suggest for this cap.",
+  "reidentify.failed": "Couldn’t re-identify this cap.",
+  "reidentify.back": "Back"
 }

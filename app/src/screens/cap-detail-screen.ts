@@ -1,4 +1,5 @@
-// Cap detail (SCREENS.md #6, CAP-24): header (back to Collection, Edit, "⋯" with Share and Delete), top photo with
+// Cap detail (SCREENS.md #6, CAP-24): header (back to Collection, Edit, "⋯" with Share, Re-identify with AI (CAP-43)
+// and Delete), top photo with
 // the underside as a swappable thumbnail, title and producer · country · year, chips, stat tiles, fields card,
 // "Where is it?", the "Same brand" carousel and the history list. Data: `GET /caps/{capId}`, `/history` and
 // `GET /caps?q=<brand>` (openapi.yaml); delete is a tombstone (`DELETE`, ADR-006) followed by an undo-less "Deleted"
@@ -170,6 +171,15 @@ function moreMenu(ctx: AppContext, root: HTMLElement, cap: Cap): HTMLElement {
           },
         },
         t('capDetail.share'),
+      ),
+      h(
+        'a',
+        {
+          class: 'menu-item',
+          attrs: { href: pathFor('capReidentify', { id: cap.capId }), 'data-link': true, 'data-action': 'reidentify' },
+          on: { click: () => (menu.open = false) },
+        },
+        t('capDetail.reidentify'),
       ),
       h(
         'button',
