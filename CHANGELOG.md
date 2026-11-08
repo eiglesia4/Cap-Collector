@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-49: Albums API — list / create / patch (GRANDE 6 × 7 defaults, 409 on taken letter, kind change or shrink below an occupied pocket), sheet view over GSI1 and next free pocket; `DynamoAlbumRepository` with conditional puts.
 - CAP-36: client dHash (64-bit, BT.601 luma, 9 × 8 area average, MSB-first hex) of the square inscribed in the cap circle, and the circular crop of the capture photo (ADR-004 §1).
 - CAP-39: Bedrock vision adapter (ADR-004 §3, ADR-008 §7) — Converse with `EXCHANGE_INSTRUCTIONS`, top/underside
   WebP and the field schema + `known` (600 tokens, temperature 0, 8 s); the answer goes through the exchange-upload
