@@ -174,6 +174,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const port = Number(process.env.PORT ?? 3000);
   // The local server defaults to the `local` stage (fake auth); set CAP_STAGE to anything else to use real sessions.
   process.env.CAP_STAGE ??= 'local';
+  // Vision answers come from fixtures unless asked otherwise (CAP-39): no Bedrock, no AWS credentials needed.
+  process.env.CAP_VISION ??= 'fake';
   const repos = useLocalRepositories();
   const auth = localAuthFor();
   createLocalServer(auth).listen(port, '127.0.0.1', () => {
