@@ -10,7 +10,12 @@ const dataTemplate = () =>
   Template.fromStack(
     new CollectorsDataStack(new App(), 'CollectorsData', {
       deployment: { installation: 'naeva', stage: 'dev' },
-      config: { config_version: 'test', region: 'test-region-1', app_origins: ['capacitor://localhost'] },
+      config: {
+        config_version: 'test',
+        region: 'test-region-1',
+        app_origins: ['capacitor://localhost'],
+        ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+      },
     }),
   );
 
