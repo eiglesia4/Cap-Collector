@@ -45,3 +45,10 @@ export class NotImplemented extends ApiError {
   readonly title = 'Not implemented';
   override readonly name = 'NotImplemented';
 }
+
+/** A dependency the route needs is unavailable (AI model down or not configured: openapi.yaml /scans/analyse 503). */
+export class ServiceUnavailable extends ApiError {
+  readonly status = 503;
+  readonly title = 'Service unavailable';
+  override readonly name = 'ServiceUnavailable';
+}

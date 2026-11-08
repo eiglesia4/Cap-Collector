@@ -4,7 +4,7 @@ import { readdirSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { ROUTES, type RouteDef } from '@capcollector/shared';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   HANDLERS_DIR,
@@ -16,6 +16,8 @@ import {
 } from '../scripts/local-server.js';
 import { getRepositories, setRepositories } from '../src/lib/repo/index.js';
 import { InMemoryCapRepository, createMemoryRepositories } from '../src/lib/repo/memory.js';
+import { newId } from '../src/lib/ids.js';
+import { type VisionAdapter, setVisionAdapter } from '../src/lib/vision/adapter.js';
 import { useAwsTestEnv } from './support/aws-env.js';
 
 useAwsTestEnv();
@@ -28,8 +30,6 @@ useAwsTestEnv();
 const NOT_YET_LANDED = [
   'caps-location-put',
   'caps-location-delete',
-  'scans-analyse',
-  'scans-list',
   'albums-list',
   'albums-create',
   'albums-patch',
@@ -140,5 +140,37 @@ describe('api:local', () => {
     expect(res.status).toBe(501);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
     expect(await res.json()).toMatchObject({ status: 501, title: 'Not implemented' });
+  });
+
+  it('[T-api-050] api:local scans flow: analyse → save the cap → the same dHash again is a duplicate without the adapter; GET /scans lists both', async () => {
+    setRepositories(createMemoryRepositories());
+    const identify = vi.fn<VisionAdapter['identify']>(async () => ({ status: 'unavailable', reason: 'stub' }));
+    setVisionAdapter({ identify });
+    const post = async (path: string, body: unknown) => {
+      const res = await fetch(`${base}${path}`, { method: 'POST', body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    const dhash = 'a3f0c81e7b2d9f44';
+    const top = `local-user/${newId()}/top.webp`;
+
+    const first = await post('/scans/analyse', { scanId: newId(), dhash, imageKeys: { top } });
+    expect(first.status).toBe(503);
+    expect(identify).toHaveBeenCalledTimes(1);
+    const cap = await post('/caps', { brand: 'Mahou', dhash, images: { top: { key: top, width: 640, height: 640 } } });
+    expect(cap.status).toBe(201);
+
+    const second = await post('/scans/analyse', { scanId: newId(), dhash, imageKeys: { top } });
+    expect(second).toMatchObject({
+      status: 200,
+      body: { outcome: 'duplicate', match: { capId: cap.body.capId, by: 'dhash' } },
+    });
+    expect(identify).toHaveBeenCalledTimes(1);
+
+    const list = (await (await fetch(`${base}/scans`)).json()) as { items: { outcome: string; aiCalled: boolean }[] };
+    expect(list.items.map((s) => [s.outcome, s.aiCalled])).toEqual([
+      ['duplicate', false],
+      ['unidentified', true],
+    ]);
+    setVisionAdapter(undefined);
   });
 });

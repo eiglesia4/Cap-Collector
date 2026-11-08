@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-37: scans API (ADR-004) — `POST /scans/analyse`: dHash Hamming over the user's live caps (≤ `CAP_DHASH_THRESHOLD`,
+  default 10 → `duplicate` with the AI never called), `useAi=false` → `unidentified`, `VisionAdapter` interface with a
+  stub (unavailable → Scan stored, 503), brand + variant re-check over GSI2; every call stores a `Scan`; `GET /scans`
+  newest first with cursor (T-api-042…050).
 - CAP-31: the share link is the HTTPS mirror `<VITE_WEB_URL>/cap/<capId>` on iPhone and Mac (amended ADR-008 §5);
   new optional `VITE_WEB_URL` (bare https origin, validated at load); without it the web falls back to
   `location.origin` and the iPhone shares text only; `collectors://` share branch removed (T-app-060, T-app-061).

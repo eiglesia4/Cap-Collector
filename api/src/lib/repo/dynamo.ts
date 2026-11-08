@@ -1,10 +1,11 @@
 // DynamoDB repositories for the deployed Lambdas (data-model.md: single table, GSI1 location, GSI2 brand). Writes are
 // the items.ts plan sent as one TransactWriteItems (cap + HIST# + LOCK#, ADR-006); keys come only from shared/keys.ts;
-// cursors are base64url(LastEvaluatedKey). Albums, scans and exchange are stubs until their stories (CAP-17 scope).
+// cursors are base64url(LastEvaluatedKey). Scans are real since CAP-37; albums and exchange are stubs until their stories.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  PutCommand,
   QueryCommand,
   type QueryCommandInput,
   TransactWriteCommand,
@@ -20,6 +21,7 @@ import {
   SK_PREFIX,
   capPk,
   capSk,
+  scanSk,
   userPk,
 } from '@capcollector/shared';
 
@@ -54,6 +56,8 @@ import {
   type ExchangeRepository,
   MAX_PAGE_SIZE,
   type Page,
+  type PageOptions,
+  SCAN_MAX_PAGE_SIZE,
   type RefreshTokenItem,
   type RefreshTokenRepository,
   type Repositories,
@@ -63,7 +67,7 @@ import {
 
 /** The slice of the document client the repositories use (aws-sdk-client-mock or a fake can stand in). */
 export interface DocSender {
-  send(command: GetCommand | QueryCommand | TransactWriteCommand): Promise<unknown>;
+  send(command: GetCommand | PutCommand | QueryCommand | TransactWriteCommand): Promise<unknown>;
 }
 
 export function createDocumentClient(config: Pick<Config, 'dynamodbEndpoint'>): DynamoDBDocumentClient {
@@ -246,16 +250,58 @@ export class DynamoAlbumRepository implements AlbumRepository {
   }
 }
 
-/** Stub until the scans story (EP-05). */
+/** Scans under the user partition, `SCAN#<ts>#<scanId>` (data-model.md; CAP-37). Append-only: one item per analyse. */
 export class DynamoScanRepository implements ScanRepository {
-  put(_uid: string, _scan: Scan): Promise<void> {
-    return notYet('DynamoScanRepository.put');
+  constructor(
+    private readonly doc: DocSender,
+    private readonly tableName: string,
+  ) {}
+
+  async put(uid: string, scan: Scan): Promise<void> {
+    await this.doc.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: { ...scan, pk: userPk(uid), sk: scanSk(scan.ts, scan.scanId) },
+      }),
+    );
   }
-  get(_uid: string, _scanId: string): Promise<Scan | undefined> {
-    return notYet('DynamoScanRepository.get');
+
+  /** The sort key starts with the timestamp, so a lookup by id walks the user's scans with a filter. */
+  async get(uid: string, scanId: string): Promise<Scan | undefined> {
+    let start: Record<string, unknown> | undefined;
+    do {
+      const r = (await this.doc.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          FilterExpression: 'scanId = :scanId',
+          ExpressionAttributeValues: { ':pk': userPk(uid), ':prefix': SK_PREFIX.scan, ':scanId': scanId },
+          ...(start ? { ExclusiveStartKey: start } : {}),
+        }),
+      )) as QueryOut;
+      const hit = r.Items?.[0];
+      if (hit) return stripKeys<Scan>(hit);
+      start = r.LastEvaluatedKey;
+    } while (start);
+    return undefined;
   }
-  list(_uid: string): Promise<Page<Scan>> {
-    return notYet('DynamoScanRepository.list');
+
+  async list(uid: string, opts: PageOptions = {}): Promise<Page<Scan>> {
+    const pk = userPk(uid);
+    const r = (await this.doc.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+        ExpressionAttributeValues: { ':pk': pk, ':prefix': SK_PREFIX.scan },
+        ScanIndexForward: false,
+        Limit: pageSize(opts.limit, DEFAULT_PAGE_SIZE, SCAN_MAX_PAGE_SIZE),
+        ...(opts.cursor ? { ExclusiveStartKey: decodeCursor(opts.cursor, pk) } : {}),
+      }),
+    )) as QueryOut;
+    return {
+      items: (r.Items ?? []).map((i) => stripKeys<Scan>(i)),
+      ...(r.LastEvaluatedKey ? { cursor: encodeCursor(r.LastEvaluatedKey) } : {}),
+    };
   }
 }
 
@@ -336,7 +382,7 @@ export function createDynamoRepositories(doc: DocSender, tableName: string): Rep
   return {
     caps: new DynamoCapRepository(doc, tableName),
     albums: new DynamoAlbumRepository(),
-    scans: new DynamoScanRepository(),
+    scans: new DynamoScanRepository(doc, tableName),
     exchange: new DynamoExchangeRepository(),
     refreshTokens: new DynamoRefreshTokenRepository(doc, tableName),
   };

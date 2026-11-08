@@ -46,6 +46,7 @@ import {
   DEFAULT_PAGE_SIZE,
   type ExchangeRepository,
   MAX_PAGE_SIZE,
+  SCAN_MAX_PAGE_SIZE,
   type Page,
   type PageOptions,
   type RefreshTokenItem,
@@ -233,7 +234,7 @@ export class InMemoryScanRepository implements ScanRepository {
     const pk = userPk(uid);
     const r = this.table.query(pk, SK_PREFIX.scan, {
       forward: false,
-      limit: pageSize(opts.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
+      limit: pageSize(opts.limit, DEFAULT_PAGE_SIZE, SCAN_MAX_PAGE_SIZE),
       ...(opts.cursor ? { startKey: decodeCursor(opts.cursor, pk) } : {}),
     });
     return { items: r.items.map((i) => stripKeys<Scan>(i)), ...(r.lastKey ? { cursor: encodeCursor(r.lastKey) } : {}) };

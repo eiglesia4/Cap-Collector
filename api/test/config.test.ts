@@ -19,7 +19,12 @@ afterEach(() => {
 
 describe('config', () => {
   it('[T-api-014] env is validated at load: valid → typed config; invalid → one error naming every bad variable, no values', () => {
-    expect(loadConfig(ENV)).toEqual({ tableName: 'cap-dev-table', imagesBucket: 'cap-dev-images', stage: 'dev' });
+    expect(loadConfig(ENV)).toEqual({
+      tableName: 'cap-dev-table',
+      imagesBucket: 'cap-dev-images',
+      stage: 'dev',
+      dhashThreshold: 10,
+    });
     expect(loadConfig({ ...ENV, CAP_DYNAMODB_ENDPOINT: 'http://localhost:8000' }).dynamodbEndpoint).toBe(
       'http://localhost:8000',
     );
@@ -35,6 +40,19 @@ describe('config', () => {
     for (const v of ['CAP_TABLE_NAME', 'CAP_IMAGES_BUCKET', 'CAP_DYNAMODB_ENDPOINT']) expect(msg).toContain(v);
     expect(msg).not.toContain('Bad_Bucket');
     expect(msg).not.toContain('CAP_STAGE');
+  });
+
+  it('[T-api-049] CAP_DHASH_THRESHOLD is an int 0–64 (default 10); CAP_BEDROCK_MODEL_ID is optional and validated when present', () => {
+    expect(loadConfig({ ...ENV, CAP_DHASH_THRESHOLD: '0' }).dhashThreshold).toBe(0);
+    expect(loadConfig({ ...ENV, CAP_DHASH_THRESHOLD: '64' }).dhashThreshold).toBe(64);
+    expect(loadConfig({ ...ENV, CAP_DHASH_THRESHOLD: '' }).dhashThreshold).toBe(10);
+    for (const bad of ['65', '-1', '2.5', 'ten']) {
+      expect(() => loadConfig({ ...ENV, CAP_DHASH_THRESHOLD: bad }), bad).toThrow(/CAP_DHASH_THRESHOLD/);
+    }
+    expect(loadConfig(ENV)).not.toHaveProperty('bedrockModelId');
+    const id = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+    expect(loadConfig({ ...ENV, CAP_BEDROCK_MODEL_ID: id }).bedrockModelId).toBe(id);
+    expect(() => loadConfig({ ...ENV, CAP_BEDROCK_MODEL_ID: 'has spaces' })).toThrow(/CAP_BEDROCK_MODEL_ID/);
   });
 
   it('[T-api-015] getConfig and getRepositories are memoised per cold start and build DynamoDB repositories from env', () => {
