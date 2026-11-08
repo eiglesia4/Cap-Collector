@@ -4,6 +4,8 @@
 // `CapInput` schema and from a 422's `Problem.errors[]`. Save → `POST /caps` or a `PATCH` holding only the changed
 // fields. New cap: "Save and flag needs review" sets `status: needsReview`; edit: a "Needs review" toggle pre-filled
 // from the cap's status, sent only when changed (architect review, CAP-25, 2026-11-08). Leaving unsaved asks first.
+// From a capture (CAP-41, `/new?scanId=…`): the scan's uploaded photos, the AI's brand suggestions, and the dHashes
+// (plus `aiModel`) carried into `POST /caps` while the photo they were computed from is still the one attached.
 import {
   Cap,
   CapType as CapTypeEnum,
@@ -36,6 +38,7 @@ import {
   type FormValues,
   type ValueField,
 } from '../cap/form-model.js';
+import type { CaptureSession } from '../capture/context.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
 import { invalidateCollection } from '../collection/state.js';
@@ -65,6 +68,27 @@ export interface CapFormOptions {
   /** Image codec and PUT function; tests inject fakes (default: canvas and fetch). */
   readonly codec?: ImageCodec;
   readonly put?: PutFn;
+  /** Manual entry of a capture (mode `empty`): its photos, suggestions and hashes (CAP-41). */
+  readonly scan?: CaptureSession;
+}
+
+/** The scan's uploaded photos as form images. */
+function imagesFromScan(scan: CaptureSession): FormImages {
+  const out: FormImages = {};
+  if (scan.top?.ref) out.top = scan.top.ref;
+  if (scan.underside?.ref) out.underside = scan.underside.ref;
+  return out;
+}
+
+/** dHashes and AI model of the scan, for the sides whose scanned photo is still attached (ADR-004 bookkeeping). */
+export function scanFields(scan: CaptureSession, images: FormImages): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (scan.top?.ref && images.top?.key === scan.top.ref.key) out.dhash = scan.top.photo.dhash;
+  if (scan.underside?.ref && images.underside?.key === scan.underside.ref.key) {
+    out.dhashUnderside = scan.underside.photo.dhash;
+  }
+  if (scan.response?.aiModel !== undefined) out.aiModel = scan.response.aiModel;
+  return out;
 }
 
 type SlotState = 'idle' | 'processing' | 'uploading' | 'failed';
@@ -113,16 +137,19 @@ function enumOptions<T extends string>(values: readonly T[], labels: Readonly<Re
 }
 
 export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
-  const { mode, cap } = options;
+  const { mode, cap, scan } = options;
   if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
   const initialValues: FormValues = cap ? valuesFromCap(cap) : { ...EMPTY_VALUES, tags: [] };
-  const initialImages: FormImages = cap ? imagesFromCap(cap.images) : {};
+  const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
   const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
   const images: FormImages = { ...initialImages };
   const slots: Record<Side, Slot> = {
     top: { state: 'idle', pending: null, preview: null, error: null },
     underside: { state: 'idle', pending: null, preview: null, error: null },
   };
+  // A capture's photos are still in memory: preview them from their blobs.
+  if (scan?.top?.ref) slots.top.preview = objectUrl(scan.top.photo.blob);
+  if (scan?.underside?.ref) slots.underside.preview = objectUrl(scan.underside.photo.blob);
   const touched = new Set<FieldName>();
   let submitted = false;
   let saving = false;
@@ -252,6 +279,8 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     );
     suggestions.hidden = brands.length === 0;
   };
+  // An unidentified capture offers the AI's brand reading(s) up front (SCREENS.md #5 "AI brand suggestions").
+  if (scan?.response?.suggestions.length) showSuggestions([...scan.response.suggestions]);
   brandInput.addEventListener('input', () => {
     clearTimeout(lookupTimer);
     const typed = brandInput.value;
@@ -533,8 +562,10 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           schema: Cap,
         });
       } else {
-        saved = await ctx.api.request('/caps', { method: 'POST', body: result.input, schema: Cap });
+        const body = scan ? { ...result.input, ...scanFields(scan, images) } : result.input;
+        saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
+      if (scan) ctx.capture.clear();
       invalidateCollection(ctx);
       releasePreviews();
       ctx.navigate(pathFor('capDetail', { id: saved.capId }));
@@ -665,8 +696,16 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   return el;
 }
 
-/** `/new`: Manual entry (SCREENS.md #5), the empty form. */
-export const NewCapScreen: Screen = (ctx) => CapForm(ctx, { mode: 'empty' });
+/**
+ * `/new`: Manual entry (SCREENS.md #5), the empty form; `/new?scanId=…` pre-fills it from that capture when its scan
+ * context is still open (an unidentified cap, or "Enter manually" after a 503).
+ */
+export const NewCapScreen: Screen = (ctx, route) => {
+  const session = ctx.capture.current();
+  const scanId = route.query.scanId;
+  const scan = scanId !== undefined && session?.scanId === scanId && session.top?.ref ? session : undefined;
+  return CapForm(ctx, scan ? { mode: 'empty', scan } : { mode: 'empty' });
+};
 
 /** `/cap/:id/edit`: the same form in edit mode, once the cap is loaded. */
 export const EditCapScreen: Screen = (ctx, route) => {
