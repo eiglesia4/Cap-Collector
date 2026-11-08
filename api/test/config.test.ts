@@ -24,6 +24,7 @@ describe('config', () => {
       imagesBucket: 'cap-dev-images',
       stage: 'dev',
       dhashThreshold: 10,
+      vision: 'bedrock',
     });
     expect(loadConfig({ ...ENV, CAP_DYNAMODB_ENDPOINT: 'http://localhost:8000' }).dynamodbEndpoint).toBe(
       'http://localhost:8000',

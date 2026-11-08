@@ -1,0 +1,19 @@
+{
+  "provider": "fake",
+  "model": "fixture",
+  "fields": {
+    "brand": "Estrella Galicia",
+    "variant": null,
+    "producer": "Hijos de Rivera",
+    "country": "ES",
+    "type": "lager",
+    "material": "aluminum",
+    "closure": "crown",
+    "year": "1906",
+    "description": null,
+    "textOnCap": "ESTRELLA GALICIA 1906",
+    "colour": "red"
+  },
+  "confidence": { "brand": 0.88, "year": 0.3 },
+  "notes": "Year read from the cap text; probably the brewery foundation year."
+}

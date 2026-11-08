@@ -1,0 +1,18 @@
+{
+  "provider": "fake",
+  "model": "fixture",
+  "fields": {
+    "brand": "Ambar",
+    "variant": null,
+    "producer": null,
+    "country": null,
+    "type": null,
+    "material": null,
+    "closure": null,
+    "year": null,
+    "description": "Worn gold cap, most of the print is gone.",
+    "textOnCap": "...AMBAR ... ZARAGOZA 1900 ambar"
+  },
+  "confidence": { "brand": 0.3 },
+  "notes": null
+}
