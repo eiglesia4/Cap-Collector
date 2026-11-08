@@ -10,9 +10,10 @@ import {
   historySk,
   locationGsi1,
   lockSk,
+  scanSk,
   userPk,
 } from '@capcollector/shared';
-import { GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 
 import { Conflict, NotImplemented } from '../../src/lib/errors.js';
@@ -20,6 +21,7 @@ import { encodeCursor } from '../../src/lib/repo/items.js';
 import {
   DynamoCapRepository,
   DynamoRefreshTokenRepository,
+  DynamoScanRepository,
   createDocumentClient,
   createDynamoRepositories,
   type DocSender,
@@ -30,7 +32,7 @@ const TABLE = 'cap-test-table';
 const UID = 'apple-sub-1';
 const ALBUM_ID = '01JBF6Z3Q8K2M4N6P8R0S2ALBM';
 
-type Cmd = GetCommand | QueryCommand | TransactWriteCommand;
+type Cmd = GetCommand | PutCommand | QueryCommand | TransactWriteCommand;
 
 function recorder(reply: (c: Cmd) => unknown = () => ({})) {
   const sent: Cmd[] = [];
@@ -186,7 +188,7 @@ describe('DynamoCapRepository keys', () => {
     await expect(throttled.put(UID, { cap: FIXTURE_CAP, albumId: ALBUM_ID, history: h })).rejects.toThrow('slow down');
   });
 
-  it('[T-api-011] album, scan and exchange DynamoDB repositories are stubs that answer 501 until their stories', async () => {
+  it('[T-api-011] album and exchange DynamoDB repositories are stubs that answer 501 until their stories (scans are real since CAP-37)', async () => {
     const repos = createDynamoRepositories(createDocumentClient({}), TABLE);
     expect(repos.caps).toBeInstanceOf(DynamoCapRepository);
     const calls = [
@@ -194,14 +196,65 @@ describe('DynamoCapRepository keys', () => {
       repos.albums.byLetter(UID, 'A'),
       repos.albums.list(UID),
       repos.albums.put(UID, {} as never),
-      repos.scans.put(UID, {} as never),
-      repos.scans.get(UID, 's'),
-      repos.scans.list(UID),
       repos.exchange.put(UID, {} as never),
       repos.exchange.get(UID, 'r'),
       repos.exchange.list(UID),
     ];
     for (const c of calls) await expect(c).rejects.toBeInstanceOf(NotImplemented);
+    expect(repos.scans).toBeInstanceOf(DynamoScanRepository);
+  });
+
+  it('[T-api-048] scans: USER#/SCAN#<ts>#<scanId> keys from shared, newest first with cursor, get by id follows pages', async () => {
+    const scan = {
+      scanId: '01JBF6Z3Q8K2M4N6P8R0S2SCAN',
+      ts: '2026-11-08T10:00:00.000Z',
+      dhash: 'a3f0c81e7b2d9f44',
+      outcome: 'duplicate' as const,
+      threshold: 10,
+      aiCalled: false,
+    };
+    const lastKey = { pk: userPk(UID), sk: scanSk(scan.ts, scan.scanId) };
+    const sent: Cmd[] = [];
+    let n = 0;
+    const doc: DocSender = {
+      send: async (c) => {
+        sent.push(c);
+        if (!(c instanceof QueryCommand)) return {};
+        // get(): first page empty with a continuation, second page holds the item.
+        if (c.input.FilterExpression)
+          return n++ === 0 ? { Items: [], LastEvaluatedKey: lastKey } : { Items: [{ ...scan, ...lastKey }] };
+        return { Items: [{ ...scan, ...lastKey }], LastEvaluatedKey: lastKey };
+      },
+    };
+    const repo = new DynamoScanRepository(doc, TABLE);
+    await repo.put(UID, scan);
+    expect((sent[0] as PutCommand).input).toEqual({ TableName: TABLE, Item: { ...scan, ...lastKey } });
+
+    const page = await repo.list(UID, { limit: 200 });
+    expect(page.items).toEqual([scan]);
+    expect(page.cursor).toBe(encodeCursor(lastKey));
+    expect((sent[1] as QueryCommand).input).toMatchObject({
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: { ':pk': userPk(UID), ':prefix': SK_PREFIX.scan },
+      ScanIndexForward: false,
+      Limit: 200,
+    });
+    await repo.list(UID, { cursor: page.cursor! });
+    expect((sent[2] as QueryCommand).input).toMatchObject({ ExclusiveStartKey: lastKey, Limit: 50 });
+    await expect(repo.list(UID, { limit: 201 })).rejects.toThrow('limit must be 1–200');
+    await expect(repo.list(UID, { cursor: encodeCursor({ pk: userPk('other'), sk: 'SCAN#x' }) })).rejects.toThrow(
+      'Invalid cursor',
+    );
+
+    expect(await repo.get(UID, scan.scanId)).toEqual(scan);
+    expect((sent[3] as QueryCommand).input).toMatchObject({
+      FilterExpression: 'scanId = :scanId',
+      ExpressionAttributeValues: { ':scanId': scan.scanId },
+    });
+    expect((sent[4] as QueryCommand).input.ExclusiveStartKey).toEqual(lastKey);
+    expect(sent).toHaveLength(5); // invalid limit / cursor never reach DynamoDB
+    const none = new DynamoScanRepository({ send: async () => ({}) }, TABLE);
+    expect(await none.get(UID, scan.scanId)).toBeUndefined();
   });
 
   it('[T-api-032] refresh tokens: USER#/REFRESH#<hash> keys, single-use rotation conditioned on existence and ttl', async () => {

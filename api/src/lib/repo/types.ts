@@ -17,6 +17,8 @@ export interface PageOptions {
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
+/** GET /scans allows up to 200 per page (openapi.yaml /scans `limit` maximum, CAP-37). */
+export const SCAN_MAX_PAGE_SIZE = 200;
 
 /**
  * One cap write: the full next state of the record, the `albumId` its album-kind location resolves to (the record

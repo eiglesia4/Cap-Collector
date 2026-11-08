@@ -10,6 +10,13 @@ const EnvSchema = z.object({
   CAP_DYNAMODB_ENDPOINT: z.url().optional(),
   /** Local only: S3 mock endpoint (deploy/docker-compose.yaml, path-style). Unset in AWS. */
   CAP_S3_ENDPOINT: z.url().optional(),
+  /** ADR-004 step 1: max Hamming distance (of 64 bits) that still counts as "already in collection" (CAP-37). */
+  CAP_DHASH_THRESHOLD: z.coerce.number().int().min(0).max(64).default(10),
+  /** Bedrock vision model (CAP-39); unused by the CAP-37 stub, validated when present. */
+  CAP_BEDROCK_MODEL_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9.:_/-]{0,199}$/, 'Bedrock model id or inference profile expected')
+    .optional(),
 });
 
 export interface Config {
@@ -18,6 +25,8 @@ export interface Config {
   readonly stage: string;
   readonly dynamodbEndpoint?: string;
   readonly s3Endpoint?: string;
+  readonly dhashThreshold: number;
+  readonly bedrockModelId?: string;
 }
 
 /** Parses `env`; throws one error naming every invalid variable (never their values). */
@@ -28,6 +37,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     CAP_STAGE: env.CAP_STAGE,
     CAP_DYNAMODB_ENDPOINT: env.CAP_DYNAMODB_ENDPOINT || undefined,
     CAP_S3_ENDPOINT: env.CAP_S3_ENDPOINT || undefined,
+    CAP_DHASH_THRESHOLD: env.CAP_DHASH_THRESHOLD || undefined,
+    CAP_BEDROCK_MODEL_ID: env.CAP_BEDROCK_MODEL_ID || undefined,
   });
   if (!parsed.success) {
     const vars = parsed.error.issues.map((i) => `${i.path.join('.')} (${i.message})`).join(', ');
@@ -38,6 +49,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tableName: e.CAP_TABLE_NAME,
     imagesBucket: e.CAP_IMAGES_BUCKET,
     stage: e.CAP_STAGE,
+    dhashThreshold: e.CAP_DHASH_THRESHOLD,
+    ...(e.CAP_BEDROCK_MODEL_ID ? { bedrockModelId: e.CAP_BEDROCK_MODEL_ID } : {}),
     ...(e.CAP_DYNAMODB_ENDPOINT ? { dynamodbEndpoint: e.CAP_DYNAMODB_ENDPOINT } : {}),
     ...(e.CAP_S3_ENDPOINT ? { s3Endpoint: e.CAP_S3_ENDPOINT } : {}),
   };
