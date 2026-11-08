@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-60: the stacks never create the six `/cap/<inst>/<stage>/*` SSM settings, they only read them (fixes the
+  `cap-naeva-dev-data` "already exists" deploy failure); `settings:bootstrap` / `settings:show` / `settings:restore`
+  (`infra/lib/settings.ts`, AWS CLI, values never printed nor in argv); migration runbook in `infra/README.md`
+  § Settings; `infra/.local/` gitignored (T-infra-039…041).
 - CAP-43: AI review screen — form in `ai-prefilled` mode with unsure fields (confidence < 0.7) highlighted, Save with `source: bedrock:<aiModel>`, Ask again with `known` edits, Add underside, Re-identify from Detail with per-field Accept.
 - CAP-42: "Already in collection" screen — reason line, new vs stored photo, opt-in field diff (nothing ticked), "+1 quantity", "Replace top photo" (with its `dhash`), PATCH of only the ticked changes, variant path with `variantOf`, discard.
 - CAP-50: cap location API — `PUT /caps/{id}/location` in one transaction (cap, GSI1, `LOCK#`, history) with `swap`, `DELETE` to clear (idempotent), location accepted on `POST /caps`; 409 names the occupant, 404 unknown letter, 422 geometry or kind mismatch.

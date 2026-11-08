@@ -10,3 +10,6 @@ coverage/
 .claude/settings.local.json
 # Versioned on purpose (no secrets; it is the repo contract for direnv) — overrides a global ignore.
 !.envrc
+
+# CAP-60: settings backups (values of /cap/* parameters) — never committed.
+infra/.local/

@@ -16,7 +16,7 @@ import {
   REPO_ROOT,
   THROTTLE,
 } from '../lib/collectors-api-stack.js';
-import { CollectorsDataStack, settingParameterName, UNSET_PARAMETER_VALUE } from '../lib/collectors-data-stack.js';
+import { CollectorsDataStack, settingParameterName } from '../lib/collectors-data-stack.js';
 import type { Deployment, InstallationConfig } from '../lib/config.js';
 import { type Route, ROUTES, SECRET_ENV, WIRING, wireRoutes } from '../lib/routes.js';
 import { handler as denyAll } from '../lib/stubs/authorizer-deny.js';
@@ -308,24 +308,14 @@ describe('CollectorsApi stack', () => {
     expect(await denyAll()).toEqual({ isAuthorized: false });
   });
 
-  it('[T-infra-022] settings: CollectorsData creates unset SSM parameters; the API reads them by name at deploy', () => {
+  it('[T-infra-022] settings: no stack creates the SSM parameters (CAP-60); the API reads them by name at deploy', () => {
     const { data, template } = apiStack({ apiSrcDir: fakeApiSrc(['healthz', 'auth-apple']) });
-    const dataTemplate = Template.fromStack(data);
-    for (const name of ['allowedAppleSubs', 'appleClientIds', 'sessionSecret'] as const) {
-      dataTemplate.hasResourceProperties('AWS::SSM::Parameter', {
-        Name: settingParameterName(deployment, name),
-        Type: 'String',
-        Value: UNSET_PARAMETER_VALUE,
-      });
-    }
+    Template.fromStack(data).resourceCountIs('AWS::SSM::Parameter', 0);
+    template.resourceCountIs('AWS::SSM::Parameter', 0);
     expect(settingParameterName(deployment, 'allowedAppleSubs')).toBe('/cap/naeva/dev/allowed-apple-subs');
 
     // The API stack takes them as SSM-typed CloudFormation parameters (re-resolved on every deploy); `alertEmail`
     // (CAP-40) is read by the stack for the alerts subscription, never passed to a function.
-    dataTemplate.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/cap/naeva/dev/alert-email',
-      Value: UNSET_PARAMETER_VALUE,
-    });
     const params = template.toJSON().Parameters as Record<string, { Type: string; Default: string }>;
     const ssm = Object.values(params).filter(
       (p) => p.Type === 'AWS::SSM::Parameter::Value<String>' && p.Default.startsWith('/cap/'),

@@ -9,7 +9,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../lib/app.js';
-import { settingParameterName, UNSET_PARAMETER_VALUE } from '../lib/collectors-data-stack.js';
+import { settingParameterName } from '../lib/collectors-data-stack.js';
 import { applyDomainsSwitch, type InstallationConfig, loadInstallationConfig } from '../lib/config.js';
 import { CERTIFICATE_SETTINGS } from '../lib/routes.js';
 
@@ -72,10 +72,8 @@ describe('custom domains', () => {
   it('[T-infra-024] with domains: CloudFront alias + certificate, API domain + mapping, CORS from config with no import', () => {
     const { data, api } = synth({ domains: DOMAINS });
 
-    // Both certificate parameters exist with the placeholder; their names follow the settings convention.
-    for (const name of CERT_PARAMS) {
-      data.hasResourceProperties('AWS::SSM::Parameter', { Name: name, Type: 'String', Value: UNSET_PARAMETER_VALUE });
-    }
+    // The certificate settings are read, never created (CAP-60); their names follow the settings convention.
+    data.resourceCountIs('AWS::SSM::Parameter', 0);
     expect(CERT_PARAMS).toEqual(['/cap/naeva/dev/web-certificate-arn', '/cap/naeva/dev/api-certificate-arn']);
 
     // CloudFront: alias + the us-east-1 certificate ARN resolved from SSM at deploy time (never a literal).
@@ -117,8 +115,8 @@ describe('custom domains', () => {
   it('[T-infra-025] without domains: no alias, certificate, API domain or mapping; CORS imports WebUrl; default URLs', () => {
     const { data, api } = synth();
 
-    // The certificate parameters are still created (so they can be filled before domains are turned on) but unread.
-    for (const name of CERT_PARAMS) data.hasResourceProperties('AWS::SSM::Parameter', { Name: name });
+    // Without domains the certificate settings are neither created (CAP-60) nor read.
+    data.resourceCountIs('AWS::SSM::Parameter', 0);
     expect(ssmParams(data, CERT_PARAMS)).toEqual([]);
     expect(ssmParams(api, CERT_PARAMS)).toEqual([]);
 

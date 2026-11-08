@@ -2,7 +2,7 @@
   "name": "@capcollector/infra",
   "version": "0.0.0",
   "private": true,
-  "description": "CapCollector infrastructure — AWS CDK v2 (TypeScript): CollectorsData + CollectorsApi. Installation/stage by context; no account, ARN or region in code. Territory: integrator.",
+  "description": "CapCollector infrastructure \u2014 AWS CDK v2 (TypeScript): CollectorsData + CollectorsApi. Installation/stage by context; no account, ARN or region in code. Territory: integrator.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -10,7 +10,10 @@
     "diff": "cdk diff --context installation=\"$CAP_INSTALLATION\" --context stage=\"$CAP_STAGE\"",
     "deploy": "cdk deploy --all --context installation=\"$CAP_INSTALLATION\" --context stage=\"$CAP_STAGE\"",
     "cdk": "cdk",
-    "db:create": "tsx scripts/db-create.ts"
+    "db:create": "tsx scripts/db-create.ts",
+    "settings:bootstrap": "npm run build -w @capcollector/shared --silent && tsx scripts/settings.ts bootstrap",
+    "settings:show": "npm run build -w @capcollector/shared --silent && tsx scripts/settings.ts show",
+    "settings:restore": "npm run build -w @capcollector/shared --silent && tsx scripts/settings.ts restore"
   },
   "dependencies": {
     "@capcollector/shared": "*",

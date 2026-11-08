@@ -15,7 +15,10 @@ import { ROUTES as CONTRACT_ROUTES, type RouteDef } from '@capcollector/shared';
  */
 export type Grant = 'table' | 'images-put' | 'images-get' | 'bedrock';
 
-/** SSM-backed settings (CollectorsData creates the parameters, Edu fills them): the env var each one becomes. */
+/**
+ * SSM-backed settings (Edu creates them once with `npm run settings:bootstrap` and fills them; the stacks only read
+ * them, CAP-60): the env var each one becomes.
+ */
 export const SECRET_ENV = {
   allowedAppleSubs: 'CAP_ALLOWED_APPLE_SUBS',
   appleClientIds: 'CAP_APPLE_CLIENT_IDS',
@@ -39,8 +42,15 @@ export type CertificateSettingName = (typeof CERTIFICATE_SETTINGS)[number];
 export const NOTIFICATION_SETTINGS = ['alertEmail'] as const;
 export type NotificationSettingName = (typeof NOTIFICATION_SETTINGS)[number];
 
-/** Every SSM parameter CollectorsData creates with the `unset` placeholder. */
+/** Every `/cap/<inst>/<stage>/*` SSM setting. The stacks never create them (CAP-60); the bootstrap script does. */
 export type SettingName = SecretName | CertificateSettingName | NotificationSettingName;
+
+/** All six settings, in the order `settings:bootstrap` / `settings:show` list them (CAP-60). */
+export const SETTINGS: readonly SettingName[] = [
+  ...(Object.keys(SECRET_ENV) as SecretName[]),
+  ...CERTIFICATE_SETTINGS,
+  ...NOTIFICATION_SETTINGS,
+];
 
 /** Values from `config.ai` a function may receive (CAP-40), and the env var each one becomes. */
 export const AI_ENV = {
