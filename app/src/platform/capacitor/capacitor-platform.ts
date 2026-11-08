@@ -22,10 +22,19 @@ import {
  */
 export const IOS_BUNDLE_ID = 'com.naevatec.collectors';
 
-/** `ASAuthorizationError.canceled`: the plugin rejects with its localized description, which says "error 1001". */
+/** `ASAuthorizationError.canceled`. */
+const APPLE_CANCELED_CODE = '1001';
+/** The plugin (7.1.0) rejects with the localized description only, which still carries "error 1001". */
 const APPLE_CANCELED = /AuthorizationError error 1001\b/;
 
+/**
+ * Cancel of the native sheet. The error `code` (a Capacitor `CapacitorException.code`) is checked first, so a
+ * localisation change can't turn a cancel into "failed"; the message is the fallback because the current plugin
+ * sets no code (architect review, CAP-28, 2026-11-08).
+ */
 export function isAppleCancel(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  if (code !== undefined && String(code) === APPLE_CANCELED_CODE) return true;
   const message = error instanceof Error ? error.message : String(error);
   return isCancel(error) || APPLE_CANCELED.test(message);
 }
@@ -73,7 +82,8 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     try {
       const { response } = await plugins.SignInWithApple.authorize({
         clientId: IOS_BUNDLE_ID,
-        // Required by the plugin's typings, unused by its iOS implementation (web-only redirect flow).
+        // Required by the plugin's typings, ignored by its iOS implementation (redirects are the web flow only);
+        // empty on purpose, accepted in the architect review of CAP-28.
         redirectURI: '',
         scopes: 'email',
         nonce: request.nonce,

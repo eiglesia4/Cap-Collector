@@ -91,6 +91,13 @@ describe('native Sign in with Apple', () => {
     );
     expect(isAppleCancel(failed)).toBe(false);
     expect(isAppleCancel('AuthorizationError error 10010')).toBe(false);
+    // The code wins over the (localised) message: 1001 is cancel whatever the text says; another code is not.
+    const coded = (code: unknown, message: string) => Object.assign(new Error(message), { code });
+    expect(isAppleCancel(coded('1001', 'Vorgang abgebrochen'))).toBe(true);
+    expect(isAppleCancel(coded(1001, 'Operación fallida'))).toBe(true);
+    expect(isAppleCancel(coded('1000', 'Unknown failure'))).toBe(false);
+    expect(isAppleCancel({ code: '1001' })).toBe(true);
+    expect(isAppleCancel(null)).toBe(false);
     await expect(native(vi.fn(async () => Promise.reject(failed))).platform.signInWithApple(REQUEST)).rejects.toBe(
       failed,
     );
