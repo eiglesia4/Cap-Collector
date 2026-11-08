@@ -3,10 +3,10 @@
 Owned by the integrator (OWNERSHIP.md). **Deploying is Edu's job, never an agent's.** Targets and profiles:
 CONVENTIONS.md § Deployment targets; per-target settings: [`config/`](config/README.md).
 
-| Stack            | What                                                                                                                      | Story                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table, the SSM settings                           | CAP-13, CAP-15, CAP-29 |
-| `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer | CAP-15, CAP-29         |
+| Stack            | What                                                                                                                                       | Story                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table, the SSM settings                                            | CAP-13, CAP-15, CAP-29         |
+| `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer, alarms + budget | CAP-15, CAP-29, CAP-40, CAP-51 |
 
 ## Deploy (Edu)
 
@@ -44,6 +44,28 @@ aws bedrock list-foundation-models  --region eu-west-1 --by-output-modality TEXT
 
 CloudFormation leaves these values alone as long as the parameter definitions in `collectors-data-stack.ts` do not
 change; if one ever does, the parameter is reset to `unset` and has to be filled again.
+
+## Operations (CAP-51): what fires when
+
+Every alarm notifies the topic `cap-<inst>-<stage>-alerts`, so it reaches the `alert-email` above (nothing is sent
+while it is `unset`). Missing data never fires (`notBreaching`). Thresholds live in [`lib/ops.ts`](lib/ops.ts).
+
+| Alarm / budget                                    | Fires when                                                                                            | Look first at                                             |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `cap-<inst>-<stage>-api-5xx`                      | the HTTP API returns ≥ 5 `5xx` in 5 min                                                               | the log groups of the functions behind the failing routes |
+| `cap-<inst>-<stage>-lambda-errors-<n>`            | any one function of that group has ≥ 3 `Errors` in 5 min (groups of ≤ 9; the description lists them)  | that function's log group                                 |
+| `cap-<inst>-<stage>-dynamodb-throttles`           | the table records ≥ 1 read or write throttle event in 5 min                                           | a hot partition or a runaway client (on-demand table)     |
+| `cap-<inst>-<stage>-authorizer-throttles`         | the authorizer is throttled at least once in 5 min                                                    | account Lambda concurrency, a client retry loop           |
+| `cap-<inst>-<stage>-bedrock-invocations` (CAP-40) | more than 300 Bedrock invocations of `ai.modelId` in a day                                            | Scan items: is the dHash check being skipped?             |
+| AWS Budget `cap-<inst>-<stage>-monthly`           | spend tagged `project=EIM_CAP` reaches 80 % of `ops.budgetEur` (actual) or is forecast to reach 100 % | Cost Explorer filtered by `project`                       |
+
+The budget filters on the **cost allocation tag** `project`: activate it once in Billing → Cost allocation tags (it
+takes up to 24 h to apply), or the budget sees no spend. Its two e-mail notifications follow the same rule as the
+topic: they exist only while `alert-email` is not `unset`.
+
+Log groups: every Lambda keeps its logs `ops.logRetentionDays` (config). CDK's own helper Lambda for emptying the
+buckets of `dev` gets the same retention through a `LogRetention` resource, which also works on a stack deployed
+before CAP-51 whose log group already exists.
 
 ## Custom domains (CAP-29, once per target)
 

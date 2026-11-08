@@ -14,7 +14,10 @@
  *   mapped to the default stage; DNS is a GoDaddy CNAME to the `ApiDomainTarget` output.
  * - Bedrock (CAP-40, ADR-008 §7): only scans-analyse may invoke the model of config `ai.modelId`; a daily
  *   invocation alarm notifies the alerts topic (cost guard; e-mail from SSM, none while `unset`).
- * No VPC, no NAT, no always-on compute (CONVENTIONS § Cost rules); arm64, 256 MB, 10 s, JSON logs kept 30 days.
+ * - Operations (CAP-51): API 5xx, Lambda errors, DynamoDB and authorizer throttling alarms on the same topic, and a
+ *   monthly AWS Budget (ops.ts, README § Operations).
+ * No VPC, no NAT, no always-on compute (CONVENTIONS § Cost rules); arm64, 256 MB, 10 s, JSON logs kept
+ * `ops.logRetentionDays` (config).
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -39,7 +42,7 @@ import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, LoggingFormat, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
-import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
+import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
 import { CfnSubscription, SubscriptionProtocol, Topic } from 'aws-cdk-lib/aws-sns';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
@@ -53,11 +56,13 @@ import {
 } from './collectors-data-stack.js';
 import {
   type Deployment,
+  deploymentTags,
   foundationModelId,
   type InstallationConfig,
   isInferenceProfile,
   resourceName,
 } from './config.js';
+import { addMonthlyBudget, addOpsAlarms, retainProviderLogs } from './ops.js';
 import {
   AI_ENV,
   type AiEnvName,
@@ -199,7 +204,7 @@ export class CollectorsApiStack extends Stack {
       sizing: { memoryMb?: number | undefined; timeoutSeconds?: number | undefined } = {},
     ) => {
       const logGroup = new LogGroup(this, `${pascal(name)}Logs`, {
-        retention: RetentionDays.ONE_MONTH,
+        retention: config.ops.logRetentionDays,
         removalPolicy,
       });
       const fn = new NodejsFunction(this, pascal(name), {
@@ -339,6 +344,24 @@ export class CollectorsApiStack extends Stack {
       evaluationPeriods: 1,
       treatMissingData: TreatMissingData.NOT_BREACHING,
     }).addAlarmAction(new SnsAction(this.alertsTopic));
+
+    // Operations (CAP-51): what fires when is in README § Operations.
+    addOpsAlarms(this, {
+      deployment,
+      topic: this.alertsTopic,
+      api: this.api,
+      table,
+      functions,
+      authorizer: authorizerFn,
+    });
+    addMonthlyBudget(this, {
+      deployment,
+      budgetEur: config.ops.budgetEur,
+      alertEmail,
+      hasAlertEmail,
+      tags: deploymentTags(deployment, config.config_version),
+    });
+    retainProviderLogs(this, config.ops.logRetentionDays, removalPolicy);
 
     const out = (key: string, value: string, description: string) =>
       new CfnOutput(this, key, { value, description, exportName: `${resourceName(deployment, 'api')}-${key}` });

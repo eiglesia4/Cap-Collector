@@ -35,6 +35,7 @@ const configWith = (modelId: string): InstallationConfig => ({
   region: 'test-region-1',
   app_origins: [],
   ai: { modelId, dhashThreshold: 10 },
+  ops: { budgetEur: 10, logRetentionDays: 30 },
 });
 
 // esbuild wants entries under the project root, so fixtures live in the git-ignored infra/cdk.out/ — in a directory
@@ -153,7 +154,12 @@ describe('scans infra (CAP-40)', () => {
     const load = (ai?: unknown) => {
       writeFileSync(
         join(dir, 'naeva.dev.json'),
-        JSON.stringify({ config_version: 'v', region: 'r', ...(ai !== undefined && { ai }) }),
+        JSON.stringify({
+          config_version: 'v',
+          region: 'r',
+          ops: { budgetEur: 1, logRetentionDays: 1 },
+          ...(ai !== undefined && { ai }),
+        }),
       );
       return loadInstallationConfig(deployment, dir);
     };
