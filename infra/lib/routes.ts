@@ -102,11 +102,10 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
   'albums-sheet': T,
   'albums-next-free': T,
 
-  // SPEC-GAP CAP-15: the story grants the table only to cap/album/scan handlers; the exchange handlers get their
-  // grants with their own (V3) story.
-  'exchange-requests-list': NONE,
-  'exchange-requests-create': NONE,
-  'exchange-requests-patch': NONE,
+  // CAP-48 (ADR-007): exchange requests live in the table; create also writes the Scan link in the same transaction.
+  'exchange-requests-list': T,
+  'exchange-requests-create': T,
+  'exchange-requests-patch': T,
 };
 
 /** Contract routes with their wiring; a route missing from WIRING gets nothing (and T-infra-016 fails). */
