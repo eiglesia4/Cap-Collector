@@ -158,6 +158,25 @@ describe('CollectorsApi stack', () => {
     ]);
   });
 
+  it('[T-infra-027] every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch', () => {
+    // CAP-35: a Cap in a response carries presigned `imageUrls`; without s3:GetObject S3 refuses those URLs.
+    const CAP_RETURNING = ['caps-list', 'caps-get', 'caps-create', 'caps-patch'];
+    for (const handler of CAP_RETURNING) {
+      expect(WIRING[handler]?.grants, handler).toEqual(expect.arrayContaining(['table', 'images-get']));
+    }
+    // Synthesised: each of those functions has an s3:GetObject statement on the images bucket objects.
+    const { template } = apiStack({ apiSrcDir: fakeApiSrc(CAP_RETURNING) });
+    const policies = Object.values(template.findResources('AWS::IAM::Policy')).map((p) => JSON.stringify(p));
+    for (const handler of CAP_RETURNING) {
+      const fn = handler.replace(/(^|-)([a-z])/g, (_m, _d: string, c: string) => c.toUpperCase());
+      const own = policies.filter((p) => p.includes(`"${fn}ServiceRole`));
+      expect(
+        own.some((p) => p.includes('"s3:GetObject"')),
+        handler,
+      ).toBe(true);
+    }
+  });
+
   it('[T-infra-017] a manifest handler without a file is served by the 501 stub, or fails synth in strict mode', () => {
     const routes: Route[] = [
       { method: 'GET', path: '/healthz', handler: 'healthz', auth: false, grants: [] },
@@ -223,12 +242,12 @@ describe('CollectorsApi stack', () => {
     }
     template.allResourcesProperties('AWS::Logs::LogGroup', { RetentionInDays: 30 });
 
-    // IAM: healthz nothing; uploads only s3:PutObject; caps-get table + s3:GetObject; caps-patch table, no S3.
+    // IAM: healthz nothing; uploads only s3:PutObject; caps-get and caps-patch table + s3:GetObject (CAP-35), never Put.
     expect(s.policies).not.toHaveProperty('HealthzServiceRole');
     expect(s.policies.UploadsCreateServiceRole).toEqual(['s3:PutObject']);
     expect(s.policies.CapsGetServiceRole).toContain('s3:GetObject');
     expect(s.policies.CapsGetServiceRole).toContain('dynamodb:Query');
-    expect(s.policies.CapsPatchServiceRole?.some((a) => a.startsWith('s3:'))).toBe(false);
+    expect(s.policies.CapsPatchServiceRole?.filter((a) => a.startsWith('s3:'))).toEqual(['s3:GetObject']);
 
     // Settings only where the manifest says so.
     expect(s.functions.AuthApple?.env).toEqual(expect.arrayContaining(Object.values(SECRET_ENV)));

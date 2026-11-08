@@ -7,6 +7,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-35: `caps-create` and `caps-patch` get `images-get` (`s3:GetObject` on the images bucket) so the presigned
+  `imageUrls` they return since CAP-30 download; T-infra-027 requires it for every Cap-returning handler.
 - CAP-30: API adopts contracts v0.2 — `Cap.imageUrls = { top, underside? }` (15-minute presigned GETs) on caps
   list/get/create/patch, shared `AppleSignInRequest`/`RefreshRequest`/`Session`/`Healthz`/`UploadRequest`/
   `UploadResponse`/`Problem` schemas, local server on shared `ROUTES`, `refreshSk()`, `CapPatch` `null` clears a field.
