@@ -67,6 +67,7 @@ export function createWebPlatform(win: Window, options: WebPlatformOptions = {})
     kind: 'web',
     signInWithApple: createAppleWebSignIn(options.apple ?? null, options.loadAppleSdk ?? scriptLoader(win)),
     supportsNativeAppleSignIn: () => false,
+    onDeepLink: () => () => undefined,
     async camera() {
       const [file] = await chooseFiles(win, IMAGES, false, 'environment');
       return file ?? null;
