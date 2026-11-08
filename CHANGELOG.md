@@ -7,9 +7,15 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-39: Bedrock vision adapter (ADR-004 §3, ADR-008 §7) — Converse with `EXCHANGE_INSTRUCTIONS`, top/underside
+  WebP and the field schema + `known` (600 tokens, temperature 0, 8 s); the answer goes through the exchange-upload
+  parser; brand confidence < 0.4 → `unidentified` with suggestions; throttling/5xx/timeout → 503; tokens and cost on the
+  Scan (`prices.ts`, overridable); `CAP_VISION=bedrock|fake|off`, `fake` by default on `api:local` (T-api-058…064).
 - CAP-33: `collectors://cap/<capId>` deep links open the cap detail on iPhone — `CFBundleURLTypes` scheme
   `collectors`, `Platform.onDeepLink` (Capacitor `appUrlOpen`, web no-op), id validated with the shared `Ulid`, anything
   else ignored (T-app-062, T-app-063).
+- CAP-48: `exchange-requests-{list,create,patch}` get the table grant (closes SPEC-GAP CAP-15); T-infra-016 now
+  checks that every handler using the repositories has the table. Deploy together with CAP-44.
 - CAP-46: `fflate` ^0.8.3 in `app` (tiny, dependency-free ESM zip) for building `request.zip` exchange bundles on the
   client (CAP-45).
 - CAP-44: exchange requests API (ADR-007) — `POST /exchange/requests` registers a downloaded bundle as `waiting` with

@@ -1,5 +1,5 @@
 // CollectorsApi stack (CAP-15): routes from shared + wiring (CAP-27), handler stubs, authorizer, IAM, CORS, settings.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { App } from 'aws-cdk-lib';
@@ -150,6 +150,18 @@ describe('CollectorsApi stack', () => {
     // Public routes get no table/S3 grant beyond what the auth flow needs; wiring is copied, not invented.
     for (const route of ROUTES) expect(route.grants).toEqual(WIRING[route.handler]?.grants);
     expect(ROUTES.find((r) => r.handler === 'healthz')).toMatchObject({ auth: false, grants: [] });
+
+    // CAP-48: every landed handler that opens the repositories (DynamoDB) has the table; without it the deployed
+    // Lambda fails with AccessDenied. Covers the exchange-requests handlers (CAP-44).
+    const handlersDir = join(REPO_ROOT, 'api', 'src', 'handlers');
+    const usesTable = readdirSync(handlersDir)
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => readFileSync(join(handlersDir, f), 'utf8').includes('getRepositories'))
+      .map((f) => f.replace(/\.ts$/, ''));
+    expect(usesTable).toEqual(
+      expect.arrayContaining(['exchange-requests-list', 'exchange-requests-create', 'exchange-requests-patch']),
+    );
+    for (const handler of usesTable) expect(WIRING[handler]?.grants, handler).toContain('table');
 
     // A route the contract adds before infra wires it deploys with nothing granted (and the check above fails).
     const added: RouteDef = { method: 'GET', path: '/new', handler: 'new-thing', auth: true };

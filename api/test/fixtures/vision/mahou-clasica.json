@@ -1,0 +1,18 @@
+{
+  "provider": "fake",
+  "model": "fixture",
+  "fields": {
+    "brand": "Mahou",
+    "variant": "Clásica",
+    "producer": "Mahou San Miguel",
+    "country": "Spain",
+    "type": "beer",
+    "material": "steel",
+    "closure": "pry-off",
+    "year": null,
+    "description": "Red cap with the white Mahou star and lettering.",
+    "textOnCap": "MAHOU CLÁSICA"
+  },
+  "confidence": { "brand": 0.94, "variant": 0.81, "country": 0.9, "year": null },
+  "notes": null
+}
