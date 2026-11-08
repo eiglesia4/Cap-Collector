@@ -1,6 +1,6 @@
 {
-  "red-band-daylight": "f0f0f0b0b0f0f0f0",
-  "red-band-lamp": "f0f8f0bebef0f8f0",
-  "blue-diagonal": "f0c08080c0c0c0f0",
-  "green-rings": "f0c4a6c4c4a6c4f0"
+  "red-band-daylight": "f0f0f03030f0f0f0",
+  "red-band-lamp": "e8f8f03030f8f0f0",
+  "blue-diagonal": "8000000000c0c080",
+  "green-rings": "866796a6a6966796"
 }

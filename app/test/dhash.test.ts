@@ -1,11 +1,13 @@
 // Tests for the client dHash and the circular crop of the cap photo (CAP-36, ADR-004 §1): golden hashes, fixture
-// distances, the crop/mask/encode path through a fake codec, and stability across the resize step.
+// distances, the crop/mask/encode path through a fake codec (hash of the inscribed square, architect revision
+// 2026-11-08), and stability across the resize step.
 import { DHash } from '@capcollector/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { areaAverageGray, dhash, hammingDistance } from '../src/images/dhash';
 import {
   browserCodec,
+  inscribedSquare,
   maskCircle,
   MAX_EDGE,
   resizeToWebp,
@@ -47,8 +49,10 @@ describe('dHash', () => {
     expect(dhash(gray(big))).toBe(dhash(gray(cells)));
     // Fractional edges: 3 columns into 2 → (0 + 90/2) / 1.5 = 30 and (90/2 + 180) / 1.5 = 150.
     expect([...areaAverageGray(gray([[0, 90, 180]]), 2, 1)].map(Math.round)).toEqual([30, 150]);
-    // Transparent pixels count as black (the masked corners of a circular crop).
-    expect([...areaAverageGray({ data: [200, 200, 200, 0], width: 1, height: 1 }, 1, 1)]).toEqual([0]);
+    // Alpha is ignored (the hashed region is all cap): only BT.601 luma counts.
+    expect([...areaAverageGray({ data: [100, 200, 50, 0], width: 1, height: 1 }, 1, 1)]).toEqual([
+      0.299 * 100 + 0.587 * 200 + 0.114 * 50,
+    ]);
     expect(() => dhash({ data: [], width: 0, height: 0 })).toThrow(RangeError);
 
     expect(hammingDistance('0000000000000000', 'ffffffffffffffff')).toBe(64);
@@ -56,7 +60,7 @@ describe('dHash', () => {
     expect(() => hammingDistance('F0F0F0B0B0F0F0F0', '0000000000000000')).toThrow(RangeError);
   });
 
-  it('[T-app-065] fixtures: the same cap under two lights is ≤ 10 apart, different caps are > 10 apart', () => {
+  it('[T-app-065] fixtures (inscribed square): the same cap under two lights is ≤ 10 apart, different caps ≥ 20', () => {
     const hashes = Object.fromEntries(
       (Object.keys(FIXTURES) as FixtureName[]).map((name) => [name, dhash(FIXTURES[name]())]),
     ) as Record<FixtureName, string>;
@@ -72,11 +76,14 @@ describe('dHash', () => {
       ['red-band-lamp', 'green-rings'],
       ['blue-diagonal', 'green-rings'],
     ];
-    for (const [a, b] of different) expect(hammingDistance(hashes[a], hashes[b]), `${a} vs ${b}`).toBeGreaterThan(10);
+    // Measured 22–37 (same cap: 4): with no background or mask edge in the hash, the margin over the threshold of 10 is wide.
+    for (const [a, b] of different) {
+      expect(hammingDistance(hashes[a], hashes[b]), `${a} vs ${b}`).toBeGreaterThanOrEqual(20);
+    }
   });
 
   it(
-    '[T-app-066] circular crop keeps the centre square, ≤ 1024 px, alpha outside the circle; hash of that bitmap',
+    '[T-app-066] circular crop keeps the centre square, ≤ 1024 px, alpha outside the circle; hash of the inscribed square',
     HEAVY,
     async () => {
       // A 2000 × 1500 photo: the centre square is x 250…1750, scaled to 1024 × 1024.
@@ -106,8 +113,21 @@ describe('dHash', () => {
       if (!sent) throw new Error('nothing encoded');
       expect([alphaAt(sent, 0, 0), alphaAt(sent, 1023, 1023), alphaAt(sent, 1023, 0)]).toEqual([0, 0, 0]);
       expect([alphaAt(sent, 512, 512), alphaAt(sent, 512, 1), alphaAt(sent, 1, 512)]).toEqual([255, 255, 255]);
-      // The hash is of the masked bitmap before encoding: the fixture's own hash, at full size.
-      expect(photo.dhash).toBe(dhash(maskCircle(renderCap(DESIGNS.redBand, 1024))));
+      // The hash is of the square inscribed in the circle, before the mask and before encoding.
+      expect(photo.dhash).toBe(dhash(inscribedSquare(renderCap(DESIGNS.redBand, 1024))));
+      expect(photo.dhash).not.toBe(dhash(sent));
+
+      // Inscribed square: side = ⌊1024 / √2⌋ = 724, centred at 150; every pixel lies inside the circle (no mask edge).
+      const inner = inscribedSquare(maskCircle(renderCap(DESIGNS.greenRings, 1024)));
+      expect([inner.width, inner.height]).toEqual([724, 724]);
+      expect(inner.data.filter((_, i) => i % 4 === 3).every((a) => a === 255)).toBe(true);
+      const ramp: Raster = {
+        data: new Uint8ClampedArray(Array.from({ length: 6 * 4 }, (_, i) => Math.floor(i / 4) * 10)),
+        width: 3,
+        height: 2,
+      };
+      // A 3 × 2 raster: diameter 2 → side 1, at x 1 (pixel 1 of the top row).
+      expect(inscribedSquare(ramp)).toEqual({ data: new Uint8ClampedArray([10, 10, 10, 10]), width: 1, height: 1 });
       expect(close).toHaveBeenCalled();
       expect(codec.encode).not.toHaveBeenCalled();
 
@@ -163,8 +183,8 @@ describe('dHash', () => {
     () => {
       for (const [name, design] of Object.entries(DESIGNS)) {
         for (const light of [undefined, LAMP]) {
-          const full = dhash(maskCircle(renderCap(design, 1024, light)));
-          const half = dhash(maskCircle(renderCap(design, 512, light)));
+          const full = dhash(inscribedSquare(renderCap(design, 1024, light)));
+          const half = dhash(inscribedSquare(renderCap(design, 512, light)));
           expect(hammingDistance(full, half), name).toBeLessThanOrEqual(2);
         }
       }

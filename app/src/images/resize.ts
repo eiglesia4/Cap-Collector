@@ -3,7 +3,8 @@
 // 1024 px and encode WebP at quality 0.85 on a canvas. A browser that cannot encode WebP gets an error, never a JPEG
 // named `.webp` (story CAP-25 § How). The decoder/encoder sit behind `ImageCodec` so tests run without a real canvas.
 // V2 capture (CAP-36): `crop: 'circle'` — centred square, circular mask (transparent outside, WebP keeps the alpha) and
-// the dHash of that cropped bitmap before it is encoded (ADR-004 §1).
+// the dHash of the square inscribed in that circle, taken before the mask and before encoding (ADR-004 §1; architect
+// revision 2026-11-08: no background and no mask edge in the hash, so every one of the 64 bits carries the cap).
 import { dhash, type Pixels } from './dhash.js';
 
 /** Long edge of every stored image (ADR-006, shared `ImageRef` max). */
@@ -122,6 +123,24 @@ export function maskCircle(raster: Raster): Raster {
   return { data, width, height };
 }
 
+/**
+ * The axis-aligned square inscribed in the circle of `raster` (side = diameter / √2, centred): the region the dHash is
+ * computed on (architect revision of CAP-36, 2026-11-08). Every pixel is inside the circle, so it is all cap.
+ */
+export function inscribedSquare(raster: Raster): Raster {
+  const diameter = Math.min(raster.width, raster.height);
+  // Floor keeps the corners strictly inside the circle (pixel centres tested like maskCircle).
+  const side = Math.max(1, Math.floor(diameter / Math.SQRT2));
+  const sx = Math.floor((raster.width - side) / 2);
+  const sy = Math.floor((raster.height - side) / 2);
+  const data = new Uint8ClampedArray(side * side * 4);
+  for (let y = 0; y < side; y++) {
+    const from = ((sy + y) * raster.width + sx) * 4;
+    data.set(raster.data.subarray(from, from + side * 4), y * side * 4);
+  }
+  return { data, width: side, height: side };
+}
+
 /** Encode at 0.85, stepping quality down only while the WebP is above the upload limit. */
 async function encodeWithin(encode: (quality: number) => Promise<Blob | null>): Promise<Blob> {
   for (const quality of [WEBP_QUALITY, ...FALLBACK_QUALITIES]) {
@@ -158,9 +177,10 @@ async function resizeCircle(file: Blob, codec: RasterCodec): Promise<CapPhoto> {
     const { width, height } = fitWithin(crop.sw, crop.sh);
     const drawn = await codec.raster(image, crop, width, height);
     if (drawn === null) throw new WebpUnsupportedError('this browser has no 2D canvas');
+    // The hash is of the inscribed square of the pre-mask, pre-WebP bitmap, so neither the mask nor encoder artefacts
+    // move it; the stored WebP is still the masked circle.
+    const hash = dhash(inscribedSquare(drawn));
     const circle = maskCircle(drawn);
-    // The hash is of the cropped, pre-WebP bitmap (story CAP-36), so encoder artefacts never move it.
-    const hash = dhash(circle);
     const blob = await encodeWithin((quality) => codec.encodeRaster(circle, quality));
     return { blob, width, height, dhash: hash };
   } finally {

@@ -6,7 +6,7 @@
 //
 //   npx tsx -e "import('./app/test/fixtures/dhash/make.ts').then((m) => console.log(JSON.stringify(m.expectedHashes(), null, 2)))" > app/test/fixtures/dhash/expected.json
 import { dhash } from '../../../src/images/dhash';
-import { maskCircle, type Raster } from '../../../src/images/resize';
+import { inscribedSquare, type Raster } from '../../../src/images/resize';
 
 /** RGB in 0…255 at normalised coordinates (u, v) ∈ [0, 1)². */
 type Design = (u: number, v: number) => readonly [number, number, number];
@@ -28,11 +28,19 @@ export const LAMP: Light = { gain: 0.78, offset: 22, gamma: 1.12, side: 0.04, no
 
 const ring = (u: number, v: number) => Math.hypot(u - 0.5, v - 0.5);
 
-/** Red crown cap: dark rim, light disc, a white horizontal band with a darker "logo" blob on its left. */
+/**
+ * Red crown cap: dark rim, light disc, a white horizontal band (printed brighter at the centre: a perfectly flat band
+ * would leave its bits to sensor noise) with a darker "logo" blob on its left.
+ */
+const band = (u: number) => {
+  const fade = 60 * Math.abs(u - 0.5);
+  return [235 - fade, 230 - fade, 220 - fade] as const;
+};
+
 const redBand: Design = (u, v) => {
   const r = ring(u, v);
   if (r > 0.44) return [90, 20, 25];
-  if (Math.abs(v - 0.5) < 0.1) return Math.hypot(u - 0.32, v - 0.5) < 0.08 ? [60, 30, 40] : [235, 230, 220];
+  if (Math.abs(v - 0.5) < 0.1) return Math.hypot(u - 0.32, v - 0.5) < 0.08 ? [60, 30, 40] : band(u);
   return [200 - 120 * r, 40, 45];
 };
 
@@ -87,12 +95,12 @@ export function renderCap(design: Design, size: number, light: Light = DAYLIGHT)
   return { data, width: size, height: size };
 }
 
-/** The four fixture photos: the same cap under two lights, and two different caps. Circular, as the app crops them. */
+/** The four fixture photos: the same cap under two lights, and two different caps. Inscribed square, as the app hashes. */
 export const FIXTURES = {
-  'red-band-daylight': () => maskCircle(renderCap(redBand, 64, DAYLIGHT)),
-  'red-band-lamp': () => maskCircle(renderCap(redBand, 64, LAMP)),
-  'blue-diagonal': () => maskCircle(renderCap(blueDiagonal, 64, DAYLIGHT)),
-  'green-rings': () => maskCircle(renderCap(greenRings, 64, LAMP)),
+  'red-band-daylight': () => inscribedSquare(renderCap(redBand, 64, DAYLIGHT)),
+  'red-band-lamp': () => inscribedSquare(renderCap(redBand, 64, LAMP)),
+  'blue-diagonal': () => inscribedSquare(renderCap(blueDiagonal, 64, DAYLIGHT)),
+  'green-rings': () => inscribedSquare(renderCap(greenRings, 64, LAMP)),
 } as const;
 
 export type FixtureName = keyof typeof FIXTURES;

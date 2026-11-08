@@ -2,10 +2,11 @@
 // compared on the server by Hamming distance (≤ 10 = "Already in collection", api/src/lib/scans.ts). Shared `DHash`:
 // 16 lower-case hex chars. Pure over RGBA pixels (an `ImageData` or the codec's `Raster`), so it tests without a canvas.
 //
-// Algorithm: luma (BT.601) composited over black (transparent pixels count as 0, so the masked corners of a circular
-// crop are the same for every cap) → area-average down to 9 × 8 (a box filter with fractional edges, not nearest
-// neighbour, so the hash does not depend on the photo's resolution) → for each row, bit = 1 when the right neighbour
-// is brighter → 64 bits row-major, the first one the most significant.
+// Algorithm (client contract confirmed by the architect in CAP-36, 2026-11-08): luma (BT.601) → area-average down to
+// 9 × 8 (a box filter with fractional edges, not nearest neighbour, so the hash does not depend on the photo's
+// resolution) → for each row, bit = 1 when the right neighbour is brighter → 64 bits row-major, the first one the most
+// significant. Alpha is ignored: the capture hashes the square inscribed in the cap circle, which is all cap
+// (resize.ts `inscribedSquare`).
 import { DHash } from '@capcollector/shared';
 
 export const DHASH_COLUMNS = 9;
@@ -49,7 +50,7 @@ export function areaAverageGray(pixels: Pixels, columns: number, rows: number): 
       for (const { index, weight } of xs[c] ?? []) {
         const p = (y * width + index) * 4;
         const luma = 0.299 * (data[p] ?? 0) + 0.587 * (data[p + 1] ?? 0) + 0.114 * (data[p + 2] ?? 0);
-        sum += ((luma * (data[p + 3] ?? 255)) / 255) * weight;
+        sum += luma * weight;
       }
       narrow[y * columns + c] = sum;
     }
