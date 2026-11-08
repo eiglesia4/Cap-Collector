@@ -6,6 +6,7 @@ import { createApiClient, type ApiClient } from '../../src/api/client';
 import { createApiUrlSetting } from '../../src/api-url';
 import type { Session } from '../../src/api/schema';
 import type { ShellContext } from '../../src/app';
+import { createCaptureStore } from '../../src/capture/context';
 import type { AppConfig } from '../../src/config';
 import type { KeyValueStore, Platform } from '../../src/platform/platform';
 import { createSessionStore } from '../../src/session/session-store';
@@ -73,7 +74,7 @@ export async function shellContext(
   if (overrides.signedIn ?? true) await session.save(TEST_SESSION);
   const apiUrl = createApiUrlSetting(config, platform.store);
   const api = overrides.api ?? createApiClient({ baseUrl: apiUrl.current, session, fetch: vi.fn() });
-  return { config, platform, session, api, apiUrl };
+  return { config, platform, session, api, apiUrl, capture: createCaptureStore() };
 }
 
 export function json(status: number, body: unknown, contentType = 'application/json'): Response {

@@ -7,6 +7,7 @@ import { createApiClient } from './api/client.js';
 import { createApiUrlSetting } from './api-url.js';
 import { renderApp } from './app.js';
 import { restoreSession } from './auth/sign-in.js';
+import { createCaptureStore } from './capture/context.js';
 import { loadConfig } from './config.js';
 import { selectPlatform } from './platform/select-platform.js';
 import { createSessionStore } from './session/session-store.js';
@@ -18,7 +19,7 @@ async function start(root: HTMLElement): Promise<void> {
   const apiUrl = createApiUrlSetting(config, platform.store);
   await Promise.all([session.load(), apiUrl.load()]);
   const api = createApiClient({ baseUrl: apiUrl.current, session });
-  renderApp(root, { config, platform, session, api, apiUrl });
+  renderApp(root, { config, platform, session, api, apiUrl, capture: createCaptureStore() });
   await restoreSession({ session, api });
 }
 

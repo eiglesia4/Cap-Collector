@@ -14,6 +14,8 @@ describe('routes', () => {
       '/cap/:id',
       '/cap/:id/edit',
       '/new',
+      '/scan/duplicate',
+      '/scan/review',
       '/albums',
       '/exchange',
       '/settings',
