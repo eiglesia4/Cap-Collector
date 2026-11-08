@@ -1,4 +1,5 @@
 /* Shell layout and base components (CAP-21): view outlet, bottom tab bar, header, buttons, fields. */
+@import './scan-duplicate.css';
 @import './scan.css';
 
 *,

@@ -1,6 +1,6 @@
-// Stand-ins for the two capture outcomes CAP-41 routes to before their stories land: "Already in collection"
-// (SCREENS.md #4, CAP-42) and "AI review" (SCREENS.md #3, CAP-43). Full-screen modal; Discard → Collection and clears
-// the scan context (SCREENS.md § Navigation). Each story replaces its entry in screens/index.ts.
+// Stand-in for the capture outcome whose story has not landed yet: "AI review" (SCREENS.md #3, CAP-43; "Already in
+// collection" arrived with CAP-42). Full-screen modal; Discard → Collection and clears the scan context
+// (SCREENS.md § Navigation). CAP-43 replaces its entry in screens/index.ts.
 import type { Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { pathFor } from '../router/routes.js';

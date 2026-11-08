@@ -6,6 +6,8 @@
 // from the cap's status, sent only when changed (architect review, CAP-25, 2026-11-08). Leaving unsaved asks first.
 // From a capture (CAP-41, `/new?scanId=…`): the scan's uploaded photos, the AI's brand suggestions, and the dHashes
 // (plus `aiModel`) carried into `POST /caps` while the photo they were computed from is still the one attached.
+// "It's a variant" (CAP-42, `/new?scanId=…&variantOf=<capId>`): pre-filled with the scan's fields, saved with
+// `variantOf` (ADR-008 §1) and the scan's `source`.
 import {
   Cap,
   CapType as CapTypeEnum,
@@ -32,6 +34,7 @@ import {
   sameValues,
   validate,
   valuesFromCap,
+  valuesFromFields,
   type FieldName,
   type FormErrors,
   type FormImages,
@@ -39,6 +42,7 @@ import {
   type ValueField,
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
+import { scanSource } from '../capture/duplicate.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
 import { invalidateCollection } from '../collection/state.js';
@@ -70,6 +74,10 @@ export interface CapFormOptions {
   readonly put?: PutFn;
   /** Manual entry of a capture (mode `empty`): its photos, suggestions and hashes (CAP-41). */
   readonly scan?: CaptureSession;
+  /** Starting values instead of the empty ones (CAP-42 "It's a variant": the scan's fields). */
+  readonly prefill?: FormValues;
+  /** Merged into `POST /caps` (CAP-42: `variantOf`, `source`, `textOnCap` of the scan). */
+  readonly extra?: Readonly<Record<string, unknown>>;
 }
 
 /** The scan's uploaded photos as form images. */
@@ -137,9 +145,9 @@ function enumOptions<T extends string>(values: readonly T[], labels: Readonly<Re
 }
 
 export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
-  const { mode, cap, scan } = options;
+  const { mode, cap, scan, prefill, extra } = options;
   if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
-  const initialValues: FormValues = cap ? valuesFromCap(cap) : { ...EMPTY_VALUES, tags: [] };
+  const initialValues: FormValues = cap ? valuesFromCap(cap) : (prefill ?? { ...EMPTY_VALUES, tags: [] });
   const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
   const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
   const images: FormImages = { ...initialImages };
@@ -562,7 +570,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           schema: Cap,
         });
       } else {
-        const body = scan ? { ...result.input, ...scanFields(scan, images) } : result.input;
+        const body = { ...result.input, ...(scan ? scanFields(scan, images) : {}), ...extra };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
       if (scan) ctx.capture.clear();
@@ -688,7 +696,11 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       'header',
       { class: 'screen-header' },
       cancel,
-      h('h1', { class: 'screen-title' }, t(mode === 'edit' ? 'capEdit.title' : 'newCap.title')),
+      h(
+        'h1',
+        { class: 'screen-title' },
+        t(mode === 'edit' ? 'capEdit.title' : extra?.variantOf ? 'newCap.variantTitle' : 'newCap.title'),
+      ),
     ),
     form,
   );
@@ -704,7 +716,22 @@ export const NewCapScreen: Screen = (ctx, route) => {
   const session = ctx.capture.current();
   const scanId = route.query.scanId;
   const scan = scanId !== undefined && session?.scanId === scanId && session.top?.ref ? session : undefined;
-  return CapForm(ctx, scan ? { mode: 'empty', scan } : { mode: 'empty' });
+  if (!scan) return CapForm(ctx, { mode: 'empty' });
+  // "It's a variant" from Already in collection (CAP-42): only for the cap this scan matched.
+  const variantOf = route.query.variantOf;
+  if (variantOf === undefined || scan.response?.match?.capId !== variantOf)
+    return CapForm(ctx, { mode: 'empty', scan });
+  const fields = scan.response.fields ?? {};
+  return CapForm(ctx, {
+    mode: 'empty',
+    scan,
+    prefill: valuesFromFields(fields),
+    extra: {
+      variantOf,
+      source: scanSource(scan),
+      ...(fields.textOnCap !== undefined ? { textOnCap: fields.textOnCap } : {}),
+    },
+  });
 };
 
 /** `/cap/:id/edit`: the same form in edit mode, once the cap is loaded. */

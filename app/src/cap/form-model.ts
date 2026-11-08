@@ -2,7 +2,16 @@
 // raw input values ↔ the shared `CapInput` (validated with the contract's own zod schema, issues mapped to inline
 // messages), the `POST /caps` body, and the `PATCH /caps/{id}` body holding only the fields that changed (`null`
 // clears an optional field, openapi.yaml § PATCH).
-import { CapInput, CapPatch, Year, type Cap, type CapStatus, type ImageRef, type Problem } from '@capcollector/shared';
+import {
+  CapInput,
+  CapPatch,
+  Year,
+  type Cap,
+  type CapFields,
+  type CapStatus,
+  type ImageRef,
+  type Problem,
+} from '@capcollector/shared';
 
 import { t } from '../i18n/i18n.js';
 
@@ -115,6 +124,24 @@ export function valuesFromCap(cap: Cap): FormValues {
     notes: s(cap.notes),
     quantity: String(cap.quantity),
     forTrade: String(cap.forTrade),
+  };
+}
+
+/** Form values pre-filled from a scan's fields (CAP-42 "It's a variant"); what the form has no input for is left out. */
+export function valuesFromFields(fields: { readonly [K in keyof CapFields]?: CapFields[K] | undefined }): FormValues {
+  const s = (v: string | number | undefined) => (v === undefined ? '' : String(v));
+  return {
+    ...EMPTY_VALUES,
+    tags: [],
+    brand: s(fields.brand),
+    variant: s(fields.variant),
+    producer: s(fields.producer),
+    country: s(fields.country),
+    type: s(fields.type),
+    material: s(fields.material),
+    closure: s(fields.closure),
+    year: s(fields.year),
+    description: s(fields.description),
   };
 }
 

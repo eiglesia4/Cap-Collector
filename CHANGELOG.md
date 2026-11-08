@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-42: "Already in collection" screen — reason line, new vs stored photo, opt-in field diff (nothing ticked), "+1 quantity", "Replace top photo" (with its `dhash`), PATCH of only the ticked changes, variant path with `variantOf`, discard.
 - CAP-50: cap location API — `PUT /caps/{id}/location` in one transaction (cap, GSI1, `LOCK#`, history) with `swap`, `DELETE` to clear (idempotent), location accepted on `POST /caps`; 409 names the occupant, 404 unknown letter, 422 geometry or kind mismatch.
 - CAP-57: backups — AWS Backup vault + plan `cap-<inst>-<stage>` with a daily 03:00 UTC rule on the table
   (`ops.backupRetentionDays`, naeva.dev 35; no cold storage; vault follows the stack's removal policy); images bucket

@@ -359,8 +359,8 @@ describe('scan screen', () => {
     expect(store.current()).toBeNull();
 
     store.start({ scanId: SCAN_ID, useAi: true });
-    const outcome = scanOutcomePlaceholder('scanDuplicate.title')(s.ctx, matchRoute('/scan/duplicate') as never);
-    expect(outcome.querySelector('h1')?.textContent).toBe(t('scanDuplicate.title'));
+    const outcome = scanOutcomePlaceholder('scanReview.title')(s.ctx, matchRoute('/scan/review') as never);
+    expect(outcome.querySelector('h1')?.textContent).toBe(t('scanReview.title'));
     click(outcome, '[data-action="discard"]');
     expect(outcome.querySelector('[data-action="discard"]')?.getAttribute('href')).toBe('/');
     expect(store.current()).toBeNull();
