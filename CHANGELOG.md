@@ -7,6 +7,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-38: `@aws-sdk/client-bedrock-runtime` ^3.1161.0 in `api` (same line as the other `@aws-sdk/*`, one shared
+  `@aws-sdk/core`) for the Bedrock vision adapter (CAP-39).
 - CAP-37: scans API (ADR-004) — `POST /scans/analyse`: dHash Hamming over the user's live caps (≤ `CAP_DHASH_THRESHOLD`,
   default 10 → `duplicate` with the AI never called), `useAi=false` → `unidentified`, `VisionAdapter` interface with a
   stub (unavailable → Scan stored, 503), brand + variant re-check over GSI2; every call stores a `Scan`; `GET /scans`
