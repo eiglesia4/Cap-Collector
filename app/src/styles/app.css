@@ -652,3 +652,29 @@ body {
   color: var(--color-ground);
   transform: translateX(-50%);
 }
+
+/* Refused Apple ID (CAP-28): the decoded `sub` to hand to the server allow-list, with a copy action. */
+
+.apple-sub-slot:empty {
+  display: none;
+}
+
+.apple-sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.apple-sub p {
+  margin: 0;
+}
+
+.apple-sub__value {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

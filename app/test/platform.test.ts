@@ -143,6 +143,7 @@ describe('capacitor platform', () => {
         })),
       } as unknown as CapacitorPlugins['Camera'],
       Share: { share: vi.fn(async () => ({})) },
+      SignInWithApple: { authorize: vi.fn() },
       Filesystem: {
         writeFile: vi.fn(async ({ path }: { path: string }) => ({ uri: `file:///cache/${path}` })),
       } as unknown as CapacitorPlugins['Filesystem'],
