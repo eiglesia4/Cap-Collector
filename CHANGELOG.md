@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-28: native Sign in with Apple sheet on iPhone (`@capacitor-community/apple-sign-in`, `clientId` = bundle id,
+  PKCE nonce/state; cancel by error code 1001, message as fallback); on 403 the sign-in screen shows the Apple `sub`
+  decoded locally with Copy for the allow-list; `App.entitlements` + Xcode `CODE_SIGN_ENTITLEMENTS` and
+  `DEVELOPMENT_TEAM` committed (T-app-044…047).
 - CAP-35: `caps-create` and `caps-patch` get `images-get` (`s3:GetObject` on the images bucket) so the presigned
   `imageUrls` they return since CAP-30 download; T-infra-027 requires it for every Cap-returning handler.
 - CAP-30: API adopts contracts v0.2 — `Cap.imageUrls = { top, underside? }` (15-minute presigned GETs) on caps
