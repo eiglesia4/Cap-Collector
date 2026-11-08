@@ -7,6 +7,7 @@ import {
   brandGsi2,
   capPk,
   capSk,
+  exchangeSk,
   historySk,
   locationGsi1,
   lockSk,
@@ -20,6 +21,7 @@ import { Conflict, NotImplemented } from '../../src/lib/errors.js';
 import { encodeCursor } from '../../src/lib/repo/items.js';
 import {
   DynamoCapRepository,
+  DynamoExchangeRepository,
   DynamoRefreshTokenRepository,
   DynamoScanRepository,
   createDocumentClient,
@@ -188,7 +190,7 @@ describe('DynamoCapRepository keys', () => {
     await expect(throttled.put(UID, { cap: FIXTURE_CAP, albumId: ALBUM_ID, history: h })).rejects.toThrow('slow down');
   });
 
-  it('[T-api-011] album and exchange DynamoDB repositories are stubs that answer 501 until their stories (scans are real since CAP-37)', async () => {
+  it('[T-api-011] the album DynamoDB repository is a stub that answers 501 until its story (scans real since CAP-37, exchange since CAP-44)', async () => {
     const repos = createDynamoRepositories(createDocumentClient({}), TABLE);
     expect(repos.caps).toBeInstanceOf(DynamoCapRepository);
     const calls = [
@@ -196,12 +198,10 @@ describe('DynamoCapRepository keys', () => {
       repos.albums.byLetter(UID, 'A'),
       repos.albums.list(UID),
       repos.albums.put(UID, {} as never),
-      repos.exchange.put(UID, {} as never),
-      repos.exchange.get(UID, 'r'),
-      repos.exchange.list(UID),
     ];
     for (const c of calls) await expect(c).rejects.toBeInstanceOf(NotImplemented);
     expect(repos.scans).toBeInstanceOf(DynamoScanRepository);
+    expect(repos.exchange).toBeInstanceOf(DynamoExchangeRepository);
   });
 
   it('[T-api-048] scans: USER#/SCAN#<ts>#<scanId> keys from shared, newest first with cursor, get by id follows pages', async () => {
@@ -255,6 +255,90 @@ describe('DynamoCapRepository keys', () => {
     expect(sent).toHaveLength(5); // invalid limit / cursor never reach DynamoDB
     const none = new DynamoScanRepository({ send: async () => ({}) }, TABLE);
     expect(await none.get(UID, scan.scanId)).toBeUndefined();
+  });
+
+  it('[T-api-051] exchange: USER#/EXCHANGE#<requestId> keys from shared, scan link in the same transaction, status-conditioned update, list follows pages', async () => {
+    const item = {
+      requestId: '01JBF6Z3Q8K2M4N6P8R0S2EXCH',
+      createdAt: '2026-11-08T10:00:00.000Z',
+      status: 'waiting' as const,
+      dhash: 'a3f0c81e7b2d9f44',
+      scanId: '01JBF6Z3Q8K2M4N6P8R0S2SCAN',
+      ttl: 1765188000,
+    };
+    const scan = {
+      scanId: item.scanId,
+      ts: '2026-11-08T09:59:00.000Z',
+      dhash: item.dhash,
+      outcome: 'unidentified' as const,
+      threshold: 10,
+      aiCalled: true,
+    };
+    const page2 = { pk: userPk(UID), sk: exchangeSk('01JBF6Z3Q8K2M4N6P8R0S2EXC2') };
+    const sent: Cmd[] = [];
+    const doc: DocSender = {
+      send: async (c) => {
+        sent.push(c);
+        if (c instanceof GetCommand) return { Item: { ...item, pk: userPk(UID), sk: exchangeSk(item.requestId) } };
+        if (c instanceof QueryCommand)
+          return c.input.ExclusiveStartKey
+            ? { Items: [{ ...item, requestId: '01JBF6Z3Q8K2M4N6P8R0S2EXC2', ...page2 }] }
+            : { Items: [{ ...item, pk: userPk(UID), sk: exchangeSk(item.requestId) }], LastEvaluatedKey: page2 };
+        return {};
+      },
+    };
+    const repo = new DynamoExchangeRepository(doc, TABLE);
+
+    await repo.create(UID, item, scan);
+    const [put, link] = transactItems(sent[0]);
+    expect(put?.Put).toEqual({
+      TableName: TABLE,
+      Item: { ...item, pk: userPk(UID), sk: exchangeSk(item.requestId) },
+      ConditionExpression: 'attribute_not_exists(pk)',
+    });
+    expect(link?.Update).toMatchObject({
+      TableName: TABLE,
+      Key: { pk: userPk(UID), sk: scanSk(scan.ts, scan.scanId) },
+      UpdateExpression: 'SET exchangeRequestId = :rid',
+      ConditionExpression: 'attribute_exists(pk)',
+      ExpressionAttributeValues: { ':rid': item.requestId },
+    });
+    await repo.create(UID, item);
+    expect(transactItems(sent[1])).toHaveLength(1);
+
+    expect(await repo.get(UID, item.requestId)).toEqual(item);
+    expect((sent[2] as GetCommand).input.Key).toEqual({ pk: userPk(UID), sk: exchangeSk(item.requestId) });
+
+    await repo.update(UID, { ...item, status: 'answered', provider: 'chatgpt' }, 'waiting');
+    expect((sent[3] as PutCommand).input).toMatchObject({
+      Item: { status: 'answered', provider: 'chatgpt', pk: userPk(UID), sk: exchangeSk(item.requestId) },
+      ConditionExpression: '#status = :prev',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':prev': 'waiting' },
+    });
+
+    expect((await repo.list(UID)).map((r) => r.requestId)).toEqual([item.requestId, '01JBF6Z3Q8K2M4N6P8R0S2EXC2']);
+    expect((sent[4] as QueryCommand).input.ExpressionAttributeValues).toEqual({
+      ':pk': userPk(UID),
+      ':prefix': SK_PREFIX.exchange,
+    });
+    expect((sent[5] as QueryCommand).input.ExclusiveStartKey).toEqual(page2);
+
+    const fail = (name: string) => {
+      const d: DocSender = { send: async () => Promise.reject(Object.assign(new Error(name), { name })) };
+      return new DynamoExchangeRepository(d, TABLE);
+    };
+    await expect(fail('TransactionCanceledException').create(UID, item)).rejects.toBeInstanceOf(Conflict);
+    await expect(fail('ConditionalCheckFailedException').update(UID, item, 'answered')).rejects.toBeInstanceOf(
+      Conflict,
+    );
+    await expect(fail('ThrottlingException').create(UID, item)).rejects.toThrow('ThrottlingException');
+    await expect(fail('ThrottlingException').update(UID, item, 'waiting')).rejects.toThrow('ThrottlingException');
+    await expect(fail('ThrottlingException').get(UID, item.requestId)).rejects.toThrow('ThrottlingException');
+    expect(
+      await new DynamoExchangeRepository({ send: async () => ({}) }, TABLE).get(UID, item.requestId),
+    ).toBeUndefined();
+    expect(await new DynamoExchangeRepository({ send: async () => ({}) }, TABLE).list(UID)).toEqual([]);
   });
 
   it('[T-api-032] refresh tokens: USER#/REFRESH#<hash> keys, single-use rotation conditioned on existence and ttl', async () => {

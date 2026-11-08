@@ -107,10 +107,17 @@ export interface ScanRepository {
   list(uid: string, opts?: PageOptions): Promise<Page<Scan>>;
 }
 
+/** Exchange requests `EXCHANGE#<requestId>` (exchange.md § Pending requests, CAP-44). */
 export interface ExchangeRepository {
-  /** Create or replace. */
-  put(uid: string, item: ExchangeRequestItem): Promise<void>;
+  /**
+   * Stores a new request; Conflict when `requestId` already exists. With `linkScan`, sets that scan's
+   * `exchangeRequestId` in the same transaction (the scan must still exist, else Conflict and nothing is written).
+   */
+  create(uid: string, item: ExchangeRequestItem, linkScan?: Scan): Promise<void>;
   get(uid: string, requestId: string): Promise<ExchangeRequestItem | undefined>;
+  /** Replaces the item; Conflict when the stored status is no longer `prevStatus` (a concurrent transition won). */
+  update(uid: string, item: ExchangeRequestItem, prevStatus: ExchangeRequestItem['status']): Promise<void>;
+  /** Every request of the user (all pages), in key order; callers sort. */
   list(uid: string): Promise<ExchangeRequestItem[]>;
 }
 
