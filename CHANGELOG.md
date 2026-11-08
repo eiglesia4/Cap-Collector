@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-57: backups — AWS Backup vault + plan `cap-<inst>-<stage>` with a daily 03:00 UTC rule on the table
+  (`ops.backupRetentionDays`, naeva.dev 35; no cold storage; vault follows the stack's removal policy); images bucket
+  expires noncurrent versions after 90 days (replaces their IA transition) and keeps the 7-day multipart abort;
+  restore runbook in `infra/README.md` § Backups (T-infra-036…038).
 - CAP-41: scan screen and capture flow — circular guide, Shoot / Library (web: Upload photo), optional underside, upload, dHash, `POST /scans/analyse`, routing to the three outcomes, 503 sheet, "Use AI identification" setting; manual entry pre-filled from a scan.
 - CAP-55: app dependencies for client-side insert-card PDFs — `pdf-lib` ^1.17.1, `qrcode` ^1.5.4 (+ `@types/qrcode` dev); used by CAP-54.
 - CAP-51: operations — required `ops` config (`budgetEur`, `logRetentionDays`; naeva.dev 10 / 30); alarms on the

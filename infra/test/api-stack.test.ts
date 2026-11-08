@@ -43,7 +43,7 @@ const config: InstallationConfig = {
   region: 'test-region-1',
   app_origins: ['capacitor://localhost', 'http://localhost:5173'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
-  ops: { budgetEur: 10, logRetentionDays: 30 },
+  ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 };
 /** Unit tests never run esbuild: the stack is checked, not the bundles (CI `npm run synth` bundles for real). */
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };

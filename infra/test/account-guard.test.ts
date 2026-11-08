@@ -58,10 +58,12 @@ describe('synth guard', () => {
     Template.fromStack(ci.data);
     Template.fromStack(ci.api);
 
-    // Matching account.
+    // Matching account. The guard runs before any stack is built, so this synth skips esbuild bundling: the full,
+    // bundled synth above already covers the handlers (CAP-57: two bundled synths outgrew the CI timeout).
     process.env.CAP_ACCOUNT_NAEVA_DEV = ACCOUNT_A;
     process.env.CDK_DEFAULT_ACCOUNT = ACCOUNT_A;
-    expect(() => buildApp(appFor('naeva', 'dev'))).not.toThrow();
+    const unbundled = new App({ context: { installation: 'naeva', stage: 'dev', 'aws:cdk:bundling-stacks': [] } });
+    expect(() => buildApp(unbundled)).not.toThrow();
   });
 
   it('[T-infra-004] installation and stage are required and validated, from context or env', () => {
