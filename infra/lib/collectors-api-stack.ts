@@ -12,13 +12,15 @@
  *   CollectorsData `WebUrl` output (CAP-27).
  * - Custom domain (CAP-29): with `domains.api`, a regional API Gateway domain name (ACM certificate ARN from SSM)
  *   mapped to the default stage; DNS is a GoDaddy CNAME to the `ApiDomainTarget` output.
+ * - Bedrock (CAP-40, ADR-008 §7): only scans-analyse may invoke the model of config `ai.modelId`; a daily
+ *   invocation alarm notifies the alerts topic (cost guard; e-mail from SSM, none while `unset`).
  * No VPC, no NAT, no always-on compute (CONVENTIONS § Cost rules); arm64, 256 MB, 10 s, JSON logs kept 30 days.
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Annotations, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { Annotations, CfnCondition, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import {
   ApiMapping,
   type CfnStage,
@@ -32,17 +34,39 @@ import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Table } from 'aws-cdk-lib/aws-dynamodb';
+import { Alarm, ComparisonOperator, Metric, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
+import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, LoggingFormat, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import type { Bucket } from 'aws-cdk-lib/aws-s3';
+import { CfnSubscription, SubscriptionProtocol, Topic } from 'aws-cdk-lib/aws-sns';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
-import { dataExportName, isDisposableStage, settingParameterName } from './collectors-data-stack.js';
-import { type Deployment, type InstallationConfig, resourceName } from './config.js';
-import { AUTHORIZER_SECRETS, type Route, ROUTES, SECRET_ENV, type SecretName } from './routes.js';
+import {
+  dataExportName,
+  isDisposableStage,
+  settingParameterName,
+  UNSET_PARAMETER_VALUE,
+} from './collectors-data-stack.js';
+import {
+  type Deployment,
+  foundationModelId,
+  type InstallationConfig,
+  isInferenceProfile,
+  resourceName,
+} from './config.js';
+import {
+  AI_ENV,
+  type AiEnvName,
+  AUTHORIZER_SECRETS,
+  type Route,
+  ROUTES,
+  SECRET_ENV,
+  type SecretName,
+} from './routes.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Repository root: the esbuild project root and the home of the single lockfile. */
@@ -54,6 +78,8 @@ export const FUNCTION_MEMORY_MB = 256;
 export const FUNCTION_TIMEOUT_SECONDS = 10;
 /** Cost guard for a one-user API: well above what two devices produce, low enough to cap a runaway client. */
 export const THROTTLE = { rateLimit: 10, burstLimit: 20 } as const;
+/** Cost guard (CAP-40): more Bedrock invocations than this in one day raises the alarm. */
+export const BEDROCK_DAILY_INVOCATIONS_ALARM = 300;
 
 export type CollectorsApiStackProps = StackProps & {
   readonly deployment: Deployment;
@@ -90,6 +116,24 @@ export function webOrigin(deployment: Deployment, config: InstallationConfig): s
   return config.domains ? `https://${config.domains.web}` : Fn.importValue(dataExportName(deployment, 'WebUrl'));
 }
 
+/**
+ * ARNs `bedrock:InvokeModel` needs for a model id (CAP-40), built with formatArn (no literal ARN, account or region).
+ * A plain model id → the foundation model in this stack's region. An inference profile id (`eu.…`) → the profile in
+ * this account and region, plus the foundation model in every region the profile may route to (`*`).
+ */
+export function bedrockResources(stack: Stack, modelId: string): string[] {
+  const model = (region: string) =>
+    stack.formatArn({
+      service: 'bedrock',
+      region,
+      account: '',
+      resource: 'foundation-model',
+      resourceName: foundationModelId(modelId),
+    });
+  if (!isInferenceProfile(modelId)) return [model(stack.region)];
+  return [stack.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: modelId }), model('*')];
+}
+
 const pascal = (kebab: string) => kebab.replace(/(^|-)([a-z0-9])/g, (_m, _d: string, c: string) => c.toUpperCase());
 
 export class CollectorsApiStack extends Stack {
@@ -98,6 +142,8 @@ export class CollectorsApiStack extends Stack {
   readonly functions: ReadonlyMap<string, NodejsFunction>;
   /** The file bundled as the authorizer: api/src/auth/authorizer.ts when it exists, else the deny-all stub. */
   readonly authorizerEntry: string;
+  /** `cap-<inst>-<stage>-alerts`: cost alarms (CAP-40). */
+  readonly alertsTopic: Topic;
   /** API Gateway custom domain, only when config declares `domains.api` (CAP-29). */
   readonly domainName?: DomainName;
 
@@ -138,7 +184,20 @@ export class CollectorsApiStack extends Stack {
         ]),
       );
 
-    const lambda = (name: string, entry: string, env: Record<string, string>) => {
+    // Config values a route asks for (CAP-40): plain env vars, synthesised from infra/config/*.json.
+    const aiValues: Record<AiEnvName, string> = {
+      bedrockModelId: config.ai.modelId,
+      dhashThreshold: String(config.ai.dhashThreshold),
+    };
+    const configEnv = (names: readonly AiEnvName[] = []) =>
+      Object.fromEntries(names.map((n) => [AI_ENV[n], aiValues[n]]));
+
+    const lambda = (
+      name: string,
+      entry: string,
+      env: Record<string, string>,
+      sizing: { memoryMb?: number | undefined; timeoutSeconds?: number | undefined } = {},
+    ) => {
       const logGroup = new LogGroup(this, `${pascal(name)}Logs`, {
         retention: RetentionDays.ONE_MONTH,
         removalPolicy,
@@ -148,8 +207,8 @@ export class CollectorsApiStack extends Stack {
         handler: 'handler',
         runtime: Runtime.NODEJS_22_X,
         architecture: Architecture.ARM_64,
-        memorySize: FUNCTION_MEMORY_MB,
-        timeout: Duration.seconds(FUNCTION_TIMEOUT_SECONDS),
+        memorySize: sizing.memoryMb ?? FUNCTION_MEMORY_MB,
+        timeout: Duration.seconds(sizing.timeoutSeconds ?? FUNCTION_TIMEOUT_SECONDS),
         loggingFormat: LoggingFormat.JSON,
         logGroup,
         projectRoot: REPO_ROOT,
@@ -210,8 +269,13 @@ export class CollectorsApiStack extends Stack {
         notImplemented ??= lambda('not-implemented', join(STUBS_DIR, 'not-implemented.ts'), {});
         fn = notImplemented;
       } else {
-        fn = lambda(route.handler, join(apiSrcDir, 'handlers', `${route.handler}.ts`), secretEnv(route.secrets));
-        this.grant(fn, route, table, imagesBucket);
+        fn = lambda(
+          route.handler,
+          join(apiSrcDir, 'handlers', `${route.handler}.ts`),
+          { ...secretEnv(route.secrets), ...configEnv(route.config) },
+          { memoryMb: route.memoryMb, timeoutSeconds: route.timeoutSeconds },
+        );
+        this.grant(fn, route, table, imagesBucket, config.ai.modelId);
       }
       this.api.addRoutes({
         path: route.path,
@@ -238,6 +302,44 @@ export class CollectorsApiStack extends Stack {
       new ApiMapping(this, 'ApiMapping', { api: this.api, domainName: this.domainName, stage: defaultStage });
     }
 
+    // Cost guard (CAP-40, EP-09 brought forward): Bedrock is the only variable cost (ADR-002), so a day with more
+    // invocations than expected for one collector raises an alarm on the alerts topic.
+    this.alertsTopic = new Topic(this, 'AlertsTopic', {
+      topicName: resourceName(deployment, 'alerts'),
+      displayName: `CapCollector ${deployment.installation}/${deployment.stage} alerts`,
+    });
+    // SPEC-GAP CAP-40: the story asks for "subscription only when the e-mail parameter is set (two synths)", but synth
+    // cannot see an SSM value without credentials. The e-mail is resolved at deploy time instead and the subscription
+    // carries a CloudFormation condition (value ≠ `unset`), so one template covers both cases.
+    const alertEmail = StringParameter.valueForStringParameter(this, settingParameterName(deployment, 'alertEmail'));
+    const hasAlertEmail = new CfnCondition(this, 'HasAlertEmail', {
+      expression: Fn.conditionNot(Fn.conditionEquals(alertEmail, UNSET_PARAMETER_VALUE)),
+    });
+    const subscription = new CfnSubscription(this, 'AlertEmailSubscription', {
+      topicArn: this.alertsTopic.topicArn,
+      protocol: SubscriptionProtocol.EMAIL,
+      endpoint: alertEmail,
+    });
+    subscription.cfnOptions.condition = hasAlertEmail;
+
+    new Alarm(this, 'BedrockInvocationsAlarm', {
+      alarmName: resourceName(deployment, 'bedrock-invocations'),
+      alarmDescription:
+        `More than ${BEDROCK_DAILY_INVOCATIONS_ALARM} Bedrock invocations of ${config.ai.modelId} in a day ` +
+        '(cost guard, CAP-40)',
+      metric: new Metric({
+        namespace: 'AWS/Bedrock',
+        metricName: 'Invocations',
+        dimensionsMap: { ModelId: config.ai.modelId },
+        statistic: 'Sum',
+        period: Duration.days(1),
+      }),
+      threshold: BEDROCK_DAILY_INVOCATIONS_ALARM,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(new SnsAction(this.alertsTopic));
+
     const out = (key: string, value: string, description: string) =>
       new CfnOutput(this, key, { value, description, exportName: `${resourceName(deployment, 'api')}-${key}` });
     out(
@@ -254,10 +356,14 @@ export class CollectorsApiStack extends Stack {
     }
   }
 
-  private grant(fn: NodejsFunction, route: Route, table: Table, imagesBucket: Bucket): void {
+  private grant(fn: NodejsFunction, route: Route, table: Table, imagesBucket: Bucket, modelId: string): void {
     for (const g of route.grants) {
       if (g === 'table') table.grantReadWriteData(fn);
-      else {
+      else if (g === 'bedrock') {
+        fn.addToRolePolicy(
+          new PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: bedrockResources(this, modelId) }),
+        );
+      } else {
         const action = g === 'images-put' ? 's3:PutObject' : 's3:GetObject';
         fn.addToRolePolicy(new PolicyStatement({ actions: [action], resources: [imagesBucket.arnForObjects('*')] }));
       }

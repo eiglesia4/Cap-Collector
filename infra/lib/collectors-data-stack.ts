@@ -195,6 +195,8 @@ export class CollectorsDataStack extends Stack {
     const certificate = (name: (typeof CERTIFICATE_SETTINGS)[number]) =>
       setting(name, `${name} (ACM certificate ARN for the custom domain)`);
     this.settings = {
+      // CAP-40: e-mail for the alerts topic (CollectorsApi); `unset` → topic and alarm without a subscription.
+      alertEmail: setting('alertEmail', 'alert e-mail for the cost alarms'),
       allowedAppleSubs: secret('allowedAppleSubs'),
       appleClientIds: secret('appleClientIds'),
       sessionSecret: secret('sessionSecret'),
