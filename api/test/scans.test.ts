@@ -94,7 +94,8 @@ describe('scans: POST /scans/analyse', () => {
     expect(identify).not.toHaveBeenCalled();
   });
 
-  it('[T-api-043] no near-match + stub adapter → 503 Problem; the Scan is stored with aiCalled, no aiModel, unidentified; nothing else written', async () => {
+  it('[T-api-043] no near-match + CAP_VISION=off (stub adapter) → 503 Problem; the Scan is stored with aiCalled, no aiModel, unidentified; nothing else written', async () => {
+    process.env.CAP_VISION = 'off';
     expect(getVisionAdapter()).toBeInstanceOf(StubVisionAdapter);
     await storeCap({ dhash: flip(TOP, 40) });
     const before = await repos.caps.listAll(UID, { includeDeleted: true });
