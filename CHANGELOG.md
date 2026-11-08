@@ -7,6 +7,9 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-33: `collectors://cap/<capId>` deep links open the cap detail on iPhone — `CFBundleURLTypes` scheme
+  `collectors`, `Platform.onDeepLink` (Capacitor `appUrlOpen`, web no-op), id validated with the shared `Ulid`, anything
+  else ignored (T-app-062, T-app-063).
 - CAP-46: `fflate` ^0.8.3 in `app` (tiny, dependency-free ESM zip) for building `request.zip` exchange bundles on the
   client (CAP-45).
 - CAP-44: exchange requests API (ADR-007) — `POST /exchange/requests` registers a downloaded bundle as `waiting` with

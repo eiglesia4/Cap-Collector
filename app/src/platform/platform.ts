@@ -63,6 +63,11 @@ export interface Platform {
   signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null>;
   /** True when signInWithApple uses the native iOS sheet rather than the web flow. */
   supportsNativeAppleSignIn(): boolean;
+  /**
+   * URLs that opened the app (`collectors://…` on iOS, CAP-33), also the one it was cold-launched with. Returns an
+   * unsubscribe. The web build never receives any: its links are ordinary HTTPS URLs.
+   */
+  onDeepLink(listener: (url: string) => void): () => void;
 }
 
 export function isCancel(error: unknown): boolean {

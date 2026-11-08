@@ -2,6 +2,7 @@
 // Sign in with Apple sheet (ADR-001, ADR-008 §4, CAP-28). Non-image file picks (e.g. an Exchange answer JSON) fall
 // back to the web <input type=file>, which WKWebView presents with the Files app.
 import { SignInWithApple, type SignInWithApplePlugin } from '@capacitor-community/apple-sign-in';
+import { App } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
@@ -45,6 +46,7 @@ export interface CapacitorPlugins {
   readonly Filesystem: Pick<typeof Filesystem, 'writeFile'>;
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
   readonly SignInWithApple: Pick<SignInWithApplePlugin, 'authorize'>;
+  readonly App: Pick<typeof App, 'addListener'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
 }
@@ -55,6 +57,7 @@ const defaultPlugins = (): CapacitorPlugins => ({
   Filesystem,
   Preferences,
   SignInWithApple,
+  App,
   fetch: (input) => fetch(input),
 });
 
@@ -104,6 +107,12 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     kind: 'native',
     signInWithApple,
     supportsNativeAppleSignIn: () => true,
+    // `appUrlOpen` (CAP-33). The iOS plugin retains the event until a listener consumes it, so the URL a cold launch
+    // came with arrives here too (SceneDelegate forwards it through SceneDelegateProxy).
+    onDeepLink(listener) {
+      const handle = plugins.App.addListener('appUrlOpen', (event) => listener(event.url));
+      return () => void handle.then((h) => h.remove());
+    },
     async camera() {
       try {
         const result = await plugins.Camera.takePhoto({ quality: 90, correctOrientation: true });

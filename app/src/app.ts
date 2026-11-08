@@ -4,6 +4,7 @@
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
 import { t } from './i18n/i18n.js';
+import { handleDeepLinks } from './router/deep-link.js';
 import { createRouter, type Router } from './router/router.js';
 import { pathFor } from './router/routes.js';
 import { SCREENS } from './screens/index.js';
@@ -51,9 +52,12 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
   };
   router.start();
   const unsubscribe = ctx.session.subscribe(reroute);
+  // `collectors://cap/<id>` opens the cap (CAP-33); signed out, the guard above still sends it to Sign in.
+  const stopDeepLinks = handleDeepLinks(ctx.platform, full.navigate);
   return {
     router,
     destroy: () => {
+      stopDeepLinks();
       unsubscribe();
       router.stop();
     },
