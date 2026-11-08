@@ -38,6 +38,12 @@ export interface CapPrevious {
   albumId?: string;
 }
 
+/** One side of a swap (CAP-50): the state read and the state to write. */
+export interface SwapSide {
+  prev: CapPrevious;
+  write: CapWrite;
+}
+
 /** A GSI row: only the projected attributes (data-model.md § Indexes: keys + capId, brand, variant, images, status, deletedAt). */
 export interface CapIndexEntry {
   capId: string;
@@ -74,6 +80,13 @@ export interface CapRepository {
    * attributes. Conflict when the stored `updatedAt` is no longer `prev.cap.updatedAt` or the new pocket is taken.
    */
   patch(uid: string, prev: CapPrevious, write: CapWrite): Promise<void>;
+  /**
+   * Swap (CAP-50): `a` takes the pocket `b` occupies and `b` takes `a`'s previous location, both caps, both history
+   * entries and both `LOCK#` markers in one transaction. Conflict when either cap changed or a marker moved meanwhile.
+   */
+  swap(uid: string, a: SwapSide, b: SwapSide): Promise<void>;
+  /** The capId holding pocket `sheet`/`pocket` of `albumId` (its `LOCK#` marker), or undefined when it is free. */
+  occupant(uid: string, albumId: string, sheet: number, pocket: number): Promise<string | undefined>;
   /** Tombstone (ADR-006): `patch` with `deletedAt` set; frees the pocket and drops GSI attributes. */
   softDelete(uid: string, prev: CapPrevious, history: CapHistory): Promise<Cap>;
   list(uid: string, opts?: CapListOptions): Promise<Page<Cap>>;

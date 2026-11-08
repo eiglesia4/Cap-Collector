@@ -23,6 +23,7 @@ import {
   capPk,
   capSk,
   exchangeSk,
+  lockSk,
   scanSk,
   userPk,
 } from '@capcollector/shared';
@@ -41,6 +42,7 @@ import {
   pageSize,
   planCreate,
   planPatch,
+  planSwap,
   pocketFromGsi1Sk,
   stripKeys,
   toExchangeItem,
@@ -66,6 +68,7 @@ import {
   type Repositories,
   type ScanRepository,
   type SheetEntry,
+  type SwapSide,
 } from './types.js';
 
 /** The slice of the document client the repositories use (aws-sdk-client-mock or a fake can stand in). */
@@ -95,6 +98,16 @@ export function toTransactItems(tableName: string, ops: Op[]): TransactItem[] {
     }
     if ('ifNotExists' in o) {
       return { Put: { TableName: tableName, Item: o.item, ConditionExpression: 'attribute_not_exists(pk)' } };
+    }
+    if ('ifCapId' in o) {
+      return {
+        Put: {
+          TableName: tableName,
+          Item: o.item,
+          ConditionExpression: 'capId = :capId',
+          ExpressionAttributeValues: { ':capId': o.ifCapId },
+        },
+      };
     }
     return {
       Put: {
@@ -161,6 +174,16 @@ export class DynamoCapRepository implements CapRepository {
 
   async patch(uid: string, prev: CapPrevious, write: CapWrite): Promise<void> {
     await this.transact(planPatch(uid, prev, write));
+  }
+
+  async swap(uid: string, a: SwapSide, b: SwapSide): Promise<void> {
+    await this.transact(planSwap(uid, a, b));
+  }
+
+  async occupant(uid: string, albumId: string, sheet: number, pocket: number): Promise<string | undefined> {
+    const key = { pk: userPk(uid), sk: lockSk(albumId, { kind: 'album', album: 'A', sheet, pocket }) };
+    const r = (await this.doc.send(new GetCommand({ TableName: this.tableName, Key: key }))) as { Item?: Item };
+    return typeof r.Item?.capId === 'string' ? r.Item.capId : undefined;
   }
 
   async softDelete(uid: string, prev: CapPrevious, history: CapHistory): Promise<Cap> {

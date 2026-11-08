@@ -12,6 +12,7 @@ import {
   capPk,
   capSk,
   exchangeSk,
+  lockSk,
   scanSk,
   userPk,
 } from '@capcollector/shared';
@@ -30,6 +31,7 @@ import {
   gsi2VariantPrefix,
   planCreate,
   planPatch,
+  planSwap,
   pageSize,
   pocketFromGsi1Sk,
   stripKeys,
@@ -55,6 +57,7 @@ import {
   type Repositories,
   type ScanRepository,
   type SheetEntry,
+  type SwapSide,
 } from './types.js';
 
 const id = (k: Key) => `${k.pk}\u0000${k.sk}`;
@@ -93,7 +96,9 @@ export class MemoryTable {
           ? cur?.capId === o.ifCapId
           : 'ifNotExists' in o
             ? cur === undefined
-            : cur?.updatedAt === o.ifUpdatedAt;
+            : 'ifCapId' in o
+              ? cur?.capId === o.ifCapId
+              : cur?.updatedAt === o.ifUpdatedAt;
       if (!ok) throw new Conflict('The record changed or the target is taken');
     }
     for (const o of ops) {
@@ -142,6 +147,15 @@ export class InMemoryCapRepository implements CapRepository {
 
   async patch(uid: string, prev: CapPrevious, write: CapWrite): Promise<void> {
     this.table.transact(planPatch(uid, prev, write));
+  }
+
+  async swap(uid: string, a: SwapSide, b: SwapSide): Promise<void> {
+    this.table.transact(planSwap(uid, a, b));
+  }
+
+  async occupant(uid: string, albumId: string, sheet: number, pocket: number): Promise<string | undefined> {
+    const it = this.table.get({ pk: userPk(uid), sk: lockSk(albumId, { kind: 'album', album: 'A', sheet, pocket }) });
+    return it && typeof it.capId === 'string' ? it.capId : undefined;
   }
 
   async softDelete(uid: string, prev: CapPrevious, history: CapHistory): Promise<Cap> {

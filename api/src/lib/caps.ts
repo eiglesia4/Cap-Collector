@@ -23,19 +23,13 @@ import { BadRequest, NotFound } from './errors.js';
 import { ValidationError } from './http.js';
 import { newId } from './ids.js';
 import type { Repositories } from './repo/types.js';
+import { assertFree, resolveLocation } from './pockets.js';
 import { after, now } from './time.js';
 
 /** Collections up to this size report `total` (CapPage.total); larger ones omit it (CAP-18). */
 export const TOTAL_LIMIT = 5000;
 export const LIST_DEFAULT_LIMIT = 60;
 export const LIST_MAX_LIMIT = 200;
-
-const LOCATION_V1 = 'location is set through PUT /caps/{capId}/location (V3), not in this body';
-
-/** V1 scope (CAP-18): `location` is never accepted on POST/PATCH /caps; 422 with the field path. */
-function rejectLocation(v: { location?: unknown }, ctx: z.RefinementCtx): void {
-  if (v.location !== undefined) ctx.addIssue({ code: 'custom', path: ['location'], message: LOCATION_V1 });
-}
 
 /** Re-checks the assembled record against the `Cap` contract (refines like forTrade ≤ quantity) and answers 422. */
 function checkCap(candidate: unknown): Cap {
@@ -45,15 +39,17 @@ function checkCap(candidate: unknown): Cap {
 }
 
 /** The album id a record's album-kind location needs for its storage keys (data-model.md § Indexes). */
-async function albumIdOf(repos: Repositories, uid: string, cap: Cap): Promise<string | undefined> {
+export async function albumIdOf(repos: Repositories, uid: string, cap: Cap): Promise<string | undefined> {
   if (cap.deletedAt !== undefined || cap.location?.kind !== 'album') return undefined;
+  // Server-filled since CAP-50; records placed before it carry only the letter.
+  if (cap.location.albumId) return cap.location.albumId;
   const album = await repos.albums.byLetter(uid, cap.location.album);
   if (!album) throw new Error(`cap ${cap.capId} points to album ${cap.location.album}, which does not exist`);
   return album.albumId;
 }
 
 /** A live cap of this user, or 404 (unknown and tombstoned look the same, openapi.yaml GET /caps/{capId}). */
-async function liveCap(repos: Repositories, uid: string, capId: string): Promise<Cap> {
+export async function liveCap(repos: Repositories, uid: string, capId: string): Promise<Cap> {
   const cap = await repos.caps.get(uid, capId);
   if (!cap || cap.deletedAt !== undefined) throw new NotFound(`cap ${capId} not found`);
   return cap;
@@ -62,24 +58,34 @@ async function liveCap(repos: Repositories, uid: string, capId: string): Promise
 /** `{capId}` path parameter (openapi.yaml components.parameters.capId: a ULID). */
 export const CapIdPath = z.object({ capId: Ulid });
 
-/** POST /caps body: the shared `CapInput` plus the V1 location rule. */
-export const CapCreateBody = CapInputSchema.superRefine(rejectLocation);
-/** PATCH /caps/{capId} body: the shared `CapPatch` plus the V1 location rule. */
-export const CapPatchBody = CapPatchSchema.superRefine(rejectLocation);
+/**
+ * POST /caps body: the shared `CapInput`. Since CAP-50 `location` is accepted (a scan started from an empty pocket
+ * lands in it); PATCH keeps rejecting it through the shared `CapPatch` (`location: z.never()`) — moves use the
+ * location endpoints.
+ */
+export const CapCreateBody = CapInputSchema;
+/** PATCH /caps/{capId} body: the shared `CapPatch` (v0.2). */
+export const CapPatchBody = CapPatchSchema;
 
 export async function createCap(repos: Repositories, uid: string, input: CapInput): Promise<Cap> {
   const ts = now();
-  const { source, ...fields } = input;
+  const { source, location: requested, ...fields } = input;
+  const capId = newId();
+  // CAP-50: the location is resolved (letter → albumId, geometry) and the pocket checked before the write; the
+  // `LOCK#` marker goes in the same transaction as the cap (repo planCreate), so a race still ends in 409.
+  const target = requested ? await resolveLocation(repos, uid, requested) : undefined;
+  if (target) await assertFree(repos, uid, target, capId);
   const cap = checkCap({
     ...fields,
-    capId: newId(),
+    ...(target ? { location: target.location } : {}),
+    capId,
     status: input.status ?? 'complete',
     source,
     createdAt: ts,
     updatedAt: ts,
   });
   const history: CapHistory = { capId: cap.capId, ts, source, action: 'created', changes: [] };
-  await repos.caps.put(uid, { cap, history });
+  await repos.caps.put(uid, { cap, ...(target?.lockAlbumId ? { albumId: target.lockAlbumId } : {}), history });
   return cap;
 }
 
@@ -192,7 +198,7 @@ export function matchesQuery(cap: Cap, q: string): boolean {
   return hay.some((h) => h !== undefined && normaliseBrand(h).includes(needle));
 }
 
-function sameLocation(have: Location, want: Location): boolean {
+export function sameLocation(have: Location, want: Location): boolean {
   if (want.kind === 'album') {
     return (
       have.kind === 'album' && have.album === want.album && have.sheet === want.sheet && have.pocket === want.pocket

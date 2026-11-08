@@ -293,6 +293,71 @@ describe('DynamoCapRepository keys', () => {
     expect((await gsi.repo.listGsi1(ALBUM_ID, 3)).map((e) => e.pocket)).toEqual([17]);
   });
 
+  it('[T-api-080] swap: one TransactWrite with both caps on updatedAt, both HIST#, the target LOCK# handed over on capId and the vacated one too; occupant reads the LOCK# key', async () => {
+    const { sent, repo } = recorder((c) => (c instanceof GetCommand ? { Item: { capId: 'holder' } } : {}));
+    const at = (s: number, p: number) => ({ ...(pocket(s, p) as AlbumLocation), albumId: ALBUM_ID });
+    const a = { ...FIXTURE_CAP, capId: '01JBF6Z3Q8K2M4N6P8R0S2AAAA', location: at(1, 2) };
+    const b = { ...FIXTURE_CAP, capId: '01JBF6Z3Q8K2M4N6P8R0S2BBBB', location: at(1, 1) };
+    const aNext = { ...a, location: at(1, 1), updatedAt: '2026-11-08T10:00:00.000Z' };
+    const bNext = { ...b, location: at(1, 2), updatedAt: '2026-11-08T10:00:00.001Z' };
+    const ha = { ...makeHistory(a.capId, 'swapped'), ts: aNext.updatedAt };
+    const hb = { ...makeHistory(b.capId, 'swapped'), ts: bNext.updatedAt };
+    await repo.swap(
+      UID,
+      { prev: { cap: a, albumId: ALBUM_ID }, write: { cap: aNext, albumId: ALBUM_ID, history: ha } },
+      { prev: { cap: b, albumId: ALBUM_ID }, write: { cap: bNext, albumId: ALBUM_ID, history: hb } },
+    );
+    const items = transactItems(sent[0]);
+    expect(items).toHaveLength(6);
+    expect(items[0]?.Put).toMatchObject({
+      Item: { pk: userPk(UID), sk: capSk(a.capId), ...locationGsi1(ALBUM_ID, at(1, 1)) },
+      ConditionExpression: 'updatedAt = :prevUpdatedAt',
+      ExpressionAttributeValues: { ':prevUpdatedAt': a.updatedAt },
+    });
+    expect(items[1]?.Put?.Item).toMatchObject({ pk: capPk(a.capId), sk: historySk(ha.ts) });
+    expect(items[2]?.Put).toMatchObject({ Item: { sk: capSk(b.capId), ...locationGsi1(ALBUM_ID, at(1, 2)) } });
+    expect(items[3]?.Put?.Item).toMatchObject({ pk: capPk(b.capId), sk: historySk(hb.ts) });
+    expect(items[4]?.Put).toEqual({
+      TableName: TABLE,
+      Item: { pk: userPk(UID), sk: lockSk(ALBUM_ID, at(1, 1)), capId: a.capId },
+      ConditionExpression: 'capId = :capId',
+      ExpressionAttributeValues: { ':capId': b.capId },
+    });
+    expect(items[5]?.Put).toEqual({
+      TableName: TABLE,
+      Item: { pk: userPk(UID), sk: lockSk(ALBUM_ID, at(1, 2)), capId: b.capId },
+      ConditionExpression: 'capId = :capId',
+      ExpressionAttributeValues: { ':capId': a.capId },
+    });
+
+    expect(await repo.occupant(UID, ALBUM_ID, 1, 1)).toBe('holder');
+    expect((sent[1] as GetCommand).input).toEqual({
+      TableName: TABLE,
+      Key: { pk: userPk(UID), sk: lockSk(ALBUM_ID, at(1, 1)) },
+    });
+    const empty = recorder(() => ({})).repo;
+    expect(await empty.occupant(UID, ALBUM_ID, 1, 1)).toBeUndefined();
+
+    // A plan that does not describe a swap is a programming error, never a write.
+    await expect(
+      repo.swap(
+        UID,
+        { prev: { cap: a, albumId: ALBUM_ID }, write: { cap: aNext, albumId: ALBUM_ID, history: ha } },
+        {
+          prev: { cap: aNext, albumId: ALBUM_ID },
+          write: { cap: { ...bNext, location: at(2, 2) }, albumId: ALBUM_ID, history: hb },
+        },
+      ),
+    ).rejects.toThrow("a swap gives b exactly a's previous location");
+    await expect(
+      repo.swap(
+        UID,
+        { prev: { cap: a, albumId: ALBUM_ID }, write: { cap: aNext, albumId: ALBUM_ID, history: ha } },
+        { prev: { cap: bNext, albumId: ALBUM_ID }, write: { cap: bNext, albumId: ALBUM_ID, history: hb } },
+      ),
+    ).rejects.toThrow('a swap moves a into the pocket b occupies');
+  });
+
   it('[T-api-048] scans: USER#/SCAN#<ts>#<scanId> keys from shared, newest first with cursor, get by id follows pages', async () => {
     const scan = {
       scanId: '01JBF6Z3Q8K2M4N6P8R0S2SCAN',

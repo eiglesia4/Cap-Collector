@@ -5,6 +5,14 @@
 export abstract class ApiError extends Error {
   abstract readonly status: number;
   abstract readonly title: string;
+
+  /** `errors` become the Problem's `errors[]` (e.g. the occupying cap of a pocket, CAP-50). */
+  constructor(
+    message?: string,
+    readonly errors?: { path?: string; message?: string }[],
+  ) {
+    super(message);
+  }
 }
 
 export class BadRequest extends ApiError {
