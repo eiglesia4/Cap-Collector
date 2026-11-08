@@ -125,7 +125,12 @@ function toProblem(err: unknown, requestId: string, routeKey: string): APIGatewa
   if (err instanceof ZodError) return problem(zodProblem(err, 'data'), requestId);
   if (err instanceof ApiError) {
     return problem(
-      { title: err.title, status: err.status, ...(err.message ? { detail: err.message } : {}) },
+      {
+        title: err.title,
+        status: err.status,
+        ...(err.message ? { detail: err.message } : {}),
+        ...(err.errors?.length ? { errors: err.errors } : {}),
+      },
       requestId,
     );
   }

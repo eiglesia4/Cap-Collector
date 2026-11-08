@@ -17,7 +17,7 @@ import {
 } from '@capcollector/shared';
 
 import { BadRequest } from '../errors.js';
-import type { CapIndexEntry, CapPrevious, CapWrite } from './types.js';
+import type { CapIndexEntry, CapPrevious, CapWrite, SwapSide } from './types.js';
 
 export type Item = Record<string, unknown> & { pk: string; sk: string };
 // A type alias (not an interface) so it is assignable to Record<string, unknown>.
@@ -27,6 +27,8 @@ export type Key = { pk: string; sk: string };
 export type Op =
   | { op: 'put'; item: Item; ifNotExists: true }
   | { op: 'put'; item: Item; ifUpdatedAt: string }
+  /** Rewrites a `LOCK#` marker that must still name `ifCapId` (a swap hands the pocket to the other cap, CAP-50). */
+  | { op: 'put'; item: Item; ifCapId: string }
   | { op: 'delete'; key: Key; ifCapId: string };
 
 /** Attributes that exist only in storage, never in a returned entity. */
@@ -107,6 +109,33 @@ export function planPatch(uid: string, prev: CapPrevious, write: CapWrite): Op[]
     if (before) ops.push({ op: 'delete', key: before, ifCapId: prev.cap.capId });
     if (after) ops.push({ op: 'put', item: { ...after, capId: write.cap.capId }, ifNotExists: true });
   }
+  return ops;
+}
+
+/**
+ * Swap (CAP-50, data-model.md § Invariants: "moves and swaps update the markers in the same transaction"): `a` moves
+ * into the pocket `b` occupies and `b` takes `a`'s previous location (or none). Both caps are conditioned on their
+ * `updatedAt`; the target marker is handed from `b` to `a`, and `a`'s old marker (if any) from `a` to `b`. DynamoDB
+ * allows one operation per item, so the markers are rewritten in place, never deleted and re-created.
+ */
+export function planSwap(uid: string, a: SwapSide, b: SwapSide): Op[] {
+  checkWrite(a.write);
+  checkWrite(b.write);
+  const ops: Op[] = [
+    { op: 'put', item: capItem(uid, a.write.cap, a.write.albumId), ifUpdatedAt: a.prev.cap.updatedAt },
+    { op: 'put', item: historyItem(a.write.history), ifNotExists: true },
+    { op: 'put', item: capItem(uid, b.write.cap, b.write.albumId), ifUpdatedAt: b.prev.cap.updatedAt },
+    { op: 'put', item: historyItem(b.write.history), ifNotExists: true },
+  ];
+  const target = lockKey(uid, a.write.cap, a.write.albumId);
+  if (!target || target.sk !== lockKey(uid, b.prev.cap, b.prev.albumId)?.sk) {
+    throw new Error('a swap moves a into the pocket b occupies');
+  }
+  ops.push({ op: 'put', item: { ...target, capId: a.write.cap.capId }, ifCapId: b.prev.cap.capId });
+  const vacated = lockKey(uid, a.prev.cap, a.prev.albumId);
+  const bNext = lockKey(uid, b.write.cap, b.write.albumId);
+  if (vacated?.sk !== bNext?.sk) throw new Error("a swap gives b exactly a's previous location");
+  if (vacated) ops.push({ op: 'put', item: { ...vacated, capId: b.write.cap.capId }, ifCapId: a.prev.cap.capId });
   return ops;
 }
 

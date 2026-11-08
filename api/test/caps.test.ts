@@ -225,10 +225,9 @@ describe('caps API', () => {
     expect((await list({}, '')).statusCode).toBe(401);
   });
 
-  it('[T-api-019] strict input: unknown field, location in V1 and forTrade > quantity → 422 Problem; nothing written', async () => {
+  it('[T-api-019] strict input: unknown field, location on PATCH and forTrade > quantity → 422 Problem; nothing written', async () => {
     const problems = [
       await create({ brand: 'Mahou', colour: 'red' }),
-      await create({ brand: 'Mahou', location: { kind: 'album', album: 'A', sheet: 1, pocket: 1 } }),
       await create({ brand: 'Mahou', quantity: 1, forTrade: 2 }),
       await create({ brand: '' }),
       await createH(apiEvent({ uid: UID, body: JSON.stringify({ brand: 'NoImages' }) })),
@@ -237,13 +236,14 @@ describe('caps API', () => {
       expect(p.statusCode).toBe(422);
       expect(p.headers?.['content-type']).toBe('application/problem+json');
     }
-    expect(json<{ errors: { path: string }[] }>(problems[1]!).errors.map((e) => e.path)).toEqual(['body.location']);
-    expect(json<{ errors: { path: string }[] }>(problems[2]!).errors.map((e) => e.path)).toEqual(['body.forTrade']);
+    expect(json<{ errors: { path: string }[] }>(problems[1]!).errors.map((e) => e.path)).toEqual(['body.forTrade']);
     expect(json<{ total: number }>(await list()).total).toBe(0);
 
     const cap = record(await create({ brand: 'Mahou', quantity: 2, forTrade: 1 }));
     expect((await patch(cap.capId, { colour: 'red' })).statusCode).toBe(422);
-    expect((await patch(cap.capId, { location: { kind: 'box', album: 'B' } })).statusCode).toBe(422);
+    const moved = await patch(cap.capId, { location: { kind: 'box', album: 'B' } });
+    expect(moved.statusCode).toBe(422);
+    expect(json<{ errors: { path: string }[] }>(moved).errors.map((e) => e.path)).toEqual(['body.location']);
     const over = await patch(cap.capId, { forTrade: 3 });
     expect(over.statusCode).toBe(422);
     expect(json<{ errors: { path: string }[] }>(over).errors.map((e) => e.path)).toEqual(['body.forTrade']);

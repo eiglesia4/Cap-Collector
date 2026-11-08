@@ -22,13 +22,6 @@ import { useAwsTestEnv } from './support/aws-env.js';
 
 useAwsTestEnv();
 
-/**
- * Contract routes whose handler belongs to a later story (V3 location). SPEC-GAP CAP-30: the
- * story asks for "every ROUTES[].handler has a file", which cannot hold until those stories land; this list must
- * shrink as each one merges (T-api-039 fails if a listed handler appears or an unlisted one is missing).
- */
-const NOT_YET_LANDED = ['caps-location-put', 'caps-location-delete'];
-
 const server = createLocalServer({ mode: 'fake', defaultUid: 'local-user' });
 let base = '';
 
@@ -112,23 +105,31 @@ describe('api:local', () => {
     expect((await call('DELETE', `/caps/${capId}`)).status).toBe(204);
     expect((await call('GET', `/caps/${capId}`)).status).toBe(404);
     expect((await call('POST', '/caps', { brand: 'X', images, location: { kind: 'box', album: 'B' } })).status).toBe(
-      422,
+      404,
     );
   });
 
-  it('[T-api-039] handlers ↔ shared ROUTES: every handler file is a contract route, every route has a file or is a listed later story (501 locally)', async () => {
+  it('[T-api-039] handlers ↔ shared ROUTES: every handler file is a contract route and every route has its file (since CAP-50); a route without one answers 501 locally', async () => {
     const files = readdirSync(HANDLERS_DIR)
       .filter((f) => f.endsWith('.ts'))
       .map((f) => f.slice(0, -3))
       .sort();
     const routeHandlers = ROUTES.map((r) => r.handler);
     expect(files.filter((f) => !routeHandlers.includes(f))).toEqual([]);
-    expect(routeHandlers.filter((h) => !hasHandler(h)).sort()).toEqual([...NOT_YET_LANDED].sort());
-    // The local server serves exactly the shared manifest: a contract route without a handler yet → 501 Problem.
-    const res = await fetch(`${base}/caps/01JBF6Z3Q8K2M4N6P8R0S2T4V6/location`, { method: 'DELETE' });
-    expect(res.status).toBe(501);
-    expect(res.headers.get('content-type')).toBe('application/problem+json');
-    expect(await res.json()).toMatchObject({ status: 501, title: 'Not implemented' });
+    expect(routeHandlers.filter((h) => !hasHandler(h))).toEqual([]);
+    // A route the architect publishes ahead of its handler → 501 Problem, as the deployed stub does (CAP-30).
+    const ahead = createLocalServer({ mode: 'fake', defaultUid: 'local-user' }, [
+      { method: 'GET', path: '/later', handler: 'not-landed-yet', auth: false },
+    ]);
+    await new Promise<void>((r) => ahead.listen(0, '127.0.0.1', r));
+    try {
+      const res = await fetch(`http://127.0.0.1:${(ahead.address() as AddressInfo).port}/later`);
+      expect(res.status).toBe(501);
+      expect(res.headers.get('content-type')).toBe('application/problem+json');
+      expect(await res.json()).toMatchObject({ status: 501, title: 'Not implemented' });
+    } finally {
+      await new Promise((r) => ahead.close(r));
+    }
   });
 
   it('[T-api-050] api:local scans flow: analyse → save the cap → the same dHash again is a duplicate without the adapter; GET /scans lists both', async () => {
@@ -193,5 +194,42 @@ describe('api:local', () => {
     });
     expect(await statuses('?status=reviewed')).toEqual(['reviewed']);
     expect((await send('PATCH', `/exchange/requests/${requestId}`, { status: 'reviewed' })).status).toBe(409);
+  });
+  it('[T-api-079] api:local, album A: two caps cannot share A·1·1, one swap call exchanges them, the sheet view reflects it', async () => {
+    setRepositories(createMemoryRepositories());
+    const send = async (method: string, path: string, body?: unknown) => {
+      const res = await fetch(`${base}${path}`, {
+        method,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : undefined };
+    };
+    const album = await send('POST', '/albums', { letter: 'A', name: 'Leuchtturm GRANDE', kind: 'album', sheets: 10 });
+    expect(album.status).toBe(201);
+    const albumId = String(album.body?.albumId);
+    const images = { top: { key: 'local-user/x/top.webp', width: 640, height: 640 } };
+    const a11 = { kind: 'album', album: 'A', sheet: 1, pocket: 1 };
+    const first = await send('POST', '/caps', { brand: 'Mahou', images, location: a11 });
+    expect(first.status).toBe(201);
+    const second = await send('POST', '/caps', { brand: 'Alhambra', images });
+    const [one, two] = [String(first.body?.capId), String(second.body?.capId)];
+
+    expect((await send('PUT', `/caps/${two}/location`, { location: a11 })).status).toBe(409);
+    expect((await send('PUT', `/caps/${one}/location`, { location: { ...a11, pocket: 2 } })).status).toBe(200);
+    expect((await send('PUT', `/caps/${two}/location`, { location: { ...a11, pocket: 1 } })).status).toBe(200);
+    const swap = await send('PUT', `/caps/${two}/location`, { location: { ...a11, pocket: 2 }, swap: true });
+    expect(swap.status).toBe(200);
+    expect(swap.body).toMatchObject({ cap: { capId: two }, swapped: { capId: one } });
+
+    const view = await send('GET', `/albums/${albumId}/sheets/1`);
+    expect(view.status).toBe(200);
+    expect((view.body?.pockets as { pocket: number; capId: string }[]).map((p) => [p.pocket, p.capId])).toEqual([
+      [1, one],
+      [2, two],
+    ]);
+    expect((await send('GET', `/albums/${albumId}/next-free`)).body).toMatchObject({ code: 'A·1·3' });
+    expect((await send('DELETE', `/caps/${one}/location`)).status).toBe(204);
+    expect((await send('GET', `/albums/${albumId}/next-free`)).body).toMatchObject({ code: 'A·1·1' });
   });
 });
