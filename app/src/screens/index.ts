@@ -2,6 +2,7 @@
 import type { Screen } from '../context.js';
 import type { RouteName } from '../router/routes.js';
 import { CapDetailScreen } from './cap-detail-screen.js';
+import { EditCapScreen, NewCapScreen } from './cap-form-screen.js';
 import { CollectionScreen } from './collection-screen.js';
 import { placeholderScreen } from './placeholder-screen.js';
 import { ScanScreen } from './scan-screen.js';
@@ -14,8 +15,8 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   wishlist: placeholderScreen('wishlist.title', 'wishlist.placeholder'),
   stats: placeholderScreen('stats.title', 'stats.placeholder'),
   capDetail: CapDetailScreen,
-  capEdit: placeholderScreen('capEdit.title', 'form.placeholder', 'collection'),
-  newCap: placeholderScreen('newCap.title', 'form.placeholder', 'scan'),
+  capEdit: EditCapScreen,
+  newCap: NewCapScreen,
   albums: placeholderScreen('albums.title', 'albums.placeholder', 'collection'),
   exchange: placeholderScreen('exchange.title', 'exchange.placeholder', 'collection'),
   settings: SettingsScreen,

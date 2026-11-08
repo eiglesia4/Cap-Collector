@@ -3,17 +3,10 @@
 // "Where is it?", the "Same brand" carousel and the history list. Data: `GET /caps/{capId}`, `/history` and
 // `GET /caps?q=<brand>` (openapi.yaml); delete is a tombstone (`DELETE`, ADR-006) followed by an undo-less "Deleted"
 // toast in V1 (restore is V2).
-import {
-  Cap,
-  formatLocationCode,
-  Location,
-  type CapHistory,
-  type Closure,
-  type Condition,
-  type Material,
-} from '@capcollector/shared';
+import { Cap, formatLocationCode, Location, type CapHistory } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
+import { sameBrand } from '../cap/brand.js';
 import { CapHistoryListSchema, NoContentSchema } from '../cap/schemas.js';
 import { shareRequest } from '../cap/share.js';
 import { CapPageSchema } from '../collection/cap-page.js';
@@ -24,25 +17,13 @@ import { ConfirmSheet } from '../components/confirm-sheet.js';
 import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
-import { TYPE_LABEL } from '../i18n/labels.js';
+import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
 import { pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
 
 /** Same-brand caps fetched for the carousel (one page). */
 export const VARIANTS_LIMIT = 60;
 
-const MATERIAL_LABEL: Record<Material, MessageKey> = {
-  steel: 'material.steel',
-  aluminium: 'material.aluminium',
-  plastic: 'material.plastic',
-};
-const CLOSURE_LABEL: Record<Closure, MessageKey> = { 'pry-off': 'closure.pryOff', 'twist-off': 'closure.twistOff' };
-const CONDITION_LABEL: Record<Condition, MessageKey> = {
-  mint: 'condition.mint',
-  good: 'condition.good',
-  worn: 'condition.worn',
-  damaged: 'condition.damaged',
-};
 const ACTION_LABEL: Record<CapHistory['action'], MessageKey> = {
   created: 'history.created',
   updated: 'history.updated',
@@ -82,11 +63,7 @@ export function changesLine(entry: CapHistory): string {
     .join(t('history.changeSeparator'));
 }
 
-/** True when `a` and `b` name the same brand (case/accents/space-insensitive, like the API's `BRAND#` key). */
-export function sameBrand(a: string, b: string): boolean {
-  const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
-  return norm(a) === norm(b);
-}
+export { sameBrand };
 
 /** Caps of the same brand as `cap`, excluding `cap` itself. */
 export function variantsOf(cap: Cap, candidates: readonly Cap[]): Cap[] {

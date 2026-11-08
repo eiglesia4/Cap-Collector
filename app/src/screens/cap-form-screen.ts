@@ -1,0 +1,696 @@
+// The one cap form (ADR-003; SCREENS.md #5 "Manual entry" and Edit from #6; CAP-25), modes `empty | edit`
+// (`ai-prefilled` arrives with the capture flow in V2). Photos: pick → resize to WebP ≤ 1024 px (ADR-006) → presigned
+// upload (`POST /uploads` + PUT) → `ImageRef`. Fields in SCREENS.md order with inline errors from the shared
+// `CapInput` schema and from a 422's `Problem.errors[]`. Save → `POST /caps` or a `PATCH` holding only the changed
+// fields; "Save and flag needs review" sets `status: needsReview`. Leaving with unsaved changes asks first.
+import {
+  Cap,
+  CapType as CapTypeEnum,
+  Closure as ClosureEnum,
+  Condition as ConditionEnum,
+  Material as MaterialEnum,
+  type CapStatus,
+  type CapType,
+  type Closure,
+  type Condition,
+  type Material,
+} from '@capcollector/shared';
+
+import { HttpError, ProblemError } from '../api/errors.js';
+import { brandSuggestions } from '../cap/brand.js';
+import {
+  EMPTY_VALUES,
+  imagesFromCap,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  patchBody,
+  problemErrors,
+  sameImages,
+  sameValues,
+  validate,
+  valuesFromCap,
+  type FieldName,
+  type FormErrors,
+  type FormImages,
+  type FormValues,
+  type ValueField,
+} from '../cap/form-model.js';
+import { CapPageSchema } from '../collection/cap-page.js';
+import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
+import { invalidateCollection } from '../collection/state.js';
+import { capImage } from '../components/cap-tile.js';
+import { ConfirmSheet } from '../components/confirm-sheet.js';
+import { showToast } from '../components/toast.js';
+import type { AppContext, Screen } from '../context.js';
+import { searchCountries } from '../i18n/countries.js';
+import { t, type MessageKey } from '../i18n/i18n.js';
+import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
+import { ImageTooLargeError, resizeToWebp, WebpUnsupportedError, type ImageCodec } from '../images/resize.js';
+import { uploadImage, type PutFn, type Side } from '../images/upload.js';
+import { pathFor } from '../router/routes.js';
+import { h, type Child } from '../ui/dom.js';
+
+/** Brand autocomplete waits this long after the last keystroke. */
+export const BRAND_DEBOUNCE_MS = 250;
+/** Caps fetched per autocomplete lookup (`GET /caps?q=`). */
+export const BRAND_LOOKUP_LIMIT = 30;
+
+export type FormMode = 'empty' | 'edit';
+
+export interface CapFormOptions {
+  readonly mode: FormMode;
+  /** The cap being edited (mode `edit`). */
+  readonly cap?: Cap;
+  /** Image codec and PUT function; tests inject fakes (default: canvas and fetch). */
+  readonly codec?: ImageCodec;
+  readonly put?: PutFn;
+}
+
+type SlotState = 'idle' | 'processing' | 'uploading' | 'failed';
+
+interface Slot {
+  state: SlotState;
+  /** Resized image waiting to be (re)uploaded after a failure. */
+  pending: Parameters<typeof uploadImage>[2] | null;
+  /** Object URL previewing a picked image. */
+  preview: string | null;
+  error: string | null;
+}
+
+const LABEL: Record<ValueField, MessageKey> = {
+  brand: 'form.brand',
+  variant: 'form.variant',
+  producer: 'form.producer',
+  country: 'form.country',
+  type: 'form.type',
+  material: 'form.material',
+  closure: 'form.closure',
+  year: 'form.year',
+  description: 'form.description',
+  condition: 'form.condition',
+  acquiredWhere: 'form.acquiredWhere',
+  acquiredOn: 'form.acquiredOn',
+  tags: 'form.tags',
+  notes: 'form.notes',
+  quantity: 'form.quantity',
+  forTrade: 'form.forTrade',
+};
+
+function objectUrl(blob: Blob): string | null {
+  return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(blob) : null;
+}
+
+function revoke(url: string | null): void {
+  if (url !== null && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+}
+
+function enumOptions<T extends string>(values: readonly T[], labels: Readonly<Record<T, MessageKey>>, current: string) {
+  return [
+    h('option', { attrs: { value: '' } }, t('form.none')),
+    ...values.map((v) => h('option', { attrs: { value: v, selected: v === current } }, t(labels[v]))),
+  ];
+}
+
+export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
+  const { mode, cap } = options;
+  if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
+  const initialValues: FormValues = cap ? valuesFromCap(cap) : { ...EMPTY_VALUES, tags: [] };
+  const initialImages: FormImages = cap ? imagesFromCap(cap.images) : {};
+  const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
+  const images: FormImages = { ...initialImages };
+  const slots: Record<Side, Slot> = {
+    top: { state: 'idle', pending: null, preview: null, error: null },
+    underside: { state: 'idle', pending: null, preview: null, error: null },
+  };
+  const touched = new Set<FieldName>();
+  let submitted = false;
+  let saving = false;
+  let serverErrors: FormErrors = {};
+  let square = false;
+
+  const errorSlots = new Map<FieldName, HTMLElement>();
+  const errorSlot = (name: FieldName) => {
+    const el = h('p', { class: 'field-error', attrs: { role: 'alert', 'data-error-for': name } });
+    el.hidden = true;
+    errorSlots.set(name, el);
+    return el;
+  };
+
+  const dirty = () =>
+    !sameValues(values, initialValues) ||
+    !sameImages(images, initialImages) ||
+    slots.top.pending !== null ||
+    slots.underside.pending !== null;
+
+  const busy = () => saving || Object.values(slots).some((s) => s.state === 'processing' || s.state === 'uploading');
+
+  /** Show the errors of touched fields (all of them after a save attempt); server errors until the next edit. */
+  function showErrors(): FormErrors {
+    const result = validate(values, images, 'complete');
+    const local = result.ok ? {} : result.errors;
+    for (const [name, el] of errorSlots) {
+      const message = serverErrors[name] ?? ((submitted || touched.has(name)) && local[name]) ?? undefined;
+      el.textContent = message || '';
+      el.hidden = !message;
+      el.closest('.field')?.classList.toggle('field--invalid', Boolean(message));
+    }
+    return local;
+  }
+
+  function changed(name: ValueField): void {
+    touched.add(name);
+    // Quantity and forTrade are checked together (forTrade ≤ quantity).
+    if (name === 'quantity') touched.add('forTrade');
+    delete serverErrors[name];
+    delete serverErrors.form;
+    showErrors();
+  }
+
+  function field(name: ValueField, control: HTMLElement, ...extra: Child[]): HTMLElement {
+    control.id = `cap-${name}`;
+    const required = name === 'brand' ? t('form.required') : '';
+    return h(
+      'div',
+      { class: 'field', attrs: { 'data-field': name } },
+      h('label', { attrs: { for: control.id } }, t(LABEL[name]), required),
+      control,
+      ...extra,
+      errorSlot(name),
+    );
+  }
+
+  function textInput(
+    name: Exclude<ValueField, 'tags'>,
+    attrs: Record<string, string | boolean> = {},
+  ): HTMLInputElement {
+    const input = h('input', { class: 'input', attrs: { type: 'text', autocomplete: 'off', ...attrs } });
+    input.value = values[name];
+    input.addEventListener('input', () => {
+      values[name] = input.value;
+      changed(name);
+    });
+    return input;
+  }
+
+  function textArea(name: 'description' | 'notes'): HTMLTextAreaElement {
+    const area = h('textarea', { class: 'input', attrs: { rows: '3' } });
+    area.value = values[name];
+    area.addEventListener('input', () => {
+      values[name] = area.value;
+      changed(name);
+    });
+    return area;
+  }
+
+  function select(name: 'type' | 'material' | 'closure' | 'condition', opts: HTMLOptionElement[]): HTMLSelectElement {
+    const el = h('select', { class: 'input' }, ...opts);
+    el.value = values[name];
+    el.addEventListener('change', () => {
+      values[name] = el.value;
+      changed(name);
+    });
+    return el;
+  }
+
+  // ── Brand with autocomplete from the collection (story CAP-25: `GET /caps?q=`, debounced) ──
+  const brandInput = textInput('brand', { autocapitalize: 'words' });
+  const suggestions = h('ul', { class: 'suggestions', attrs: { role: 'listbox' } });
+  suggestions.hidden = true;
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+  let lookupGeneration = 0;
+  const showSuggestions = (brands: string[]) => {
+    suggestions.replaceChildren(
+      ...brands.map((brand) =>
+        h(
+          'li',
+          {},
+          h(
+            'button',
+            {
+              class: 'suggestion',
+              attrs: { type: 'button', role: 'option', 'data-brand': brand },
+              on: {
+                click: () => {
+                  brandInput.value = brand;
+                  values.brand = brand;
+                  changed('brand');
+                  showSuggestions([]);
+                },
+              },
+            },
+            brand,
+          ),
+        ),
+      ),
+    );
+    suggestions.hidden = brands.length === 0;
+  };
+  brandInput.addEventListener('input', () => {
+    clearTimeout(lookupTimer);
+    const typed = brandInput.value;
+    const mine = ++lookupGeneration;
+    if (typed.trim() === '') return showSuggestions([]);
+    lookupTimer = setTimeout(() => {
+      Promise.resolve()
+        .then(() =>
+          ctx.api.request(capsPath({ ...DEFAULT_QUERY, q: typed.trim() }, { limit: BRAND_LOOKUP_LIMIT }), {
+            schema: CapPageSchema,
+          }),
+        )
+        .then((page) => mine === lookupGeneration && showSuggestions(brandSuggestions(typed, page.items)))
+        // Suggestions are a convenience: a failed lookup just shows none.
+        .catch(() => mine === lookupGeneration && showSuggestions([]));
+    }, BRAND_DEBOUNCE_MS);
+  });
+
+  // ── Country: ISO list with a search box filtering the select ──
+  const countrySearch = h('input', {
+    class: 'input country-search',
+    attrs: {
+      type: 'search',
+      autocomplete: 'off',
+      placeholder: t('form.countrySearch'),
+      'aria-label': t('form.countrySearch'),
+    },
+  });
+  const countrySelect = h('select', { class: 'input' });
+  const fillCountries = () => {
+    const matches = searchCountries(countrySearch.value);
+    const current = values.country;
+    if (current !== '' && !matches.some((c) => c.code === current)) {
+      matches.unshift(...searchCountries('').filter((c) => c.code === current));
+    }
+    countrySelect.replaceChildren(
+      h('option', { attrs: { value: '' } }, t('form.none')),
+      ...matches.map((c) => h('option', { attrs: { value: c.code, selected: c.code === current } }, c.name)),
+    );
+    countrySelect.value = current;
+  };
+  countrySearch.addEventListener('input', fillCountries);
+  countrySelect.addEventListener('change', () => {
+    values.country = countrySelect.value;
+    changed('country');
+  });
+  fillCountries();
+
+  // ── Tags: chip input (Enter or comma adds; × removes) ──
+  const tagList = h('ul', { class: 'tag-chips' });
+  const tagInput = h('input', {
+    class: 'input tag-input',
+    attrs: { type: 'text', autocomplete: 'off', autocapitalize: 'none', placeholder: t('form.tagPlaceholder') },
+  });
+  const renderTags = () => {
+    tagList.replaceChildren(
+      ...values.tags.map((tag, i) =>
+        h(
+          'li',
+          { class: 'chip chip--tag' },
+          tag,
+          h(
+            'button',
+            {
+              class: 'chip-remove',
+              attrs: { type: 'button', 'aria-label': t('form.removeTag', { tag }) },
+              on: {
+                click: () => {
+                  values.tags = values.tags.filter((_, j) => j !== i);
+                  renderTags();
+                  changed('tags');
+                },
+              },
+            },
+            t('form.removeSymbol'),
+          ),
+        ),
+      ),
+    );
+  };
+  const addTag = () => {
+    const tag = tagInput.value.replace(/,/g, ' ').trim().slice(0, MAX_TAG_LENGTH);
+    tagInput.value = '';
+    if (tag === '' || values.tags.includes(tag) || values.tags.length >= MAX_TAGS) return;
+    values.tags = [...values.tags, tag];
+    renderTags();
+    changed('tags');
+  };
+  tagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag();
+    } else if (e.key === 'Backspace' && tagInput.value === '' && values.tags.length > 0) {
+      values.tags = values.tags.slice(0, -1);
+      renderTags();
+      changed('tags');
+    }
+  });
+  tagInput.addEventListener('blur', addTag);
+  renderTags();
+  const tagBox = h('div', { class: 'tag-box' }, tagList, tagInput);
+  tagBox.id = 'cap-tags';
+
+  // ── Photos ──
+  const photoBox = h('div', { class: 'photo-slots' });
+  const formError = errorSlot('form');
+
+  function renderPhotos(): void {
+    photoBox.replaceChildren(photoSlot('top'), photoSlot('underside'));
+    updateButtons();
+    showErrors();
+  }
+
+  function photoSlot(side: Side): HTMLElement {
+    const slot = slots[side];
+    const preview =
+      slot.preview !== null
+        ? h('img', { class: 'photo-preview', attrs: { src: slot.preview, alt: '' } })
+        : cap && images[side] !== undefined && images[side]?.key === cap.images[side]?.key
+          ? capImage(cap, side, 'photo-preview')
+          : h(
+              'span',
+              { class: 'photo-preview photo-preview--empty', attrs: { 'aria-hidden': 'true' } },
+              t('form.photoAdd'),
+            );
+    const working = slot.state === 'processing' || slot.state === 'uploading';
+    const pickButton = (source: 'camera' | 'library', key: MessageKey) =>
+      h(
+        'button',
+        {
+          class: 'button button--secondary button--small',
+          attrs: { type: 'button', 'data-pick': `${side}:${source}`, disabled: working },
+          on: { click: () => void pick(side, source) },
+        },
+        t(key),
+      );
+    const native = ctx.platform.kind === 'native';
+    return h(
+      'div',
+      { class: 'photo-slot', attrs: { 'data-side': side, 'data-state': slot.state } },
+      preview,
+      h('p', { class: 'photo-label' }, t(side === 'top' ? 'form.photoTop' : 'form.photoUnderside')),
+      working && h('p', { class: 'muted', attrs: { role: 'status' } }, t('form.uploading')),
+      slot.error !== null && h('p', { class: 'field-error', attrs: { role: 'alert' } }, slot.error),
+      slot.state === 'failed' &&
+        h(
+          'button',
+          {
+            class: 'button button--small',
+            attrs: { type: 'button', 'data-retry': side },
+            on: { click: () => void upload(side) },
+          },
+          t('form.retryUpload'),
+        ),
+      native ? pickButton('camera', 'form.takePhoto') : null,
+      pickButton('library', native ? 'form.choosePhoto' : 'form.uploadPhoto'),
+      side === 'top' && errorSlot('top'),
+    );
+  }
+
+  async function pick(side: Side, source: 'camera' | 'library'): Promise<void> {
+    let file: File | null;
+    try {
+      file =
+        source === 'camera'
+          ? await ctx.platform.camera()
+          : ((await ctx.platform.pickFiles({ accept: 'image/*' }))[0] ?? null);
+    } catch {
+      file = null;
+      slots[side].error = t('form.photoFailed');
+      renderPhotos();
+    }
+    if (file === null) return;
+    const slot = slots[side];
+    slot.state = 'processing';
+    slot.error = null;
+    renderPhotos();
+    try {
+      const resizeOptions = options.codec ? { square, codec: options.codec } : { square };
+      const resized = await resizeToWebp(file, resizeOptions);
+      revoke(slot.preview);
+      slot.preview = objectUrl(resized.blob);
+      slot.pending = resized;
+    } catch (error) {
+      slot.state = 'idle';
+      slot.error =
+        error instanceof WebpUnsupportedError
+          ? t('form.webpUnsupported')
+          : error instanceof ImageTooLargeError
+            ? t('form.photoTooLarge')
+            : t('form.photoUnreadable');
+      renderPhotos();
+      return;
+    }
+    await upload(side);
+  }
+
+  /** Upload the pending image of `side`; on failure everything typed stays and the slot offers a retry (CAP-25). */
+  async function upload(side: Side): Promise<void> {
+    const slot = slots[side];
+    if (slot.pending === null) return;
+    slot.state = 'uploading';
+    slot.error = null;
+    renderPhotos();
+    try {
+      images[side] = await uploadImage(ctx.api, side, slot.pending, options.put);
+      slot.pending = null;
+      slot.state = 'idle';
+      if (side === 'top') delete serverErrors.top;
+    } catch {
+      slot.state = 'failed';
+      slot.error = t('form.uploadFailed');
+    }
+    renderPhotos();
+  }
+
+  const squareToggle = h('input', { attrs: { type: 'checkbox', id: 'cap-square' } });
+  squareToggle.addEventListener('change', () => {
+    square = squareToggle.checked;
+  });
+
+  // ── Buttons and save ──
+  const saveButton = h(
+    'button',
+    { class: 'button', attrs: { type: 'submit', 'data-save': 'complete' } },
+    t('common.save'),
+  );
+  const flagButton = h(
+    'button',
+    {
+      class: 'button button--secondary',
+      attrs: { type: 'button', 'data-save': 'needsReview' },
+      on: { click: () => void save('needsReview') },
+    },
+    t('form.saveFlagged'),
+  );
+  function updateButtons(): void {
+    saveButton.disabled = busy();
+    flagButton.disabled = busy();
+  }
+
+  async function save(status: CapStatus): Promise<void> {
+    if (busy()) return;
+    submitted = true;
+    serverErrors = {};
+    if (Object.values(slots).some((s) => s.state === 'failed')) {
+      serverErrors.form = t('form.retryFirst');
+      showErrors();
+      return;
+    }
+    // SPEC-GAP CAP-25: the story only defines "Save" (status complete) and "Save and flag needs review". In edit mode
+    // plain Save therefore also marks a `needsReview` / `unidentified` cap `complete` (it is the user's explicit
+    // review); the PATCH carries `status` only when it actually changes.
+    const result = validate(values, images, status);
+    showErrors();
+    if (!result.ok) {
+      el.querySelector<HTMLElement>('.field--invalid input, .field--invalid select, .field--invalid textarea')?.focus();
+      return;
+    }
+    saving = true;
+    updateButtons();
+    try {
+      let saved: Cap;
+      if (mode === 'edit' && cap) {
+        const patch = patchBody(cap, result.input);
+        if (patch === null) {
+          releasePreviews();
+          return ctx.navigate(pathFor('capDetail', { id: cap.capId }));
+        }
+        saved = await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, {
+          method: 'PATCH',
+          body: patch,
+          schema: Cap,
+        });
+      } else {
+        saved = await ctx.api.request('/caps', { method: 'POST', body: result.input, schema: Cap });
+      }
+      invalidateCollection(ctx);
+      releasePreviews();
+      ctx.navigate(pathFor('capDetail', { id: saved.capId }));
+      showToast(t('form.saved'));
+    } catch (error) {
+      serverErrors =
+        error instanceof ProblemError && error.problem.errors?.length
+          ? problemErrors(error.problem)
+          : {
+              form:
+                (error instanceof ProblemError || error instanceof HttpError) && error.status === 409
+                  ? t('form.conflict')
+                  : t('form.saveFailed'),
+            };
+      showErrors();
+    } finally {
+      saving = false;
+      updateButtons();
+    }
+  }
+
+  /** Leaving the form: free the photo previews' object URLs. */
+  function releasePreviews(): void {
+    revoke(slots.top.preview);
+    revoke(slots.underside.preview);
+  }
+
+  // Cancel is a real link (SCREENS.md § Navigation: Cancel → Scan; Edit goes back to the cap's detail). With unsaved
+  // changes the click is held here — before the router's document listener — until the user confirms.
+  // SPEC-GAP CAP-25: the router has no leave hook, so the browser's own Back button (Mac/web) is not guarded; the
+  // form is modal (no tab bar), and on the iPhone Cancel is the only way out.
+  const leaveTo = cap ? pathFor('capDetail', { id: cap.capId }) : pathFor('scan');
+  async function confirmLeave(): Promise<void> {
+    const discard = await ConfirmSheet(el, {
+      message: t('form.discardConfirm'),
+      confirm: t('form.discard'),
+      cancel: t('form.keepEditing'),
+      danger: true,
+    });
+    if (!discard) return;
+    releasePreviews();
+    ctx.navigate(leaveTo);
+  }
+  const cancel = h(
+    'a',
+    {
+      class: 'header-action',
+      attrs: { href: leaveTo, 'data-link': true, 'data-action': 'cancel' },
+      on: {
+        click: (e) => {
+          if (!dirty()) return releasePreviews();
+          e.preventDefault();
+          void confirmLeave();
+        },
+      },
+    },
+    t('common.cancel'),
+  );
+
+  const typeOptions = enumOptions<CapType>(CapTypeEnum.options, TYPE_LABEL, values.type);
+  const materialOptions = enumOptions<Material>(MaterialEnum.options, MATERIAL_LABEL, values.material);
+  const closureOptions = enumOptions<Closure>(ClosureEnum.options, CLOSURE_LABEL, values.closure);
+  const conditionOptions = enumOptions<Condition>(ConditionEnum.options, CONDITION_LABEL, values.condition);
+
+  const form = h(
+    'form',
+    {
+      class: 'cap-form-body',
+      attrs: { novalidate: true },
+      on: {
+        submit: (e) => {
+          e.preventDefault();
+          void save('complete');
+        },
+      },
+    },
+    h(
+      'section',
+      { class: 'form-section' },
+      photoBox,
+      h('label', { class: 'check' }, squareToggle, t('form.cropSquare')),
+    ),
+    h(
+      'section',
+      { class: 'form-section' },
+      field('brand', brandInput, suggestions),
+      field('variant', textInput('variant')),
+      field('producer', textInput('producer')),
+      field('country', countrySelect, countrySearch),
+      field('type', select('type', typeOptions)),
+      field('material', select('material', materialOptions)),
+      field('closure', select('closure', closureOptions)),
+      field('year', textInput('year', { inputmode: 'numeric', pattern: '[0-9]*', maxlength: '4' })),
+      field('description', textArea('description')),
+    ),
+    h(
+      'section',
+      { class: 'form-section' },
+      field('condition', select('condition', conditionOptions)),
+      field('acquiredWhere', textInput('acquiredWhere')),
+      field('acquiredOn', textInput('acquiredOn', { type: 'date' })),
+      field('tags', tagBox),
+      field('notes', textArea('notes')),
+      h(
+        'div',
+        { class: 'field-row' },
+        field('quantity', textInput('quantity', { inputmode: 'numeric', pattern: '[0-9]*' })),
+        field('forTrade', textInput('forTrade', { inputmode: 'numeric', pattern: '[0-9]*' })),
+      ),
+    ),
+    formError,
+    h('div', { class: 'form-actions' }, saveButton, flagButton),
+  );
+
+  const el = h(
+    'section',
+    { class: 'screen cap-form', attrs: { 'data-mode': mode } },
+    h(
+      'header',
+      { class: 'screen-header' },
+      cancel,
+      h('h1', { class: 'screen-title' }, t(mode === 'edit' ? 'capEdit.title' : 'newCap.title')),
+    ),
+    form,
+  );
+  renderPhotos();
+  return el;
+}
+
+/** `/new`: Manual entry (SCREENS.md #5), the empty form. */
+export const NewCapScreen: Screen = (ctx) => CapForm(ctx, { mode: 'empty' });
+
+/** `/cap/:id/edit`: the same form in edit mode, once the cap is loaded. */
+export const EditCapScreen: Screen = (ctx, route) => {
+  const capId = route.params.id ?? '';
+  const el = h('section', { class: 'screen cap-form-loader' });
+  const back = h(
+    'a',
+    { class: 'header-action', attrs: { href: pathFor('capDetail', { id: capId }), 'data-link': true } },
+    t('common.cancel'),
+  );
+  const load = () => {
+    el.replaceChildren(
+      h('header', { class: 'screen-header' }, back, h('h1', { class: 'screen-title' }, t('capEdit.title'))),
+      h('p', { class: 'muted', attrs: { role: 'status' } }, t('capDetail.loading')),
+    );
+    Promise.resolve()
+      .then(() => ctx.api.request(`/caps/${encodeURIComponent(capId)}`, { schema: Cap }))
+      .then(
+        (cap) => el.replaceChildren(CapForm(ctx, { mode: 'edit', cap })),
+        (error: unknown) => {
+          const notFound = (error instanceof HttpError || error instanceof ProblemError) && error.status === 404;
+          el.replaceChildren(
+            h('header', { class: 'screen-header' }, back, h('h1', { class: 'screen-title' }, t('capEdit.title'))),
+            h(
+              'div',
+              { class: 'detail-error' },
+              h('p', { attrs: { role: 'status' } }, t(notFound ? 'capDetail.notFound' : 'capDetail.loadFailed')),
+              !notFound &&
+                h(
+                  'button',
+                  { class: 'button button--secondary', attrs: { type: 'button' }, on: { click: load } },
+                  t('common.retry'),
+                ),
+            ),
+          );
+        },
+      );
+  };
+  load();
+  return el;
+};

@@ -678,3 +678,164 @@ body {
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+/* Cap form (CAP-25, SCREENS.md #5): photo slots, fields with inline errors, chip tags, sticky save buttons. */
+.cap-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-bottom: calc(var(--space-6) + var(--safe-bottom));
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.photo-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.photo-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.photo-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-line);
+}
+
+.photo-preview--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--color-line);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 32px;
+}
+
+.photo-slot[data-state='uploading'] .photo-preview,
+.photo-slot[data-state='processing'] .photo-preview {
+  opacity: 0.5;
+}
+
+.photo-label {
+  margin: 0;
+  font-weight: 700;
+}
+
+.button--small {
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+}
+
+.field > label {
+  font-weight: 700;
+}
+
+.field textarea.input {
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.field--invalid .input {
+  border-color: #b3261e;
+}
+
+.field-error {
+  margin: 0;
+  color: #b3261e;
+  font-size: 14px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.suggestion {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tag-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tag-chips {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip--tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: default;
+}
+
+.chip-remove {
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tag-input {
+  flex: 1 1 120px;
+}
+
+.form-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--safe-bottom);
+  background: var(--color-ground);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

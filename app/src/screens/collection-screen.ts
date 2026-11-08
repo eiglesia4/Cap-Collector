@@ -21,6 +21,7 @@ import { collectionState } from '../collection/state.js';
 import { CapTile } from '../components/cap-tile.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
+import { countryName } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { TYPE_LABEL } from '../i18n/labels.js';
 import { pathFor } from '../router/routes.js';
@@ -41,14 +42,6 @@ const SORT_LABEL: Record<Sort, MessageKey> = {
 };
 
 const numberFormat = new Intl.NumberFormat('en-US');
-
-function countryName(code: string): string {
-  try {
-    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
 
 function capsCount(n: number): string {
   return n === 1 ? t('collection.countOne') : t('collection.count', { count: numberFormat.format(n) });
