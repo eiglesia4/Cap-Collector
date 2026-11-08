@@ -12,6 +12,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
   configured model / inference profile only) for `scans-analyse`, which also gets `images-get`, `CAP_BEDROCK_MODEL_ID`,
   `CAP_DHASH_THRESHOLD` and 1024 MB / 20 s; cost guard: daily Bedrock invocations alarm (> 300) on the new
   `cap-<inst>-<stage>-alerts` topic, e-mail from SSM `alert-email` (T-infra-028…031).
+- CAP-32: `@capacitor/app` 8.1.2 in `app` (same major as `@capacitor/core`) for `collectors://` deep links (CAP-33);
+  SPM `Package.swift` synced; the root Capacitor import boundary already covers `@capacitor/*`.
 - CAP-25: cap form (SCREENS.md #5, ADR-003 modes `empty | edit`) on `/new` and `/cap/:id/edit` — brand autocomplete,
   ISO country search, enum selects, tag chips, inline `CapInput` validation and 422 `Problem.errors[]` per field;
   photos resized client-side to WebP ≤ 1024 px and uploaded via presigned PUT with retry; `POST /caps` or a PATCH with
