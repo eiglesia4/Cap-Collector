@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-55: app dependencies for client-side insert-card PDFs — `pdf-lib` ^1.17.1, `qrcode` ^1.5.4 (+ `@types/qrcode` dev); used by CAP-54.
 - CAP-51: operations — required `ops` config (`budgetEur`, `logRetentionDays`; naeva.dev 10 / 30); alarms on the
   alerts topic for API 5xx (≥ 5/5 min), Lambda errors (≥ 3/5 min per function, `MAX(METRICS())` in groups of ≤ 9),
   DynamoDB read + write throttles and authorizer throttles; monthly AWS Budget filtered by `project=EIM_CAP` (80 %
