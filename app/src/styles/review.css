@@ -1,0 +1,32 @@
+/* AI review and re-identify (CAP-43, SCREENS.md #3): unsure highlight, AI suggestion line, review actions. */
+.field--unsure .input {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.field-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.unsure-label {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.ai-suggests {
+  color: var(--color-muted);
+}
+
+.ai-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ai-status {
+  margin: var(--space-2) 0 0;
+}

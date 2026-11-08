@@ -1,5 +1,5 @@
-// The one cap form (ADR-003; SCREENS.md #5 "Manual entry" and Edit from #6; CAP-25), modes `empty | edit`
-// (`ai-prefilled` arrives with the capture flow in V2). Photos: pick → resize to WebP ≤ 1024 px (ADR-006) → presigned
+// The one cap form (ADR-003; SCREENS.md #3 "AI review", #5 "Manual entry" and Edit from #6; CAP-25, CAP-43), modes
+// `empty | edit | ai-prefilled`. Photos: pick → resize to WebP ≤ 1024 px (ADR-006) → presigned
 // upload (`POST /uploads` + PUT) → `ImageRef`. Fields in SCREENS.md order with inline errors from the shared
 // `CapInput` schema and from a 422's `Problem.errors[]`. Save → `POST /caps` or a `PATCH` holding only the changed
 // fields. New cap: "Save and flag needs review" sets `status: needsReview`; edit: a "Needs review" toggle pre-filled
@@ -8,7 +8,12 @@
 // (plus `aiModel`) carried into `POST /caps` while the photo they were computed from is still the one attached.
 // "It's a variant" (CAP-42, `/new?scanId=…&variantOf=<capId>`): pre-filled with the scan's fields, saved with
 // `variantOf` (ADR-008 §1) and the scan's `source`.
+// AI review (CAP-43, `/scan/review`, mode `ai-prefilled`): values from the identification, fields below 0.7 confidence
+// highlighted as unsure, the scan's photos (not re-uploaded); Save → `POST /caps` with `source = bedrock:<aiModel>`,
+// hashes, `aiModel`, `aiConfidence`; Ask again (`known` = edited fields, re-fills only untouched ones); Add underside.
+// Re-identify (CAP-43, mode `edit` + `ai`): "AI suggests: X" per differing field, applied only when accepted → PATCH.
 import {
+  AnalyseResponse,
   Cap,
   CapType as CapTypeEnum,
   Closure as ClosureEnum,
@@ -43,6 +48,17 @@ import {
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
 import { scanSource } from '../capture/duplicate.js';
+import { analyseBody, routeFor } from '../capture/flow.js';
+import {
+  isAiField,
+  knownFromValues,
+  refill,
+  reviewProvenance,
+  reviewScan,
+  unsureFields,
+  type AiField,
+  type Suggestion,
+} from '../capture/review.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
 import { invalidateCollection } from '../collection/state.js';
@@ -53,7 +69,13 @@ import type { AppContext, Screen } from '../context.js';
 import { searchCountries } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
-import { ImageTooLargeError, resizeToWebp, WebpUnsupportedError, type ImageCodec } from '../images/resize.js';
+import {
+  ImageTooLargeError,
+  resizeToWebp,
+  WebpUnsupportedError,
+  type CapPhoto,
+  type ImageCodec,
+} from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
 import { pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
@@ -62,8 +84,10 @@ import { h, type Child } from '../ui/dom.js';
 export const BRAND_DEBOUNCE_MS = 250;
 /** Caps fetched per autocomplete lookup (`GET /caps?q=`). */
 export const BRAND_LOOKUP_LIMIT = 30;
+/** "Export for external AI" from the review: off until the Exchange screen lands (CAP-45). */
+export const EXCHANGE_READY = false;
 
-export type FormMode = 'empty' | 'edit';
+export type FormMode = 'empty' | 'edit' | 'ai-prefilled';
 
 export interface CapFormOptions {
   readonly mode: FormMode;
@@ -78,6 +102,10 @@ export interface CapFormOptions {
   readonly prefill?: FormValues;
   /** Merged into `POST /caps` (CAP-42: `variantOf`, `source`, `textOnCap` of the scan). */
   readonly extra?: Readonly<Record<string, unknown>>;
+  /** Circular crop + dHash for "Add underside photo" (CAP-43); tests inject a fake (happy-dom has no canvas). */
+  readonly prepare?: (file: Blob) => Promise<CapPhoto>;
+  /** Re-identify (CAP-43, mode `edit`): the AI's suggestions, each applied only when accepted, and their author. */
+  readonly ai?: { readonly suggestions: readonly Suggestion[]; readonly source: string };
 }
 
 /** The scan's uploaded photos as form images. */
@@ -147,7 +175,13 @@ function enumOptions<T extends string>(values: readonly T[], labels: Readonly<Re
 export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   const { mode, cap, scan, prefill, extra } = options;
   if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
-  const initialValues: FormValues = cap ? valuesFromCap(cap) : (prefill ?? { ...EMPTY_VALUES, tags: [] });
+  if (mode === 'ai-prefilled' && !scan?.response?.fields) throw new Error('ai-prefilled mode needs an identified scan');
+  const aiFields = mode === 'ai-prefilled' ? scan?.response?.fields : undefined;
+  const initialValues: FormValues = cap
+    ? valuesFromCap(cap)
+    : aiFields
+      ? valuesFromFields(aiFields)
+      : (prefill ?? { ...EMPTY_VALUES, tags: [] });
   const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
   const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
   const images: FormImages = { ...initialImages };
@@ -199,8 +233,15 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     return local;
   }
 
+  // Per-field input (to re-fill it after "Ask again" or an accepted suggestion) and hint line (unsure / AI suggests).
+  const controls = new Map<ValueField, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
+  const hints = new Map<ValueField, HTMLElement>();
+  let unsure =
+    mode === 'ai-prefilled' ? unsureFields(scan?.response?.confidence) : new Map<AiField, number | undefined>();
+
   function changed(name: ValueField): void {
     touched.add(name);
+    if (isAiField(name) && unsure.delete(name)) renderHints();
     // Quantity and forTrade are checked together (forTrade ≤ quantity).
     if (name === 'quantity') touched.add('forTrade');
     delete serverErrors[name];
@@ -210,15 +251,71 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
 
   function field(name: ValueField, control: HTMLElement, ...extra: Child[]): HTMLElement {
     control.id = `cap-${name}`;
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) controls.set(name, control);
+    if (control instanceof HTMLTextAreaElement) controls.set(name, control);
     const required = name === 'brand' ? t('form.required') : '';
+    const hint = h('div', { class: 'field-hint', attrs: { 'data-hint-for': name } });
+    hint.hidden = true;
+    hints.set(name, hint);
     return h(
       'div',
       { class: 'field', attrs: { 'data-field': name } },
       h('label', { attrs: { for: control.id } }, t(LABEL[name]), required),
+      hint,
       control,
       ...extra,
       errorSlot(name),
     );
+  }
+
+  /** Put `value` into field `name` as if typed (re-fill after "Ask again", an accepted AI suggestion). */
+  function setValue(name: AiField, value: string): void {
+    values[name] = value;
+    if (name === 'country') return fillCountries();
+    const control = controls.get(name);
+    if (control) control.value = value;
+  }
+
+  /** Unsure highlight (ai-prefilled) and "AI suggests: X" with Accept (re-identify), per field. */
+  function renderHints(): void {
+    for (const [name, hint] of hints) {
+      const fieldEl = hint.closest('.field');
+      const isUnsure = isAiField(name) && unsure.has(name);
+      fieldEl?.classList.toggle('field--unsure', isUnsure);
+      const suggestion = options.ai?.suggestions.find((s) => s.field === name && values[name] !== s.value);
+      if (isUnsure) {
+        const c = unsure.get(name as AiField);
+        hint.replaceChildren(
+          h(
+            'span',
+            { class: 'unsure-label' },
+            c === undefined ? t('review.unsure') : t('review.unsureConfidence', { percent: Math.round(c * 100) }),
+          ),
+        );
+      } else if (suggestion) {
+        hint.replaceChildren(
+          h('span', { class: 'ai-suggests' }, t('review.aiSuggests', { value: displayValue(name, suggestion.value) })),
+          h(
+            'button',
+            {
+              class: 'button button--small button--secondary',
+              attrs: { type: 'button', 'data-accept': name },
+              on: {
+                click: () => {
+                  setValue(suggestion.field, suggestion.value);
+                  changed(name);
+                  renderHints();
+                },
+              },
+            },
+            t('review.accept'),
+          ),
+        );
+      } else {
+        hint.replaceChildren();
+      }
+      hint.hidden = !isUnsure && !suggestion;
+    }
   }
 
   function textInput(
@@ -528,6 +625,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   function updateButtons(): void {
     saveButton.disabled = busy();
     flagButton.disabled = busy();
+    if (mode === 'ai-prefilled') updateAiButtons();
   }
 
   /**
@@ -564,13 +662,22 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           releasePreviews();
           return ctx.navigate(pathFor('capDetail', { id: cap.capId }));
         }
+        // An accepted AI suggestion makes the AI the author of the change (architect rule, CAP-42).
+        if (options.ai?.suggestions.some((s) => s.field in patch && values[s.field] === s.value)) {
+          patch.source = options.ai.source;
+        }
         saved = await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, {
           method: 'PATCH',
           body: patch,
           schema: Cap,
         });
       } else {
-        const body = { ...result.input, ...(scan ? scanFields(scan, images) : {}), ...extra };
+        const body = {
+          ...result.input,
+          ...(scan ? scanFields(scan, images) : {}),
+          ...(mode === 'ai-prefilled' && scan ? reviewProvenance(scan) : {}),
+          ...extra,
+        };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
       if (scan) ctx.capture.clear();
@@ -595,6 +702,107 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     }
   }
 
+  // ── AI review actions (CAP-43): Ask again, Add underside photo ──
+  const aiStatus = h('p', { class: 'muted ai-status', attrs: { role: 'status', 'data-ai-status': '' } });
+  aiStatus.hidden = true;
+  let asking = false;
+  const sayAi = (key: MessageKey | null) => {
+    aiStatus.textContent = key === null ? '' : t(key);
+    aiStatus.hidden = key === null;
+  };
+  const askButton = h(
+    'button',
+    {
+      class: 'button button--secondary button--small',
+      attrs: { type: 'button', 'data-action': 'ask-again' },
+      on: { click: () => void askAgain() },
+    },
+    t('review.askAgain'),
+  );
+  const undersideButton = h(
+    'button',
+    {
+      class: 'button button--secondary button--small',
+      attrs: { type: 'button', 'data-action': 'add-underside' },
+      on: { click: () => void addUnderside() },
+    },
+    t('review.addUnderside'),
+  );
+  const updateAiButtons = () => {
+    askButton.disabled = asking || busy();
+    undersideButton.disabled = asking || busy();
+    undersideButton.hidden = scan?.underside?.ref !== undefined;
+  };
+
+  /**
+   * `POST /scans/analyse` again for this scan: same `scanId` and images, `known` = the fields the user edited; the
+   * answer re-fills only untouched fields. A `duplicate` answer (brand re-check) goes to Already in collection.
+   */
+  async function askAgain(): Promise<void> {
+    if (!scan?.top?.ref || asking) return;
+    asking = true;
+    sayAi('review.asking');
+    updateAiButtons();
+    try {
+      const body = { ...analyseBody(scan), known: knownFromValues(values, touched), useAi: true };
+      const response = await ctx.api.request('/scans/analyse', { method: 'POST', body, schema: AnalyseResponse });
+      scan.response = response;
+      if (response.outcome === 'duplicate') {
+        releasePreviews();
+        return ctx.navigate(routeFor(response));
+      }
+      if (response.outcome === 'unidentified') return sayAi('review.notIdentified');
+      for (const [field, value] of Object.entries(refill(values, touched, response.fields))) {
+        setValue(field as AiField, value);
+      }
+      unsure = unsureFields(response.confidence);
+      for (const name of touched) if (isAiField(name)) unsure.delete(name);
+      renderHints();
+      showErrors();
+      sayAi('review.updated');
+    } catch (error) {
+      const unavailable = (error instanceof ProblemError || error instanceof HttpError) && error.status === 503;
+      sayAi(unavailable ? 'scan.aiUnavailable' : 'review.askFailed');
+    } finally {
+      asking = false;
+      updateAiButtons();
+    }
+  }
+
+  /** Underside photo for this scan: camera (or picker) → circular crop + dHash → upload → Ask again with both. */
+  async function addUnderside(): Promise<void> {
+    if (!scan || asking) return;
+    let file: File | null;
+    try {
+      file =
+        ctx.platform.kind === 'native'
+          ? await ctx.platform.camera()
+          : ((await ctx.platform.pickFiles({ accept: 'image/*' }))[0] ?? null);
+    } catch {
+      return sayAi('form.photoFailed');
+    }
+    if (file === null) return;
+    asking = true;
+    updateAiButtons();
+    sayAi('scan.preparing');
+    try {
+      const photo = await (options.prepare ?? ((f: Blob) => resizeToWebp(f, { crop: 'circle' })))(file);
+      sayAi('scan.uploading');
+      const ref = await uploadImage(ctx.api, 'underside', photo, options.put);
+      scan.underside = { photo, ref };
+      images.underside = ref;
+      revoke(slots.underside.preview);
+      slots.underside.preview = objectUrl(photo.blob);
+    } catch {
+      asking = false;
+      updateAiButtons();
+      return sayAi('scan.undersideFailed');
+    }
+    asking = false;
+    renderPhotos();
+    await askAgain();
+  }
+
   /** Leaving the form: free the photo previews' object URLs. */
   function releasePreviews(): void {
     revoke(slots.top.preview);
@@ -606,6 +814,19 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   // SPEC-GAP CAP-25: the router has no leave hook, so the browser's own Back button (Mac/web) is not guarded; the
   // form is modal (no tab bar), and on the iPhone Cancel is the only way out. Accepted for V1 (architect, 2026-11-08).
   const leaveTo = cap ? pathFor('capDetail', { id: cap.capId }) : pathFor('scan');
+  // "Export for external AI" (SCREENS.md #3) waits for the Exchange screen (CAP-45).
+  // SPEC-GAP CAP-43: the story hides it "by route existence", but `/exchange` already exists as a placeholder; a
+  // constant stands in until CAP-45 flips it.
+  const exportLink = EXCHANGE_READY
+    ? h(
+        'a',
+        {
+          class: 'button button--secondary button--small',
+          attrs: { href: pathFor('exchange'), 'data-link': true, 'data-action': 'export' },
+        },
+        t('scan.exportExternal'),
+      )
+    : null;
   async function confirmLeave(): Promise<void> {
     const discard = await ConfirmSheet(el, {
       message: t('form.discardConfirm'),
@@ -650,6 +871,13 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         },
       },
     },
+    mode === 'ai-prefilled' &&
+      h(
+        'section',
+        { class: 'form-section ai-actions' },
+        h('div', { class: 'ai-buttons' }, askButton, undersideButton, exportLink),
+        aiStatus,
+      ),
     h(
       'section',
       { class: 'form-section' },
@@ -699,13 +927,32 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       h(
         'h1',
         { class: 'screen-title' },
-        t(mode === 'edit' ? 'capEdit.title' : extra?.variantOf ? 'newCap.variantTitle' : 'newCap.title'),
+        t(
+          options.ai
+            ? 'reidentify.title'
+            : mode === 'edit'
+              ? 'capEdit.title'
+              : mode === 'ai-prefilled'
+                ? 'scanReview.title'
+                : extra?.variantOf
+                  ? 'newCap.variantTitle'
+                  : 'newCap.title',
+        ),
       ),
     ),
     form,
   );
   renderPhotos();
+  renderHints();
   return el;
+}
+
+/** A field value as shown in a hint: enum labels, the rest as typed. */
+function displayValue(field: ValueField, value: string): string {
+  if (field === 'type') return t(TYPE_LABEL[value as CapType]);
+  if (field === 'material') return t(MATERIAL_LABEL[value as Material]);
+  if (field === 'closure') return t(CLOSURE_LABEL[value as Closure]);
+  return value;
 }
 
 /**
@@ -732,6 +979,27 @@ export const NewCapScreen: Screen = (ctx, route) => {
       ...(fields.textOnCap !== undefined ? { textOnCap: fields.textOnCap } : {}),
     },
   });
+};
+
+/**
+ * `/scan/review`: AI review (SCREENS.md #3, CAP-43), the form in mode `ai-prefilled` over the open scan context. Reached
+ * without an identified scan (reload): nothing to review, back to Scan.
+ */
+export const ScanReviewScreen: Screen = (ctx) => {
+  const scan = reviewScan(ctx.capture.current());
+  if (scan) return CapForm(ctx, { mode: 'ai-prefilled', scan });
+  return h(
+    'section',
+    { class: 'screen' },
+    h(
+      'header',
+      { class: 'screen-header' },
+      h('a', { class: 'header-action', attrs: { href: pathFor('scan'), 'data-link': true } }, t('common.cancel')),
+      h('h1', { class: 'screen-title' }, t('scanReview.title')),
+    ),
+    h('p', { class: 'muted', attrs: { role: 'status' } }, t('scanDuplicate.noScan')),
+    h('a', { class: 'button', attrs: { href: pathFor('scan'), 'data-link': true } }, t('scanDuplicate.scanAgain')),
+  );
 };
 
 /** `/cap/:id/edit`: the same form in edit mode, once the cap is loaded. */

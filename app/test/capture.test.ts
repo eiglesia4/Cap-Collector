@@ -23,7 +23,7 @@ import { t } from '../src/i18n/i18n';
 import { ImageDecodeError, type CapPhoto } from '../src/images/resize';
 import { matchRoute } from '../src/router/routes';
 import { NewCapScreen, scanFields } from '../src/screens/cap-form-screen';
-import { scanOutcomePlaceholder } from '../src/screens/scan-outcome-screen';
+import { ScanDuplicateScreen } from '../src/screens/scan-duplicate-screen';
 import { ScanView } from '../src/screens/scan-screen';
 import { ulid, wireCap } from './support/caps';
 import { fakeApi, fakePlatform, flush, memoryStore, shellContext } from './support/fakes';
@@ -359,8 +359,8 @@ describe('scan screen', () => {
     expect(store.current()).toBeNull();
 
     store.start({ scanId: SCAN_ID, useAi: true });
-    const outcome = scanOutcomePlaceholder('scanReview.title')(s.ctx, matchRoute('/scan/review') as never);
-    expect(outcome.querySelector('h1')?.textContent).toBe(t('scanReview.title'));
+    const outcome = ScanDuplicateScreen(s.ctx, matchRoute('/scan/duplicate') as never);
+    expect(outcome.querySelector('h1')?.textContent).toBe(t('scanDuplicate.title'));
     click(outcome, '[data-action="discard"]');
     expect(outcome.querySelector('[data-action="discard"]')?.getAttribute('href')).toBe('/');
     expect(store.current()).toBeNull();
