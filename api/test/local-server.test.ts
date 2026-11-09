@@ -164,6 +164,38 @@ describe('api:local', () => {
     setVisionAdapter(undefined);
   });
 
+  it('[T-api-085] api:local (CAP-63 done when): analyse with useAi=false and known.brand of an existing cap → duplicate by brand, adapter not called', async () => {
+    setRepositories(createMemoryRepositories());
+    const identify = vi.fn<VisionAdapter['identify']>(async () => ({ status: 'unavailable', reason: 'stub' }));
+    setVisionAdapter({ identify });
+    const post = async (path: string, body: unknown) => {
+      const res = await fetch(`${base}${path}`, { method: 'POST', body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    const top = `local-user/${newId()}/top.webp`;
+    const cap = await post('/caps', {
+      brand: 'Mahou',
+      variant: 'Clásica',
+      dhash: 'a3f0c81e7b2d9f44',
+      images: { top: { key: top, width: 640, height: 640 } },
+    });
+    expect(cap.status).toBe(201);
+
+    const res = await post('/scans/analyse', {
+      scanId: newId(),
+      dhash: '5c0f37e184d260bb',
+      imageKeys: { top: `local-user/${newId()}/top.webp` },
+      useAi: false,
+      known: { brand: 'Mahou', variant: 'Clásica' },
+    });
+    expect(res).toMatchObject({
+      status: 200,
+      body: { outcome: 'duplicate', match: { capId: cap.body.capId, by: 'brand' } },
+    });
+    expect(identify).not.toHaveBeenCalled();
+    setVisionAdapter(undefined);
+  });
+
   it('[T-api-057] api:local exchange flow: create → answered → reviewed round-trips and GET /exchange/requests reflects each step', async () => {
     setRepositories(createMemoryRepositories());
     const send = async (method: string, path: string, body?: unknown) => {

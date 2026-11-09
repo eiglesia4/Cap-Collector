@@ -202,6 +202,91 @@ describe('scans: POST /scans/analyse', () => {
   });
 });
 
+describe('scans: brand re-check from `known` (CAP-63)', () => {
+  it('[T-api-081] useAi=false + known brand/variant of an existing cap → duplicate by brand (normalised), adapter not called, Scan stored with aiCalled false', async () => {
+    const mahou = await storeCap({ brand: 'Mahou', variant: 'Clásica', dhash: flip(TOP, 20) });
+    const identify = fakeVision();
+
+    const res = await call(body({ useAi: false, known: { brand: 'MAHOU', variant: 'clasica', country: 'ES' } }));
+    expect(res.statusCode).toBe(200);
+    const out = json<AnalyseResponse>(res);
+    expect(out).toMatchObject({
+      outcome: 'duplicate',
+      match: { capId: mahou.capId, hammingDistance: 20, by: 'brand' },
+    });
+    expect(out).not.toHaveProperty('fields');
+    expect(identify).not.toHaveBeenCalled();
+    const [scan] = await scans();
+    expect(scan).toMatchObject({ outcome: 'duplicate', aiCalled: false, match: { capId: mahou.capId, by: 'brand' } });
+    expect(scan).not.toHaveProperty('aiModel');
+  });
+
+  it('[T-api-082] useAi=false with no brand match (other variant, other brand, tombstoned cap, no brand) → unidentified with empty suggestions', async () => {
+    await storeCap({ brand: 'Mahou', variant: 'Clásica', dhash: flip(TOP, 20) });
+    const gone = await storeCap({ brand: 'Alhambra', dhash: flip(TOP, 30) });
+    await repos.caps.softDelete(UID, { cap: gone }, makeHistory(gone.capId, 'deleted'));
+    const identify = fakeVision();
+
+    for (const known of [
+      { brand: 'Mahou', variant: 'Sin' },
+      { brand: 'Mahou' },
+      { brand: 'Estrella Galicia' },
+      { brand: 'Alhambra' },
+      { variant: 'Clásica' },
+    ]) {
+      expect(json(await call(body({ useAi: false, known })))).toEqual({
+        scanId: expect.any(String),
+        outcome: 'unidentified',
+        suggestions: [],
+      });
+    }
+    expect(identify).not.toHaveBeenCalled();
+    expect((await scans()).every((s) => s.outcome === 'unidentified' && !s.aiCalled && !s.match)).toBe(true);
+  });
+
+  it('[T-api-083] re-identify with useAi=false excludes its own capId from the brand step; another cap of that brand still matches', async () => {
+    const self = await storeCap({ brand: 'Mahou', variant: 'Clásica', dhash: flip(TOP, 20) });
+    const known = { brand: 'Mahou', variant: 'Clásica' };
+    const identify = fakeVision();
+
+    expect(json(await call(body({ useAi: false, capId: self.capId, known })))).toMatchObject({
+      outcome: 'unidentified',
+      suggestions: [],
+    });
+    const twin = await storeCap({ brand: 'Mahou', variant: 'Clasica', dhash: undefined });
+    expect(json(await call(body({ useAi: false, capId: self.capId, known })))).toMatchObject({
+      outcome: 'duplicate',
+      match: { capId: twin.capId, hammingDistance: 64, by: 'brand' },
+    });
+    expect(identify).not.toHaveBeenCalled();
+  });
+
+  it('[T-api-084] useAi=true: step 3 runs on the adapter brand, not on known; a different known brand is logged at info without field values', async () => {
+    const mahou = await storeCap({ brand: 'Mahou', dhash: flip(TOP, 20) });
+    await storeCap({ brand: 'Alhambra', dhash: flip(TOP, 30) });
+    fakeVision({ status: 'identified', aiModel: 'fake-model', fields: { brand: 'Mahou', variant: 'Clásica' } });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const out = json<AnalyseResponse>(await call(body({ known: { brand: 'Alhambra' } })));
+      expect(out).toMatchObject({
+        outcome: 'duplicate',
+        match: { capId: mahou.capId, by: 'brand' },
+        aiModel: 'fake-model',
+      });
+      expect(info).toHaveBeenCalledTimes(1);
+      const line = String(info.mock.calls[0]?.[0]);
+      expect(line).toContain(out.scanId);
+      expect(line).not.toMatch(/Alhambra|Mahou/);
+
+      // Same brand as known (normalised) → nothing logged.
+      await call(body({ known: { brand: 'MAHOU' } }));
+      expect(info).toHaveBeenCalledTimes(1);
+    } finally {
+      info.mockRestore();
+    }
+  });
+});
+
 describe('scans: GET /scans', () => {
   it('[T-api-047] newest first, limit ≤ 200, cursor continues without gaps; another user sees nothing', async () => {
     fakeVision();
