@@ -62,6 +62,7 @@ import {
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
 import { invalidateCollection } from '../collection/state.js';
+import { markReviewed } from '../exchange/continue.js';
 import { capImage } from '../components/cap-tile.js';
 import { ConfirmSheet } from '../components/confirm-sheet.js';
 import { showToast } from '../components/toast.js';
@@ -77,15 +78,13 @@ import {
   type ImageCodec,
 } from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
-import { pathFor } from '../router/routes.js';
+import { exchangePath, pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
 
 /** Brand autocomplete waits this long after the last keystroke. */
 export const BRAND_DEBOUNCE_MS = 250;
 /** Caps fetched per autocomplete lookup (`GET /caps?q=`). */
 export const BRAND_LOOKUP_LIMIT = 30;
-/** "Export for external AI" from the review: off until the Exchange screen lands (CAP-45). */
-export const EXCHANGE_READY = false;
 
 export type FormMode = 'empty' | 'edit' | 'ai-prefilled';
 
@@ -106,6 +105,10 @@ export interface CapFormOptions {
   readonly prepare?: (file: Blob) => Promise<CapPhoto>;
   /** Re-identify (CAP-43, mode `edit`): the AI's suggestions, each applied only when accepted, and their author. */
   readonly ai?: { readonly suggestions: readonly Suggestion[]; readonly source: string };
+  /** Starting notes (CAP-45: an external answer's notes and ignored fields; modes `ai-prefilled` / `empty`). */
+  readonly notes?: string;
+  /** Runs after a successful save, before leaving (CAP-45: mark the exchange request `reviewed`). */
+  readonly onSaved?: (cap: Cap) => Promise<void>;
 }
 
 /** The scan's uploaded photos as form images. */
@@ -177,11 +180,13 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
   if (mode === 'ai-prefilled' && !scan?.response?.fields) throw new Error('ai-prefilled mode needs an identified scan');
   const aiFields = mode === 'ai-prefilled' ? scan?.response?.fields : undefined;
-  const initialValues: FormValues = cap
+  const baseValues: FormValues = cap
     ? valuesFromCap(cap)
     : aiFields
       ? valuesFromFields(aiFields)
       : (prefill ?? { ...EMPTY_VALUES, tags: [] });
+  const initialValues: FormValues =
+    !cap && options.notes !== undefined ? { ...baseValues, notes: options.notes } : baseValues;
   const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
   const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
   const images: FormImages = { ...initialImages };
@@ -680,6 +685,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
+      // An external AI's answer (CAP-45): its pending request is now reviewed.
+      if (scan?.exchange) await markReviewed(ctx.api, scan);
+      await options.onSaved?.(saved);
       if (scan) ctx.capture.clear();
       invalidateCollection(ctx);
       releasePreviews();
@@ -814,19 +822,18 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   // SPEC-GAP CAP-25: the router has no leave hook, so the browser's own Back button (Mac/web) is not guarded; the
   // form is modal (no tab bar), and on the iPhone Cancel is the only way out. Accepted for V1 (architect, 2026-11-08).
   const leaveTo = cap ? pathFor('capDetail', { id: cap.capId }) : pathFor('scan');
-  // "Export for external AI" (SCREENS.md #3) waits for the Exchange screen (CAP-45).
-  // SPEC-GAP CAP-43: the story hides it "by route existence", but `/exchange` already exists as a placeholder; a
-  // constant stands in until CAP-45 flips it.
-  const exportLink = EXCHANGE_READY
-    ? h(
-        'a',
-        {
-          class: 'button button--secondary button--small',
-          attrs: { href: pathFor('exchange'), 'data-link': true, 'data-action': 'export' },
-        },
-        t('scan.exportExternal'),
-      )
-    : null;
+  // "Export for external AI" (SCREENS.md #3 / #5, exchange.md § Flow step 1): this scan, on the Exchange screen (CAP-45).
+  const exportLink =
+    scan?.top?.ref && !scan.exchange
+      ? h(
+          'a',
+          {
+            class: 'button button--secondary button--small',
+            attrs: { href: exchangePath({ scanId: scan.scanId }), 'data-link': true, 'data-action': 'export' },
+          },
+          t('scan.exportExternal'),
+        )
+      : null;
   async function confirmLeave(): Promise<void> {
     const discard = await ConfirmSheet(el, {
       message: t('form.discardConfirm'),
@@ -878,6 +885,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         h('div', { class: 'ai-buttons' }, askButton, undersideButton, exportLink),
         aiStatus,
       ),
+    mode === 'empty' &&
+      exportLink &&
+      h('section', { class: 'form-section ai-actions' }, h('div', { class: 'ai-buttons' }, exportLink)),
     h(
       'section',
       { class: 'form-section' },
@@ -969,10 +979,12 @@ export const NewCapScreen: Screen = (ctx, route) => {
   if (variantOf === undefined || scan.response?.match?.capId !== variantOf)
     return CapForm(ctx, { mode: 'empty', scan });
   const fields = scan.response.fields ?? {};
+  const notes = scan.exchange?.notes;
   return CapForm(ctx, {
     mode: 'empty',
     scan,
     prefill: valuesFromFields(fields),
+    ...(notes !== undefined ? { notes } : {}),
     extra: {
       variantOf,
       source: scanSource(scan),
@@ -987,7 +999,8 @@ export const NewCapScreen: Screen = (ctx, route) => {
  */
 export const ScanReviewScreen: Screen = (ctx) => {
   const scan = reviewScan(ctx.capture.current());
-  if (scan) return CapForm(ctx, { mode: 'ai-prefilled', scan });
+  const notes = scan?.exchange?.notes;
+  if (scan) return CapForm(ctx, { mode: 'ai-prefilled', scan, ...(notes !== undefined ? { notes } : {}) });
   return h(
     'section',
     { class: 'screen' },

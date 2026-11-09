@@ -20,6 +20,7 @@ import {
 } from '../capture/duplicate.js';
 import type { CaptureSession } from '../capture/context.js';
 import { invalidateCollection } from '../collection/state.js';
+import { markReviewed } from '../exchange/continue.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
@@ -260,6 +261,8 @@ function review(
     refresh();
     try {
       await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, { method: 'PATCH', body: patch, schema: Cap });
+      // An external AI's answer (CAP-45): its pending request is now reviewed.
+      await markReviewed(ctx.api, session);
       ctx.capture.clear();
       release();
       invalidateCollection(ctx);

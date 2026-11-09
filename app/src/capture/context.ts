@@ -2,7 +2,7 @@
 // tabs). It lives in memory for the modal's lifetime: the scan id, the prepared photos and their dHashes, the uploaded
 // image refs and the `/scans/analyse` answer. The review screens (Already in collection CAP-42, AI review CAP-43,
 // Manual entry CAP-25) read it; closing the modal (Cancel, Retake, Discard, Save) clears it. Never persisted.
-import type { AnalyseResponse, ImageRef } from '@capcollector/shared';
+import type { AnalyseResponse, ImageRef, Source } from '@capcollector/shared';
 
 import type { CapPhoto } from '../images/resize.js';
 
@@ -21,6 +21,11 @@ export interface CaptureSession {
   top?: CapturedSide;
   underside?: CapturedSide;
   response?: AnalyseResponse;
+  /**
+   * Set when the fields come from an external AI's answer (CAP-45, ADR-007): its author (`external:<provider>`) and
+   * the pending request to mark `reviewed` once the review saves.
+   */
+  readonly exchange?: { readonly source: Source; readonly requestId?: string; readonly notes?: string };
 }
 
 export interface CaptureStore {

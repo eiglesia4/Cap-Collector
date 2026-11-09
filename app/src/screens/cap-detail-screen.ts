@@ -19,7 +19,7 @@ import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
-import { pathFor } from '../router/routes.js';
+import { exchangePath, pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
 
 /** Same-brand caps fetched for the carousel (one page). */
@@ -180,6 +180,16 @@ function moreMenu(ctx: AppContext, root: HTMLElement, cap: Cap): HTMLElement {
           on: { click: () => (menu.open = false) },
         },
         t('capDetail.reidentify'),
+      ),
+      // Exchange (CAP-45, SCREENS.md § Navigation): this cap as a request bundle for an external AI.
+      h(
+        'a',
+        {
+          class: 'menu-item',
+          attrs: { href: exchangePath({ capId: cap.capId }), 'data-link': true, 'data-action': 'ask-external' },
+          on: { click: () => (menu.open = false) },
+        },
+        t('capDetail.askExternal'),
       ),
       h(
         'button',

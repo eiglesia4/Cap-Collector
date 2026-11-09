@@ -13,7 +13,7 @@ import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { resizeToWebp, type CapPhoto } from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
-import { pathFor } from '../router/routes.js';
+import { exchangePath, pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
 
 export interface ScanOptions {
@@ -121,7 +121,8 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
       { class: 'sheet scan-sheet', attrs: { role: 'dialog', 'data-sheet': 'ai-unavailable' } },
       h('p', { class: 'sheet-message' }, t('scan.aiUnavailable')),
       manual(manualEntryPath(scanId)),
-      button('scan.exportExternal', 'export', () => undefined, true, true),
+      // Exchange (CAP-45): this scan's uploaded photos become a request bundle for an external AI.
+      button('scan.exportExternal', 'export', () => ctx.navigate(exchangePath({ scanId })), true),
       button('common.retry', 'retry', () => flow.retry(), true),
     );
   }

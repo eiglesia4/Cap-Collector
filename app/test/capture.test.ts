@@ -280,11 +280,13 @@ describe('scan screen', () => {
     await settle();
     click(phone.el, '[data-action="skip"]');
     await settle();
-    // 503 → the sheet: Enter manually (this scan), Export for external AI (not yet), Retry.
+    // 503 → the sheet: Enter manually (this scan), Export for external AI (this scan, CAP-45), Retry.
     expect(phone.el.dataset.step).toBe('aiUnavailable');
     const sheet = phone.el.querySelector('[data-sheet="ai-unavailable"]');
     expect(sheet?.querySelector('[data-action="manual"]')?.getAttribute('href')).toBe(`/new?scanId=${SCAN_ID}`);
-    expect(sheet?.querySelector<HTMLButtonElement>('[data-action="export"]')?.disabled).toBe(true);
+    expect(sheet?.querySelector<HTMLButtonElement>('[data-action="export"]')?.disabled).toBe(false);
+    click(phone.el, '[data-action="export"]');
+    expect(phone.ctx.navigate).toHaveBeenLastCalledWith(`/exchange?scanId=${SCAN_ID}`);
     click(phone.el, '[data-action="retry"]');
     await settle();
     expect(phone.calls.filter((c) => c.path === '/scans/analyse')).toHaveLength(2);
