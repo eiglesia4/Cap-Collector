@@ -65,7 +65,7 @@ const str = (name: string) => ({ name, type: AttributeType.STRING });
  */
 export const UNSET_PARAMETER_VALUE = 'unset';
 
-/** CloudFormation export name of a CollectorsData output (CollectorsApi imports `WebUrl` for CORS, CAP-27). */
+/** CloudFormation export name of a CollectorsData output (`WebUrl` is read by deploy:web; no stack imports it). */
 export const dataExportName = (deployment: Deployment, key: string): string =>
   `${resourceName(deployment, 'data')}-${key}`;
 
@@ -138,8 +138,9 @@ export class CollectorsDataStack extends Stack {
     // noncurrent versions (overwritten / deleted photos) expire after 90 days so they don't accumulate (CAP-57). They
     // are expired, not moved to IA first: S3 rejects a noncurrent transition on the same day as the expiry, and IA
     // bills a 30-day minimum, so the transition CAP-13 had for them would only add cost.
-    // CORS allows the origins declared in infra/config/<installation>.<stage>.json plus this stack's own web URL:
-    // the custom domain when config declares one (CAP-29), else the CloudFront origin (CAP-16).
+    // CORS is an explicit list (CAP-62): the origins declared in infra/config/<installation>.<stage>.json (S3 accepts
+    // capacitor://localhost) plus this stack's own web URL: the custom domain when config declares one (CAP-29), else
+    // the CloudFront origin (CAP-16).
     this.imagesBucket = new Bucket(this, 'Images', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,

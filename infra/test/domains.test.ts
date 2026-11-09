@@ -1,5 +1,5 @@
 // Custom domains (CAP-29): CloudFront alias + API Gateway domain from config, ACM certificate ARNs from SSM, CORS
-// without Fn::ImportValue when domains are set, and today's default URLs when they are not.
+// (API: any origin, no WebUrl import, CAP-62), and today's default URLs when they are not.
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +42,7 @@ function configDir(content: Record<string, unknown>): string {
 const BASE = {
   config_version: 'test',
   region: 'eu-west-1',
-  app_origins: ['https://localhost'],
+  app_origins: ['capacitor://localhost'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 };
@@ -69,7 +69,7 @@ const corsOrigins = (api: Template): unknown[] => {
 };
 
 describe('custom domains', () => {
-  it('[T-infra-024] with domains: CloudFront alias + certificate, API domain + mapping, CORS from config with no import', () => {
+  it('[T-infra-024] with domains: CloudFront alias + certificate, API domain + mapping, API CORS * with no import', () => {
     const { data, api } = synth({ domains: DOMAINS });
 
     // The certificate settings are read, never created (CAP-60); their names follow the settings convention.
@@ -100,8 +100,8 @@ describe('custom domains', () => {
     api.hasOutput('ApiUrl', { Value: 'https://api.caps.naevatec.com' });
     api.hasOutput('ApiDomainTarget', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'RegionalDomainName'] } });
 
-    // CORS: app_origins + the web domain from config; the API no longer imports WebUrl (CDK's own table/bucket refs stay).
-    expect(corsOrigins(api)).toEqual(['https://localhost', 'https://caps.naevatec.com']);
+    // CORS: any origin (CAP-62); the API never imports WebUrl (CDK's own table/bucket refs stay).
+    expect(corsOrigins(api)).toEqual(['*']);
     expect(JSON.stringify(api.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
 
     // The certificate ARNs never reach a Lambda: no function environment references their parameters.
@@ -112,7 +112,7 @@ describe('custom domains', () => {
     }
   });
 
-  it('[T-infra-025] without domains: no alias, certificate, API domain or mapping; CORS imports WebUrl; default URLs', () => {
+  it('[T-infra-025] without domains: no alias, certificate, API domain or mapping; API CORS *; default URLs', () => {
     const { data, api } = synth();
 
     // Without domains the certificate settings are neither created (CAP-60) nor read.
@@ -131,7 +131,8 @@ describe('custom domains', () => {
 
     api.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     api.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
-    expect(corsOrigins(api)).toEqual(['https://localhost', { 'Fn::ImportValue': 'cap-naeva-dev-data-WebUrl' }]);
+    expect(corsOrigins(api)).toEqual(['*']);
+    expect(JSON.stringify(api.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
     api.hasOutput('ApiUrl', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'ApiEndpoint'] } });
     expect(Object.keys(api.findOutputs('ApiDomainTarget'))).toEqual([]);
 

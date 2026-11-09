@@ -189,8 +189,8 @@
 | T-infra-021 | stubs: the placeholder answers 501 problem+json and the stub authorizer denies everything | infra | `infra/test/api-stack.test.ts` |
 | T-infra-022 | settings: no stack creates the SSM parameters (CAP-60); the API reads them by name at deploy | infra | `infra/test/api-stack.test.ts` |
 | T-infra-023 | root eslint rejects a @capacitor/* import outside app/src/platform/capacitor/ | tools | `tools/lint/eslint-boundary.test.ts` |
-| T-infra-024 | with domains: CloudFront alias + certificate, API domain + mapping, CORS from config with no import | infra | `infra/test/domains.test.ts` |
-| T-infra-025 | without domains: no alias, certificate, API domain or mapping; CORS imports WebUrl; default URLs | infra | `infra/test/domains.test.ts` |
+| T-infra-024 | with domains: CloudFront alias + certificate, API domain + mapping, API CORS * with no import | infra | `infra/test/domains.test.ts` |
+| T-infra-025 | without domains: no alias, certificate, API domain or mapping; API CORS *; default URLs | infra | `infra/test/domains.test.ts` |
 | T-infra-026 | config: domains needs both web and api as bare host names; the domains switch is on\|off only | infra | `infra/test/domains.test.ts` |
 | T-infra-027 | every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch | infra | `infra/test/api-stack.test.ts` |
 | T-infra-028 | only scans-analyse may call Bedrock, and only InvokeModel on the configured model | infra | `infra/test/scans.test.ts` |
@@ -207,7 +207,7 @@
 | T-infra-039 | no stack creates an SSM parameter; the six settings appear only as SSM-typed template parameters | infra | `infra/test/settings.test.ts` |
 | T-infra-040 | bootstrap creates only the missing settings (unset, tagged) and leaves existing ones; restore overwrites from a backup | infra | `infra/test/settings.test.ts` |
 | T-infra-041 | show reports set / unset / missing for each setting and never prints a value | infra | `infra/test/settings.test.ts` |
-| T-infra-042 | app_origins accepts only http(s) origins (API Gateway CORS); the committed config and both CORS lists comply | infra | `infra/test/data-stack.test.ts` |
+| T-infra-042 | app_origins accepts http(s) origins and exactly capacitor://localhost; API CORS is * without credentials, the bucket keeps the explicit list | infra | `infra/test/data-stack.test.ts` |
 | T-shared-001 | every entity schema round-trips its fixture and rejects a broken one | shared | `shared/test/contracts.test.ts` |
 | T-shared-002 | exchange v1: full document, bare response and batch are accepted; unknown format/version rejected; fields normalised | shared | `shared/test/contracts.test.ts` |
 | T-shared-003 | location codes: format A·3·17, parse lenient separators, row-major cell maths | shared | `shared/test/contracts.test.ts` |

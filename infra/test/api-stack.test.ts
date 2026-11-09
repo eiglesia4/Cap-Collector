@@ -41,7 +41,7 @@ const deployment: Deployment = { installation: 'naeva', stage: 'dev' };
 const config: InstallationConfig = {
   config_version: 'test',
   region: 'test-region-1',
-  app_origins: ['https://localhost', 'http://localhost:5173'],
+  app_origins: ['capacitor://localhost', 'http://localhost:5173'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 };
@@ -269,29 +269,13 @@ describe('CollectorsApi stack', () => {
     expect(s.functions.Authorizer?.env).toContain(SECRET_ENV.sessionSecret);
     expect(s.functions.Authorizer?.env).not.toContain(SECRET_ENV.allowedAppleSubs);
 
-    // CORS: app_origins plus the CloudFront WebUrl imported from the CollectorsData output (CAP-27); throttling, outputs.
-    const webUrl = { 'Fn::ImportValue': 'cap-naeva-dev-data-WebUrl' };
+    // CORS: any origin, no credentials (CAP-62); the API no longer imports WebUrl; throttling, outputs.
     template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       ProtocolType: 'HTTP',
-      CorsConfiguration: Match.objectLike({ AllowOrigins: [...config.app_origins, webUrl] }),
+      CorsConfiguration: Match.objectLike({ AllowOrigins: ['*'], AllowCredentials: false }),
     });
+    expect(JSON.stringify(template.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
     Template.fromStack(data).hasOutput('WebUrl', { Export: { Name: 'cap-naeva-dev-data-WebUrl' } });
-    // Without app_origins the web build is still allowed (CORS used to be omitted entirely).
-    const bare = new App({ context: NO_BUNDLING });
-    const bareData = new CollectorsDataStack(bare, 'CollectorsData', {
-      deployment,
-      config: { ...config, app_origins: [] },
-    });
-    const bareApi = new CollectorsApiStack(bare, 'CollectorsApi', {
-      deployment,
-      config: { ...config, app_origins: [] },
-      table: bareData.table,
-      imagesBucket: bareData.imagesBucket,
-      apiSrcDir: src,
-    });
-    Template.fromStack(bareApi).hasResourceProperties('AWS::ApiGatewayV2::Api', {
-      CorsConfiguration: Match.objectLike({ AllowOrigins: [webUrl] }),
-    });
     template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
       DefaultRouteSettings: { ThrottlingRateLimit: THROTTLE.rateLimit, ThrottlingBurstLimit: THROTTLE.burstLimit },
     });
