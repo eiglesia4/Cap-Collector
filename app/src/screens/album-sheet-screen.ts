@@ -4,15 +4,16 @@
 // (`pocketToCell`). An occupied pocket shows the cap's thumbnail when the app already holds its presigned image
 // (Collection / Detail), else a brand-hued placeholder with the pocket number, and the brand under it; an empty
 // pocket shows its number faintly and starts a scan pre-assigned to it (`targetLocationCode`, CAP-41/CAP-50).
-// Long-press (or right-click on the Mac) on an occupied pocket opens the "Where is it?" actions for that cap — Move,
-// Swap with…, Remove (CAP-53, components/place-sheet.ts) — and the sheet reloads after a change. Not here yet:
-// "Print inserts" (CAP-54).
+// "Print" in the header opens the insert PDF for this sheet (CAP-54). Long-press (or right-click on the Mac) on an
+// occupied pocket opens the "Where is it?" actions for that cap — Move, Swap with…, Remove (CAP-53,
+// components/place-sheet.ts) — and the sheet reloads after a change.
 // Styles: styles/albums.css.
 import { SheetView, type Album } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
 import { knownThumb, recordSheetUsage } from '../albums/known.js';
 import {
+  albumPrintPath,
   albumSheetPath,
   AlbumListSchema,
   pocketLocation,
@@ -200,6 +201,14 @@ export const AlbumSheetScreen: Screen = (ctx, route) => {
         arrow(t('sheet.prev'), t('sheet.prevSymbol'), sheet - 1, 'prev-sheet'),
         picker,
         arrow(t('sheet.next'), t('sheet.nextSymbol'), sheet + 1, 'next-sheet'),
+      ),
+      h(
+        'a',
+        {
+          class: 'header-action',
+          attrs: { href: albumPrintPath(albumId, sheet), 'data-link': true, 'data-action': 'print' },
+        },
+        t('sheet.print'),
       ),
     );
   }

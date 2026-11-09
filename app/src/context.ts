@@ -18,6 +18,8 @@ export interface AppContext {
   navigate(path: string): void;
   /** Development builds only (CAP-22): enter the app without a session, e.g. against `npm run api:local`. */
   skipSignIn(): void;
+  /** Sign-in cancelled: forget the cap link that was waiting for it (CAP-54). Absent outside the shell. */
+  cancelPendingRoute?(): void;
 }
 
 export type Screen = (ctx: AppContext, route: RouteMatch) => HTMLElement;

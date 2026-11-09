@@ -1,6 +1,8 @@
 // App shell (CAP-21, SCREENS.md § Navigation logic): the view outlet plus the bottom tab bar, driven by the
 // history router. Modal routes (cap form, sign-in) cover the tabs. Signed out, every route leads to the sign-in
 // screen; signing in lands on Collection, signing out (Settings, or a refused refresh) returns to sign-in (CAP-22).
+// A cap link opened signed out (`collectors://cap/<id>`, `/cap/<id>`) is kept in memory as the pending route and opened
+// after a successful sign-in instead of Collection; a cancelled sign-in or a restart drops it (CAP-54, CAP-33 review).
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
 import { t } from './i18n/i18n.js';
@@ -26,13 +28,22 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
 
   let skipped = false;
   const allowed = () => skipped || ctx.session.signedIn();
+  /** The cap route asked for while signed out; memory only. */
+  let pending: string | null = null;
 
   const router = createRouter({
     window: win,
     onRoute: (match) => {
       const onSignIn = match.route.name === 'signIn';
-      if (!allowed() && !onSignIn) return router.navigate(pathFor('signIn'), { replace: true });
-      if (allowed() && onSignIn) return router.navigate(pathFor('collection'), { replace: true });
+      if (!allowed() && !onSignIn) {
+        if (match.route.name === 'capDetail') pending = match.path;
+        return router.navigate(pathFor('signIn'), { replace: true });
+      }
+      if (allowed() && onSignIn) {
+        const next = pending ?? pathFor('collection');
+        pending = null;
+        return router.navigate(next, { replace: true });
+      }
       view.replaceChildren(SCREENS[match.route.name](full, match));
       tabs.setActive(match.route.tab);
       tabs.el.hidden = match.route.modal === true;
@@ -48,6 +59,9 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
     skipSignIn: () => {
       skipped = true;
       reroute();
+    },
+    cancelPendingRoute: () => {
+      pending = null;
     },
   };
   router.start();

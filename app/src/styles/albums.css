@@ -307,3 +307,42 @@ button.where-row {
   min-width: 0;
   min-height: var(--touch);
 }
+
+/* Print inserts (CAP-54, SCREENS.md #8). */
+.print-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.print-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.print-scope-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.print-sheet {
+  width: auto;
+}
+
+.print-preview {
+  margin: 0;
+  font-weight: 700;
+}
+
+.print-measure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

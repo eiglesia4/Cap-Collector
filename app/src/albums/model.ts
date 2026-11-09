@@ -200,6 +200,12 @@ export function albumSheetPath(albumId: string, sheet: number): string {
   return `/albums/${encodeURIComponent(albumId)}/sheets/${String(sheet)}`;
 }
 
+/** Print inserts for an album, opened on a sheet (CAP-54, SCREENS.md #8). */
+export function albumPrintPath(albumId: string, sheet?: number): string {
+  const base = `/albums/${encodeURIComponent(albumId)}/print`;
+  return sheet === undefined ? base : `${base}?${new URLSearchParams({ sheet: String(sheet) }).toString()}`;
+}
+
 /** The Scan tab pre-assigned to a pocket (SCREENS.md § Navigation: "tap empty pocket → Scan pre-assigned"). */
 export function scanIntoPath(code: string): string {
   return `/scan?${new URLSearchParams({ pocket: code }).toString()}`;

@@ -19,6 +19,7 @@ describe('routes', () => {
       '/scan/review',
       '/albums',
       '/albums/:albumId/sheets/:sheet',
+      '/albums/:albumId/print',
       '/exchange',
       '/settings',
       '/sign-in',
