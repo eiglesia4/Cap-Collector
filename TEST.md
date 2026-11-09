@@ -202,7 +202,7 @@
 | T-infra-024 | with domains: CloudFront alias + certificate, API domain + mapping, API CORS * with no import | infra | `infra/test/domains.test.ts` |
 | T-infra-025 | without domains: no alias, certificate, API domain or mapping; API CORS *; default URLs | infra | `infra/test/domains.test.ts` |
 | T-infra-026 | config: domains needs both web and api as bare host names; the domains switch is on\|off only | infra | `infra/test/domains.test.ts` |
-| T-infra-027 | every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch | infra | `infra/test/api-stack.test.ts` |
+| T-infra-027 | every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch/location-put | infra | `infra/test/api-stack.test.ts` |
 | T-infra-028 | only scans-analyse may call Bedrock, and only InvokeModel on the configured model | infra | `infra/test/scans.test.ts` |
 | T-infra-029 | scans-analyse gets the ai config as env and 1024 MB / 20 s; other functions keep the defaults | infra | `infra/test/scans.test.ts` |
 | T-infra-030 | config: ai is required, modelId a bare model or profile id (never an ARN), threshold 0..64 | infra | `infra/test/scans.test.ts` |
