@@ -660,6 +660,15 @@ body {
 
 /* Refused Apple ID (CAP-28): the decoded `sub` to hand to the server allow-list, with a copy action. */
 
+.sign-in__retry:empty {
+  display: none;
+}
+
+.sign-in__code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
 .apple-sub-slot:empty {
   display: none;
 }

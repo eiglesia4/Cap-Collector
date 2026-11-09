@@ -7,7 +7,7 @@ import type { ApiClient } from '../src/api/client';
 import { HttpError, NetworkError, ProblemError } from '../src/api/errors';
 import { renderApp, type AppHandle } from '../src/app';
 import { appleSubFromIdentityToken } from '../src/auth/apple-sub';
-import { signIn } from '../src/auth/sign-in';
+import { prepareSignIn, signIn } from '../src/auth/sign-in';
 import { t } from '../src/i18n/i18n';
 import {
   createCapacitorPlatform,
@@ -137,13 +137,14 @@ describe('refused Apple ID', () => {
     const ctx = await shellContext({ platform, api: fakeApi({ signInWithApple }), signedIn: false });
 
     // The flow result carries the sub only for "not allowed".
-    expect(
-      await signIn({
-        platform,
-        api: { signInWithApple: async () => Promise.reject(new HttpError(403)) },
-        session: ctx.session,
-      }),
-    ).toEqual({
+    const deps = {
+      platform,
+      api: { signInWithApple: async () => Promise.reject(new HttpError(403)) },
+      session: ctx.session,
+    };
+    const prep = await prepareSignIn(deps);
+    if (prep.kind !== 'ready') throw new Error('not prepared');
+    expect(await signIn(deps, prep.prepared)).toEqual({
       kind: 'failed',
       reason: 'not-allowed',
       appleSub: SUB,
@@ -157,7 +158,13 @@ describe('refused Apple ID', () => {
     const settle = async () => {
       for (let i = 0; i < 5; i++) await flush();
     };
+    // Each attempt is prepared first (CAP-64): the button is enabled once that is done.
+    const ready = () =>
+      vi.waitFor(() => {
+        if (button()?.disabled !== false) throw new Error('not prepared');
+      });
 
+    await ready();
     button()?.click();
     await settle();
     expect(root.querySelector('[role="alert"]')?.textContent).toBe(t('signIn.notAllowed'));
@@ -184,6 +191,7 @@ describe('refused Apple ID', () => {
     expect(selectAllChildren).toHaveBeenCalledTimes(2);
 
     // Another failure clears the panel; a 403 whose token has no readable sub shows only the message.
+    await ready();
     button()?.click();
     expect(root.querySelector('.apple-sub')).toBeNull();
     await settle();
@@ -191,6 +199,7 @@ describe('refused Apple ID', () => {
     expect(root.querySelector('.apple-sub')).toBeNull();
 
     platform.signInWithApple = vi.fn(async (req) => ({ identityToken: 'opaque', state: req.state }));
+    await ready();
     button()?.click();
     await settle();
     expect(root.querySelector('[role="alert"]')?.textContent).toBe(t('signIn.notAllowed'));

@@ -105,6 +105,8 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
 
   return {
     kind: 'native',
+    // The native sheet needs no SDK and keeps no popup to protect (CAP-64 is the web flow).
+    prepareAppleSignIn: () => Promise.resolve(),
     signInWithApple,
     supportsNativeAppleSignIn: () => true,
     // `appUrlOpen` (CAP-33). The iOS plugin retains the event until a listener consumes it, so the URL a cold launch

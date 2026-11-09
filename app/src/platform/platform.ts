@@ -45,6 +45,17 @@ export class AppleSdkLoadError extends Error {
   override readonly name = 'AppleSdkLoadError';
 }
 
+/**
+ * Apple's popup reported an error that is not a cancel (CAP-64): `code` is Apple's `error` string, e.g.
+ * `popup_blocked_by_browser` or `invalid_client`, shown to the user so a config error can be told from a browser one.
+ */
+export class AppleSignInError extends Error {
+  override readonly name = 'AppleSignInError';
+  constructor(readonly code: string) {
+    super(`Sign in with Apple failed: ${code}`);
+  }
+}
+
 export interface Platform {
   /** `native` = Capacitor iPhone app; `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
   readonly kind: 'web' | 'native';
@@ -57,8 +68,17 @@ export interface Platform {
   /** Small persistent key/value store (Preferences on iOS, localStorage on web). */
   readonly store: KeyValueStore;
   /**
-   * Sign in with Apple (ADR-008 §4): the native sheet on iOS once the plugin is installed, otherwise the Apple JS
-   * popup. Resolves null when the user cancels; throws AppleSignInUnavailableError / AppleSdkLoadError.
+   * Everything Sign in with Apple needs before the tap (CAP-64): on the web, load Apple's SDK and `init` it with this
+   * attempt's state and nonce, so the tap can open the popup without losing the user gesture. Idempotent per request;
+   * call it again with a fresh request after every attempt. Rejects with AppleSignInUnavailableError /
+   * AppleSdkLoadError. Nothing to do on iOS.
+   */
+  prepareAppleSignIn(request: AppleSignInRequest): Promise<void>;
+  /**
+   * Sign in with Apple (ADR-008 §4): the native sheet on iOS, otherwise the Apple JS popup for the request given to
+   * prepareAppleSignIn. Starts synchronously, so it must be called straight from the tap handler (Safari blocks a
+   * popup opened after an `await`). Resolves null when the user cancels; rejects with AppleSignInError,
+   * AppleSignInUnavailableError or AppleSdkLoadError.
    */
   signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null>;
   /** True when signInWithApple uses the native iOS sheet rather than the web flow. */

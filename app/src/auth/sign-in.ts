@@ -1,43 +1,91 @@
-// Sign-in and session restore (ADR-008 §4, CAP-22). signIn: PKCE → Apple (native sheet or JS popup) → state check →
-// POST /auth/apple → session saved via platform.store. restoreSession: at app start, an access token that has
+// Sign-in and session restore (ADR-008 §4, CAP-22). prepareSignIn (screen mount, and again after every attempt,
+// CAP-64): fresh PKCE + platform.prepareAppleSignIn, so the tap does no async work before Apple's popup opens.
+// signIn (from the tap): Apple (native sheet or JS popup) → state check → POST /auth/apple → session saved via
+// platform.store. restoreSession: at app start, an access token that has
 // expired (or is about to) is refreshed silently; a refused refresh signs out, an unreachable API keeps the session.
 // Tokens and the Apple identity token are never logged.
 import type { ApiClient } from '../api/client.js';
 import { ApiError, HttpError, NetworkError, NotConfiguredError, ProblemError } from '../api/errors.js';
-import { AppleSdkLoadError, AppleSignInUnavailableError, type Platform } from '../platform/platform.js';
+import {
+  AppleSdkLoadError,
+  AppleSignInError,
+  AppleSignInUnavailableError,
+  type AppleCredential,
+  type Platform,
+} from '../platform/platform.js';
 import type { SessionStore } from '../session/session-store.js';
 import { appleSubFromIdentityToken } from './apple-sub.js';
-import { createPkce, type PkceCrypto } from './pkce.js';
+import { createPkce, type Pkce, type PkceCrypto } from './pkce.js';
 
-/** Why a sign-in attempt failed; the screen maps each to a message. */
-export type SignInFailure = 'not-allowed' | 'network' | 'unavailable' | 'failed';
+/**
+ * Why a sign-in attempt failed; the screen maps each to a message. `popup-blocked`: Apple's
+ * `popup_blocked_by_browser` (CAP-64).
+ */
+export type SignInFailure = 'not-allowed' | 'network' | 'unavailable' | 'popup-blocked' | 'failed';
 
 /**
  * `appleSub` (CAP-28): on `not-allowed`, the Apple user id decoded from the identity token, so the user can hand it to
  * the server allow-list. Absent when the token cannot be decoded.
  */
+/** `appleError` (CAP-64): any other Apple error code, shown in small print with the generic message. */
 export type SignInResult =
-  { kind: 'signed-in' } | { kind: 'cancelled' } | { kind: 'failed'; reason: SignInFailure; appleSub?: string };
+  | { kind: 'signed-in' }
+  | { kind: 'cancelled' }
+  | { kind: 'failed'; reason: SignInFailure; appleSub?: string; appleError?: string };
 
 export interface SignInDeps {
-  readonly platform: Pick<Platform, 'signInWithApple'>;
+  readonly platform: Pick<Platform, 'prepareAppleSignIn' | 'signInWithApple'>;
   readonly api: Pick<ApiClient, 'signInWithApple'>;
   readonly session: Pick<SessionStore, 'save'>;
   readonly crypto?: PkceCrypto;
 }
 
+const POPUP_BLOCKED = 'popup_blocked_by_browser';
+
 function failure(error: unknown): SignInFailure {
+  if (error instanceof AppleSignInError) return error.code === POPUP_BLOCKED ? 'popup-blocked' : 'failed';
   if ((error instanceof ProblemError || error instanceof HttpError) && error.status === 403) return 'not-allowed';
   if (error instanceof NetworkError || error instanceof AppleSdkLoadError) return 'network';
   if (error instanceof NotConfiguredError || error instanceof AppleSignInUnavailableError) return 'unavailable';
   return 'failed';
 }
 
-export async function signIn(deps: SignInDeps): Promise<SignInResult> {
-  let identityToken: string | null = null;
+/** One attempt's PKCE material, already handed to the platform. */
+export interface PreparedSignIn {
+  readonly pkce: Pkce;
+}
+
+export type PrepareResult = { kind: 'ready'; prepared: PreparedSignIn } | { kind: 'failed'; reason: SignInFailure };
+
+export async function prepareSignIn(deps: Pick<SignInDeps, 'platform' | 'crypto'>): Promise<PrepareResult> {
   try {
     const pkce = await createPkce(deps.crypto);
-    const credential = await deps.platform.signInWithApple({ nonce: pkce.nonce, state: pkce.state });
+    await deps.platform.prepareAppleSignIn({ nonce: pkce.nonce, state: pkce.state });
+    return { kind: 'ready', prepared: { pkce } };
+  } catch (error) {
+    return { kind: 'failed', reason: failure(error) };
+  }
+}
+
+/**
+ * Not `async`: the platform call happens before this returns, inside the caller's tap handler (CAP-64). A prepared
+ * attempt is used once; prepare again for the next one.
+ */
+export function signIn(deps: SignInDeps, prepared: PreparedSignIn): Promise<SignInResult> {
+  const { pkce } = prepared;
+  let started: Promise<AppleCredential | null>;
+  try {
+    started = deps.platform.signInWithApple({ nonce: pkce.nonce, state: pkce.state });
+  } catch (error) {
+    started = Promise.reject(error);
+  }
+  return finish(deps, pkce, started);
+}
+
+async function finish(deps: SignInDeps, pkce: Pkce, started: Promise<AppleCredential | null>): Promise<SignInResult> {
+  let identityToken: string | null = null;
+  try {
+    const credential = await started;
     if (credential === null) return { kind: 'cancelled' };
     // A response for another attempt (or a forged one) is dropped before the token is sent anywhere.
     if (credential.state !== pkce.state) return { kind: 'failed', reason: 'failed' };
@@ -53,7 +101,13 @@ export async function signIn(deps: SignInDeps): Promise<SignInResult> {
     const reason = failure(error);
     const appleSub =
       reason === 'not-allowed' && identityToken !== null ? appleSubFromIdentityToken(identityToken) : null;
-    return appleSub === null ? { kind: 'failed', reason } : { kind: 'failed', reason, appleSub };
+    const appleError = reason === 'failed' && error instanceof AppleSignInError ? error.code : null;
+    return {
+      kind: 'failed',
+      reason,
+      ...(appleSub !== null && { appleSub }),
+      ...(appleError !== null && { appleError }),
+    };
   }
 }
 
