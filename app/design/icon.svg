@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CapCollector app icon (CAP-56): the cap-with-dot mark of the sign-in screen (.sign-in__mark: ink ring, copper dot,
+     ground inside) on the warm ground of SCREENS.md § Visual system. Square, opaque, no text; iOS applies the mask.
+     Rendered to AppIcon.appiconset by `npx tsx app/design/render.ts`. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#FAFAF7"/>
+  <circle cx="512" cy="512" r="275" fill="#FAFAF7" stroke="#1B1A17" stroke-width="50"/>
+  <circle cx="512" cy="512" r="160" fill="#B8651B"/>
+</svg>
