@@ -176,6 +176,11 @@
 | T-app-084 | wrong format is rejected, an unknown requestId offers \"attach to a cap\", a photo mismatch only warns, ignored fields are reported | app | `app/test/exchange.test.ts` |
 | T-app-085 | continue-to-review analyses with useAi:false and known = the answer, and routes by outcome | app | `app/test/exchange.test.ts` |
 | T-app-086 | the request moves waiting → answered (provider) on Continue, then → reviewed after the review saves | app | `app/test/exchange.test.ts` |
+| T-app-087 | the grid renders cols × rows pockets numbered row-major, occupied ones in their cells (pocketToCell) | app | `app/test/albums.test.ts` |
+| T-app-088 | tapping an empty pocket starts a scan with its targetLocationCode, and the saved cap lands in that pocket | app | `app/test/albums.test.ts` |
+| T-app-089 | \"+ New\" proposes the next free letter and GRANDE 6 × 7, POSTs AlbumInput, and shows a 409 inline | app | `app/test/albums.test.ts` |
+| T-app-090 | Edit PATCHes only the changed fields; a 409 (occupied pocket) says why; the list shows used / total | app | `app/test/albums.test.ts` |
+| T-app-091 | \"A·3\" in the Collection search offers the sheet and Enter opens /albums/:id/sheets/3; other text searches | app | `app/test/albums.test.ts` |
 | T-infra-001 | npm test runs all workspaces and the catalog lists every test ID exactly once | tools | `tools/catalog/catalog.test.ts` |
 | T-infra-002 | synth fails for an installation/stage or account not declared in config/ | infra | `infra/test/account-guard.test.ts` |
 | T-infra-003 | synth passes for a declared target, matching account or no credentials (CI) | infra | `infra/test/account-guard.test.ts` |

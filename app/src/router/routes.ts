@@ -15,6 +15,7 @@ export type RouteName =
   | 'scanDuplicate'
   | 'scanReview'
   | 'albums'
+  | 'albumSheet'
   | 'exchange'
   | 'settings'
   | 'signIn';
@@ -42,6 +43,8 @@ export const ROUTES: readonly RouteDef[] = [
   { name: 'scanDuplicate', pattern: '/scan/duplicate', tab: 'scan', modal: true },
   { name: 'scanReview', pattern: '/scan/review', tab: 'scan', modal: true },
   { name: 'albums', pattern: '/albums', tab: 'collection' },
+  // Album sheet view (CAP-52, SCREENS.md #7).
+  { name: 'albumSheet', pattern: '/albums/:albumId/sheets/:sheet', tab: 'collection' },
   { name: 'exchange', pattern: '/exchange', tab: 'collection' },
   { name: 'settings', pattern: '/settings', tab: 'collection' },
   // CAP-22: the only route reachable signed out; full screen, no tabs.
