@@ -177,11 +177,8 @@ aws acm describe-certificate --region <region> --certificate-arn <arn>   # → R
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/web-certificate-arn --value '<us-east-1 cert ARN>'
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/api-certificate-arn --value '<eu-west-1 cert ARN>'
 
-# 4. Deploy order the first time domains are on: the API first (drops its import of WebUrl), then the data stack
-#    (changes the WebUrl export). CloudFormation refuses to change an export another stack still imports.
-npm run cdk -w @capcollector/infra -- deploy -e CollectorsApi  --context installation=$CAP_INSTALLATION --context stage=$CAP_STAGE
-npm run cdk -w @capcollector/infra -- deploy -e CollectorsData --context installation=$CAP_INSTALLATION --context stage=$CAP_STAGE
-npm run deploy                     # --all, as usual from now on
+# 4. Deploy as usual: no stack imports WebUrl since CAP-62, so no special order.
+npm run deploy                     # --all
 npm run deploy:web                 # prints the final web URL
 ```
 
@@ -190,9 +187,9 @@ npm run deploy:web                 # prints the final web URL
 6. Check: `curl https://api.caps.naevatec.com/healthz` → 200; `https://caps.naevatec.com` serves the SPA and signs in
    without a CORS error. The app's `VITE_API_URL` is the new `ApiUrl` output.
 
-With `domains` set, the API's CORS origins are `app_origins` + `https://<domains.web>` from config (no import); without
-it, the CloudFront `WebUrl` is imported from CollectorsData (CAP-27). The default `*.cloudfront.net` and
-`execute-api` URLs keep working, but only the custom web origin is allowed by CORS.
+The API's CORS allows any origin (`*`) without credentials (CAP-62): the session is a bearer token, not a cookie, and
+the iOS origin `capacitor://localhost` is not an http(s) origin, which API Gateway refuses. The images bucket keeps
+an explicit list: `app_origins` + the web origin (`https://<domains.web>` with `domains`, else the CloudFront URL).
 
 ## Routes and handlers
 
