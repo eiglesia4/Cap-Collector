@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-53: place caps — next-free pocket proposal on save (Yes / Choose… / Not now), Detail "Where is it?" assign/move/swap/remove with the sheet grid in pick mode or a typed code, 409 → Swap offer, sheet long-press, "Put this one in A·3·17" from Already in collection.
 - CAP-56: App Store readiness — single 1024 px app icon and light/dark launch image rendered from SVG sources (`app/design/`), Info.plist release keys (encryption exemption, full screen, portrait), `PrivacyInfo.xcprivacy`, version 0.5.0 (1), TestFlight checklist in `app/README.md`.
 - CAP-63: `POST /scans/analyse` runs the ADR-004 brand + variant re-check from `known.brand`/`known.variant` when `useAi` is false (external-AI answers get the server-side step 3; adapter never called).
 - CAP-52: Albums screen (list, create/edit with next free letter, 409 inline) and album sheet view (`cols × rows` grid mirroring the physical sheet, sheet navigation, thumbnails or brand placeholders); tap pocket → Detail, empty pocket → scan pre-assigned via `CapInput.location`; `A·3` in search opens the sheet.
