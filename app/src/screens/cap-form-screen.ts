@@ -14,6 +14,8 @@
 // Re-identify (CAP-43, mode `edit` + `ai`): "AI suggests: X" per differing field, applied only when accepted → PATCH.
 // Pre-assigned pocket (CAP-52, an empty pocket of the album sheet): the scan's `targetLocationCode`, or `/new?pocket=`,
 // is sent as `CapInput.location` (CAP-50) so the new cap lands in that pocket; a 409 means it is taken meanwhile.
+// Otherwise a new cap's Save proposes the next free pocket of the default album first (CAP-53, "Put it in A·3·17?"
+// Yes / Choose… / Not now; components/place-sheet.ts); backing out of the proposal does not save.
 import {
   AnalyseResponse,
   Cap,
@@ -32,6 +34,7 @@ import {
 
 import { HttpError, ProblemError } from '../api/errors.js';
 import { pocketLocation } from '../albums/model.js';
+import { isOccupied, wireLocation } from '../albums/place.js';
 import { brandSuggestions } from '../cap/brand.js';
 import {
   EMPTY_VALUES,
@@ -70,6 +73,7 @@ import { invalidateCollection } from '../collection/state.js';
 import { markReviewed } from '../exchange/continue.js';
 import { capImage } from '../components/cap-tile.js';
 import { ConfirmSheet } from '../components/confirm-sheet.js';
+import { proposeLocation } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
 import { searchCountries } from '../i18n/countries.js';
@@ -685,12 +689,19 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           schema: Cap,
         });
       } else {
+        // CAP-53 (physical-link.md § Keeping them in sync): no pre-assigned pocket → propose the album's next free one.
+        let placeIn = location;
+        if (!placeIn) {
+          const proposal = await proposeLocation(ctx, el);
+          if (proposal === null) return;
+          placeIn = proposal.location ?? null;
+        }
         const body = {
           ...result.input,
           ...(scan ? scanFields(scan, images) : {}),
           ...(mode === 'ai-prefilled' && scan ? reviewProvenance(scan) : {}),
           ...extra,
-          ...(location ? { location } : {}),
+          ...(placeIn ? { location: wireLocation(placeIn) } : {}),
         };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
@@ -703,15 +714,12 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       ctx.navigate(pathFor('capDetail', { id: saved.capId }));
       showToast(t('form.saved'));
     } catch (error) {
-      serverErrors =
-        error instanceof ProblemError && error.problem.errors?.length
+      // A 409 is the pocket taken meanwhile (CAP-50): its `errors[]` names a cap id, not a form field.
+      serverErrors = isOccupied(error)
+        ? { form: t('form.conflict') }
+        : error instanceof ProblemError && error.problem.errors?.length
           ? problemErrors(error.problem)
-          : {
-              form:
-                (error instanceof ProblemError || error instanceof HttpError) && error.status === 409
-                  ? t('form.conflict')
-                  : t('form.saveFailed'),
-            };
+          : { form: t('form.saveFailed') };
       showErrors();
     } finally {
       saving = false;
