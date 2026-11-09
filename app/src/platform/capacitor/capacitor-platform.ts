@@ -1,14 +1,15 @@
 // Capacitor (iPhone) implementation of the Platform adapter: Camera, Share, Filesystem, Preferences and the native
-// Sign in with Apple sheet (ADR-001, ADR-008 §4, CAP-28). Non-image file picks (e.g. an Exchange answer JSON) fall
+// Sign in with Apple sheet (ADR-001, ADR-008 §4, CAP-28; in-app plugin since CAP-65). Non-image file picks (e.g. an Exchange answer JSON) fall
 // back to the web <input type=file>, which WKWebView presents with the Files app.
-import { SignInWithApple, type SignInWithApplePlugin } from '@capacitor-community/apple-sign-in';
 import { App } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
 import { Share } from '@capacitor/share';
 
+import { APPLE_CANCELLED, AppleSignIn, type AppleSignInPlugin } from './apple-sign-in-plugin.js';
 import {
+  AppleSignInError,
   isCancel,
   type AppleCredential,
   type AppleSignInRequest,
@@ -17,27 +18,19 @@ import {
   type ShareRequest,
 } from '../platform.js';
 
-/**
- * iOS bundle id = Sign in with Apple `clientId` on the native path (never the web Services ID). Must equal `appId` in
- * app/capacitor.config.ts (T-app-044 checks it).
- */
-export const IOS_BUNDLE_ID = 'com.naevatec.collectors';
-
-/** `ASAuthorizationError.canceled`. */
-const APPLE_CANCELED_CODE = '1001';
-/** The plugin (7.1.0) rejects with the localized description only, which still carries "error 1001". */
-const APPLE_CANCELED = /AuthorizationError error 1001\b/;
+/** The plugin's rejection code, when it has one (a Capacitor `CapacitorException.code`). */
+function errorCode(error: unknown): string | undefined {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  return typeof code === 'string' && code !== '' ? code : undefined;
+}
 
 /**
- * Cancel of the native sheet. The error `code` (a Capacitor `CapacitorException.code`) is checked first, so a
- * localisation change can't turn a cancel into "failed"; the message is the fallback because the current plugin
- * sets no code (architect review, CAP-28, 2026-11-08).
+ * Cancel of the native sheet: the plugin's `cancelled` code (CAP-65). A coded rejection is never read as a cancel from
+ * its (localised) message; an uncoded one falls back to `isCancel`.
  */
 export function isAppleCancel(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-  if (code !== undefined && String(code) === APPLE_CANCELED_CODE) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return isCancel(error) || APPLE_CANCELED.test(message);
+  const code = errorCode(error);
+  return code === undefined ? isCancel(error) : code === APPLE_CANCELLED;
 }
 
 export interface CapacitorPlugins {
@@ -45,7 +38,7 @@ export interface CapacitorPlugins {
   readonly Share: Pick<typeof Share, 'share'>;
   readonly Filesystem: Pick<typeof Filesystem, 'writeFile'>;
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
-  readonly SignInWithApple: Pick<SignInWithApplePlugin, 'authorize'>;
+  readonly AppleSignIn: Pick<AppleSignInPlugin, 'authorize'>;
   readonly App: Pick<typeof App, 'addListener'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
@@ -56,7 +49,7 @@ const defaultPlugins = (): CapacitorPlugins => ({
   Share,
   Filesystem,
   Preferences,
-  SignInWithApple,
+  AppleSignIn,
   App,
   fetch: (input) => fetch(input),
 });
@@ -79,27 +72,21 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     return new File([blob], name, { type: blob.type || 'image/jpeg' });
   }
 
-  // Native sheet (ASAuthorizationController). The nonce is the PKCE one, exactly as on the web (openapi.yaml §
-  // AppleSignInRequest); Apple does not echo `state` natively, so the request's own is returned for the CAP-22 check.
+  // Native sheet (ASAuthorizationController, app/ios/App/App/AppleSignInPlugin.swift). The nonce is the PKCE one,
+  // exactly as on the web (openapi.yaml § AppleSignInRequest); Apple does not echo `state` natively, so the request's
+  // own is returned for the CAP-22 check. A coded failure becomes AppleSignInError, shown with its code (CAP-64).
   async function signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null> {
     try {
-      const { response } = await plugins.SignInWithApple.authorize({
-        clientId: IOS_BUNDLE_ID,
-        // Required by the plugin's typings, ignored by its iOS implementation (redirects are the web flow only);
-        // empty on purpose, accepted in the architect review of CAP-28.
-        redirectURI: '',
-        scopes: 'email',
-        nonce: request.nonce,
-        state: request.state,
-      });
+      const { identityToken, authorizationCode } = await plugins.AppleSignIn.authorize({ nonce: request.nonce });
       return {
-        identityToken: response.identityToken,
-        ...(response.authorizationCode ? { authorizationCode: response.authorizationCode } : {}),
+        identityToken,
+        ...(authorizationCode ? { authorizationCode } : {}),
         state: request.state,
       };
     } catch (error) {
       if (isAppleCancel(error)) return null;
-      throw error;
+      const code = errorCode(error);
+      throw code === undefined ? error : new AppleSignInError(code);
     }
   }
 

@@ -1,20 +1,24 @@
-// Native Sign in with Apple on iPhone and the refused-Apple-ID panel (CAP-28, ADR-008 §4; openapi.yaml §
-// AppleSignInRequest).
+// Native Sign in with Apple on iPhone — the in-app AppleSignIn plugin since CAP-65 — and the refused-Apple-ID panel
+// (CAP-28, ADR-008 §4; openapi.yaml § AppleSignInRequest).
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import capacitorConfig from '../capacitor.config';
 import type { ApiClient } from '../src/api/client';
 import { HttpError, NetworkError, ProblemError } from '../src/api/errors';
 import { renderApp, type AppHandle } from '../src/app';
 import { appleSubFromIdentityToken } from '../src/auth/apple-sub';
 import { prepareSignIn, signIn } from '../src/auth/sign-in';
 import { t } from '../src/i18n/i18n';
+import { APPLE_CANCELLED } from '../src/platform/capacitor/apple-sign-in-plugin';
 import {
   createCapacitorPlatform,
-  IOS_BUNDLE_ID,
   isAppleCancel,
   type CapacitorPlugins,
 } from '../src/platform/capacitor/capacitor-platform';
+import { AppleSignInError } from '../src/platform/platform';
 import { fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
 
 const REQUEST = { nonce: 'nonce-1', state: 'state-1' };
@@ -27,80 +31,105 @@ const b64url = (s: string) => rawB64url(String.fromCharCode(...new TextEncoder()
 /** An unsigned JWT-shaped token with the given payload (the app only ever decodes it). */
 const jwt = (payload: unknown) => `${b64url('{"alg":"RS256"}')}.${b64url(JSON.stringify(payload))}.sig`;
 
-function native(authorize: CapacitorPlugins['SignInWithApple']['authorize']) {
+function native(authorize: CapacitorPlugins['AppleSignIn']['authorize']) {
   const fallback = fakePlatform('web');
-  const platform = createCapacitorPlatform(fallback, { SignInWithApple: { authorize } } as unknown as CapacitorPlugins);
+  const platform = createCapacitorPlatform(fallback, { AppleSignIn: { authorize } } as unknown as CapacitorPlugins);
   return { platform, fallback };
 }
 
+const APP = join(dirname(fileURLToPath(import.meta.url)), '..');
+const tsFiles = (dir: string): string[] =>
+  readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? tsFiles(path) : path.endsWith('.ts') ? [path] : [];
+  });
+/** A Capacitor plugin rejection: an Error carrying the native `code`. */
+const rejection = (code: string, message = 'native error') => Object.assign(new Error(message), { code });
+
 describe('native Sign in with Apple', () => {
-  it('[T-app-044] calls the native sheet with the bundle id, PKCE nonce and state, and maps the answer to a credential', async () => {
-    expect(IOS_BUNDLE_ID).toBe(capacitorConfig.appId);
-    const authorize = vi.fn(async () => ({
-      response: {
-        user: SUB,
-        email: null,
-        givenName: null,
-        familyName: null,
-        identityToken: 'id-token',
-        authorizationCode: 'code-1',
-      },
+  it('[T-app-114] calls the in-app AppleSignIn plugin with the PKCE nonce only and maps the answer, with the request state', async () => {
+    const authorize = vi.fn<CapacitorPlugins['AppleSignIn']['authorize']>(async () => ({
+      identityToken: 'id-token',
+      authorizationCode: 'code-1',
+      user: SUB,
     }));
     const { platform, fallback } = native(authorize);
     expect(platform.supportsNativeAppleSignIn()).toBe(true);
+    // Nothing to prepare natively (CAP-64 is the web flow).
+    await expect(platform.prepareAppleSignIn(REQUEST)).resolves.toBeUndefined();
     expect(await platform.signInWithApple(REQUEST)).toEqual({
       identityToken: 'id-token',
       authorizationCode: 'code-1',
       state: 'state-1',
     });
-    expect(authorize).toHaveBeenCalledWith({
-      clientId: 'com.naevatec.collectors',
-      redirectURI: '',
-      scopes: 'email',
-      nonce: 'nonce-1',
-      state: 'state-1',
-    });
+    // No scopes, client id or redirect: the nonce as received is all the plugin takes (ADR-008 §4).
+    expect(authorize).toHaveBeenCalledWith({ nonce: 'nonce-1' });
     // Never the web popup (it cannot open in WKWebView), and no Services ID needed.
     expect(fallback.signInWithApple).not.toHaveBeenCalled();
 
-    // An empty authorization code is left out rather than sent.
-    authorize.mockResolvedValueOnce({
-      response: {
-        user: SUB,
-        email: null,
-        givenName: null,
-        familyName: null,
-        identityToken: 't',
-        authorizationCode: '',
-      },
-    });
+    // An absent or empty authorization code is left out rather than sent.
+    authorize.mockResolvedValueOnce({ identityToken: 't', user: SUB });
+    expect(await platform.signInWithApple(REQUEST)).toEqual({ identityToken: 't', state: 'state-1' });
+    authorize.mockResolvedValueOnce({ identityToken: 't', authorizationCode: '', user: SUB });
     expect(await platform.signInWithApple(REQUEST)).toEqual({ identityToken: 't', state: 'state-1' });
   });
 
-  it('[T-app-045] a cancelled native sheet resolves null; other plugin errors propagate', async () => {
-    const canceled = new Error(
-      'The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1001.)',
-    );
-    expect(await native(vi.fn(async () => Promise.reject(canceled))).platform.signInWithApple(REQUEST)).toBeNull();
-    expect(
-      await native(vi.fn(async () => Promise.reject(new Error('User cancelled')))).platform.signInWithApple(REQUEST),
-    ).toBeNull();
+  it('[T-app-115] a `cancelled` rejection resolves null (silent); any other code rejects with that code', async () => {
+    const run = (error: unknown) => native(vi.fn(async () => Promise.reject(error))).platform.signInWithApple(REQUEST);
+    expect(APPLE_CANCELLED).toBe('cancelled');
+    expect(await run(rejection('cancelled', 'The operation couldn’t be completed.'))).toBeNull();
 
-    const failed = new Error(
-      'The operation couldn’t be completed. (com.apple.AuthenticationServices.AuthorizationError error 1000.)',
-    );
-    expect(isAppleCancel(failed)).toBe(false);
-    expect(isAppleCancel('AuthorizationError error 10010')).toBe(false);
-    // The code wins over the (localised) message: 1001 is cancel whatever the text says; another code is not.
-    const coded = (code: unknown, message: string) => Object.assign(new Error(message), { code });
-    expect(isAppleCancel(coded('1001', 'Vorgang abgebrochen'))).toBe(true);
-    expect(isAppleCancel(coded(1001, 'Operación fallida'))).toBe(true);
-    expect(isAppleCancel(coded('1000', 'Unknown failure'))).toBe(false);
-    expect(isAppleCancel({ code: '1001' })).toBe(true);
+    for (const code of ['failed', 'invalidResponse', 'notHandled', 'unknown']) {
+      const failure = run(rejection(code));
+      await expect(failure).rejects.toBeInstanceOf(AppleSignInError);
+      await expect(failure).rejects.toMatchObject({ code });
+    }
+    // The code wins over the (localised) message; an uncoded error is a cancel only if it says so.
+    expect(isAppleCancel(rejection('failed', 'User cancelled'))).toBe(false);
+    expect(isAppleCancel(rejection('cancelled', 'Vorgang abgebrochen'))).toBe(true);
+    expect(isAppleCancel({ code: 'cancelled' })).toBe(true);
+    expect(isAppleCancel(new Error('User cancelled'))).toBe(true);
     expect(isAppleCancel(null)).toBe(false);
-    await expect(native(vi.fn(async () => Promise.reject(failed))).platform.signInWithApple(REQUEST)).rejects.toBe(
-      failed,
-    );
+    const uncoded = new Error('bridge gone');
+    await expect(run(uncoded)).rejects.toBe(uncoded);
+
+    // On the sign-in flow, a coded failure shows the generic message with the code (as on the web, CAP-64).
+    const platform = fakePlatform('native');
+    platform.signInWithApple = native(vi.fn(async () => Promise.reject(rejection('failed')))).platform.signInWithApple;
+    const deps = { platform, api: fakeApi(), session: (await shellContext({ signedIn: false })).session };
+    const prep = await prepareSignIn(deps);
+    if (prep.kind !== 'ready') throw new Error('not prepared');
+    expect(await signIn(deps, prep.prepared)).toEqual({ kind: 'failed', reason: 'failed', appleError: 'failed' });
+  });
+
+  it('[T-app-116] no app source imports @capacitor-community/apple-sign-in; the iOS target builds and registers the in-app plugin', () => {
+    const offenders = tsFiles(join(APP, 'src'))
+      .filter((file) =>
+        /(from|import)\s*\(?\s*['"]@capacitor-community\/apple-sign-in['"]/.test(readFileSync(file, 'utf8')),
+      )
+      .map((file) => relative(APP, file));
+    expect(offenders).toEqual([]);
+    const importRe = /(from|import)\s*\(?\s*['"]@capacitor-community\/apple-sign-in['"]/;
+    expect(importRe.test("import { SignInWithApple } from '@capacitor-community/apple-sign-in';")).toBe(true);
+    expect(importRe.test("await import('@capacitor-community/apple-sign-in')")).toBe(true);
+
+    const ios = (path: string) => readFileSync(join(APP, 'ios', 'App', path), 'utf8');
+    const plugin = ios('App/AppleSignInPlugin.swift');
+    expect(plugin).toContain('jsName = "AppleSignIn"');
+    expect(plugin).toContain('CAPPluginMethod(name: "authorize"');
+    expect(plugin).toContain('request.requestedScopes = []');
+    expect(plugin).toContain('request.nonce = nonce');
+    expect(plugin).toContain('case .canceled: return "cancelled"');
+    expect(ios('App/MainViewController.swift')).toContain('bridge?.registerPluginInstance(AppleSignInPlugin())');
+    expect(ios('App/SceneDelegate.swift')).toContain('rootViewController = MainViewController()');
+    expect(ios('App/Base.lproj/Main.storyboard')).toContain('customClass="MainViewController" customModule="App"');
+    const pbx = ios('App.xcodeproj/project.pbxproj');
+    for (const file of ['AppleSignInPlugin.swift', 'MainViewController.swift']) {
+      expect(pbx).toContain(`/* ${file} in Sources */ = {isa = PBXBuildFile;`);
+      expect(pbx.match(new RegExp(`/\\* ${file} in Sources \\*/,`, 'g'))).toHaveLength(1);
+    }
+    // The capability stays.
+    expect(ios('App/App.entitlements')).toContain('com.apple.developer.applesignin');
   });
 });
 
