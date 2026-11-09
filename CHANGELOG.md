@@ -7,6 +7,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-65: native Sign in with Apple through an in-app Swift Capacitor plugin (AuthenticationServices, no scopes, PKCE nonce), replacing @capacitor-community/apple-sign-in in the app code.
 - CAP-64: web Sign in with Apple prepares the SDK and PKCE before the tap and opens the popup synchronously, so Safari no longer blocks it; a blocked popup and Apple error codes are shown.
 - CAP-54: print insert discs (Ø pocket − 3, mirrored backs with QR, calibration square) and an A4 portrait sheet index; print screen with scopes; a deep link opened while signed out resumes after sign-in.
 - CAP-53: place caps — next-free pocket proposal on save (Yes / Choose… / Not now), Detail "Where is it?" assign/move/swap/remove with the sheet grid in pick mode or a typed code, 409 → Swap offer, sheet long-press, "Put this one in A·3·17" from Already in collection.
