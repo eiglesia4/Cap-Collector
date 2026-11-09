@@ -42,7 +42,7 @@ function configDir(content: Record<string, unknown>): string {
 const BASE = {
   config_version: 'test',
   region: 'eu-west-1',
-  app_origins: ['capacitor://localhost'],
+  app_origins: ['https://localhost'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 };
@@ -101,7 +101,7 @@ describe('custom domains', () => {
     api.hasOutput('ApiDomainTarget', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'RegionalDomainName'] } });
 
     // CORS: app_origins + the web domain from config; the API no longer imports WebUrl (CDK's own table/bucket refs stay).
-    expect(corsOrigins(api)).toEqual(['capacitor://localhost', 'https://caps.naevatec.com']);
+    expect(corsOrigins(api)).toEqual(['https://localhost', 'https://caps.naevatec.com']);
     expect(JSON.stringify(api.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
 
     // The certificate ARNs never reach a Lambda: no function environment references their parameters.
@@ -131,7 +131,7 @@ describe('custom domains', () => {
 
     api.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     api.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
-    expect(corsOrigins(api)).toEqual(['capacitor://localhost', { 'Fn::ImportValue': 'cap-naeva-dev-data-WebUrl' }]);
+    expect(corsOrigins(api)).toEqual(['https://localhost', { 'Fn::ImportValue': 'cap-naeva-dev-data-WebUrl' }]);
     api.hasOutput('ApiUrl', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'ApiEndpoint'] } });
     expect(Object.keys(api.findOutputs('ApiDomainTarget'))).toEqual([]);
 

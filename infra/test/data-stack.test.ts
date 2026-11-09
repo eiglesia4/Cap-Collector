@@ -40,7 +40,7 @@ const stackFor = (stage: string) =>
       config: {
         config_version: 'test',
         region: 'test-region-1',
-        app_origins: ['capacitor://localhost'],
+        app_origins: ['https://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
         ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
       },
@@ -107,7 +107,7 @@ describe('CollectorsData stack', () => {
         CorsRules: [
           Match.objectLike({
             AllowedMethods: ['PUT', 'GET', 'HEAD'],
-            AllowedOrigins: Match.arrayWith(['capacitor://localhost', 'http://localhost:5173']),
+            AllowedOrigins: Match.arrayWith(['https://localhost', 'http://localhost:5173']),
           }),
         ],
       },
@@ -191,13 +191,62 @@ describe('CollectorsData stack', () => {
 
     write({});
     expect(loadInstallationConfig(target, dir).app_origins).toEqual([]);
-    write({ app_origins: ['capacitor://localhost', 'https://caps.example.org:8443'] });
+    write({ app_origins: ['https://localhost', 'https://caps.example.org:8443'] });
     expect(loadInstallationConfig(target, dir).app_origins).toHaveLength(2);
     for (const bad of ['https://caps.example.org/path', 'caps.example.org', 42]) {
       write({ app_origins: [bad] });
       expect(() => loadInstallationConfig(target, dir)).toThrow(/"app_origins" must be a list/);
     }
-    write({ app_origins: 'capacitor://localhost' });
+    write({ app_origins: 'https://localhost' });
     expect(() => loadInstallationConfig(target, dir)).toThrow(/"app_origins" must be a list/);
+  });
+
+  it('[T-infra-042] app_origins accepts only http(s) origins (API Gateway CORS); the committed config and both CORS lists comply', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
+    const target = { installation: 'naeva', stage: 'dev' };
+    const load = (app_origins: unknown) => {
+      writeFileSync(
+        join(dir, 'naeva.dev.json'),
+        JSON.stringify({
+          config_version: 'v',
+          region: 'r',
+          app_origins,
+          ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+          ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
+        }),
+      );
+      return loadInstallationConfig(target, dir).app_origins;
+    };
+    expect(load(['https://localhost', 'http://localhost:5173'])).toEqual([
+      'https://localhost',
+      'http://localhost:5173',
+    ]);
+    for (const bad of [
+      'capacitor://localhost', // "Invalid format for origin" in API Gateway (CAP-62)
+      'localhost:5173',
+      'https://x/',
+      'ftp://example.org',
+      'https://Localhost',
+      'https://example.org:port',
+    ]) {
+      expect(() => load([bad]), bad).toThrow(/http\(s\) origins without a path/);
+    }
+
+    // The committed naeva/dev config: the iOS origin is https://localhost (CAP-61) and every origin the stacks hand
+    // to API Gateway and S3 CORS is http(s) or a CloudFormation token (the imported WebUrl).
+    expect(loadInstallationConfig(target).app_origins).toEqual(['https://localhost', 'http://localhost:5173']);
+    const built = buildApp(new App({ context: { ...target, 'aws:cdk:bundling-stacks': [] } }));
+    type Api = { Properties: { CorsConfiguration: { AllowOrigins: unknown[] } } };
+    type Bucket = { Properties: { CorsConfiguration?: { CorsRules: { AllowedOrigins: unknown[] }[] } } };
+    const api = Object.values(Template.fromStack(built.api).findResources('AWS::ApiGatewayV2::Api')) as Api[];
+    const s3 = Object.values(Template.fromStack(built.data).findResources('AWS::S3::Bucket')) as Bucket[];
+    const origins = [
+      ...api.flatMap((r) => r.Properties.CorsConfiguration.AllowOrigins),
+      ...s3.flatMap((r) => r.Properties.CorsConfiguration?.CorsRules.flatMap((c) => c.AllowedOrigins) ?? []),
+    ];
+    expect(origins.filter((o) => o === 'https://localhost')).toHaveLength(2);
+    for (const o of origins) {
+      if (typeof o === 'string') expect(o).toMatch(/^https?:\/\/[^/]+$/);
+    }
   });
 });

@@ -7,6 +7,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-62: CORS origins must be `http(s)://host[:port]` — API Gateway rejected `capacitor://localhost` ("Invalid format
+  for origin"); `app_origins` naeva.dev is now `https://localhost` (iOS, CAP-61) + `http://localhost:5173`, the config
+  validator refuses any other scheme, path or trailing slash. `HttpApi` keeps its logical ID: CORS updates in place
+  (T-infra-042).
 - CAP-60: the stacks never create the six `/cap/<inst>/<stage>/*` SSM settings, they only read them (fixes the
   `cap-naeva-dev-data` "already exists" deploy failure); `settings:bootstrap` / `settings:show` / `settings:restore`
   (`infra/lib/settings.ts`, AWS CLI, values never printed nor in argv); migration runbook in `infra/README.md`

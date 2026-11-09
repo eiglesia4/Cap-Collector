@@ -41,7 +41,7 @@ const deployment: Deployment = { installation: 'naeva', stage: 'dev' };
 const config: InstallationConfig = {
   config_version: 'test',
   region: 'test-region-1',
-  app_origins: ['capacitor://localhost', 'http://localhost:5173'],
+  app_origins: ['https://localhost', 'http://localhost:5173'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
 };

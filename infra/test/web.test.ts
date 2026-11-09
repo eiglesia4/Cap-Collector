@@ -13,7 +13,7 @@ const dataTemplate = () =>
       config: {
         config_version: 'test',
         region: 'test-region-1',
-        app_origins: ['capacitor://localhost'],
+        app_origins: ['https://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
         ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
       },

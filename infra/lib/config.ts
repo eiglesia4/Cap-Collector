@@ -14,8 +14,12 @@ import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 /** Lowercase, digits, hyphens: it goes into bucket and table names. */
 const INSTALLATION_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
-/** scheme://host[:port], no path — what a browser sends in `Origin`. */
-const ORIGIN_RE = /^[a-z][a-z0-9+.-]*:\/\/[^/\s]+$/;
+/**
+ * http(s)://host[:port], lowercase, no path or trailing slash — what a browser sends in `Origin`. API Gateway HTTP
+ * API CORS rejects any other scheme ("Invalid format for origin capacitor://localhost"); the iOS app's origin is
+ * `https://localhost` since CAP-61 (decided in CAP-62, 2026-11-08). The same list feeds the images bucket CORS.
+ */
+const ORIGIN_RE = /^https?:\/\/[a-z0-9.-]+(?::\d{1,5})?$/;
 /** Free text (dev, prod, test…); only its shape is checked. */
 const STAGE_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
 /** A bare DNS name (no scheme, no path, no trailing dot), lowercase: what CloudFront and API Gateway accept. */
@@ -173,7 +177,7 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
   const origins = raw.app_origins ?? [];
   if (!Array.isArray(origins) || origins.some((o) => typeof o !== 'string' || !ORIGIN_RE.test(o))) {
     throw new Error(
-      `${file}: "app_origins" must be a list of origins like "https://example.org" or "capacitor://localhost"`,
+      `${file}: "app_origins" must be a list of http(s) origins without a path, like "https://localhost" or "http://localhost:5173"`,
     );
   }
   const domains = raw.domains === undefined ? undefined : validateDomains(file, raw.domains);
