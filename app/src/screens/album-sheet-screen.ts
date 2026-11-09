@@ -4,7 +4,9 @@
 // (`pocketToCell`). An occupied pocket shows the cap's thumbnail when the app already holds its presigned image
 // (Collection / Detail), else a brand-hued placeholder with the pocket number, and the brand under it; an empty
 // pocket shows its number faintly and starts a scan pre-assigned to it (`targetLocationCode`, CAP-41/CAP-50).
-// Not here yet: long-press "Move / Swap…" (CAP-53) and "Print inserts" (CAP-54) — hidden until those stories land.
+// Long-press (or right-click on the Mac) on an occupied pocket opens the "Where is it?" actions for that cap — Move,
+// Swap with…, Remove (CAP-53, components/place-sheet.ts) — and the sheet reloads after a change. Not here yet:
+// "Print inserts" (CAP-54).
 // Styles: styles/albums.css.
 import { SheetView, type Album } from '@capcollector/shared';
 
@@ -13,16 +15,59 @@ import { knownThumb, recordSheetUsage } from '../albums/known.js';
 import {
   albumSheetPath,
   AlbumListSchema,
+  pocketLocation,
   scanIntoPath,
   sheetCells,
   sheetCount,
   type SheetCell,
 } from '../albums/model.js';
 import { brandHue } from '../components/cap-tile.js';
+import { placeActions, type PlaceSubject } from '../components/place-sheet.js';
 import type { AppContext, Screen } from '../context.js';
 import { t } from '../i18n/i18n.js';
 import { pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
+
+/** How long a press on an occupied pocket lasts before it opens Move / Swap (CAP-53). */
+export const LONG_PRESS_MS = 500;
+
+/**
+ * Long-press on `el` (pointer held for LONG_PRESS_MS without moving away) or a context-menu request → `onHold`. The
+ * click that ends a long-press does not follow the link.
+ */
+function onLongPress(el: HTMLElement, onHold: () => void): void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let held = false;
+  const cancel = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  el.addEventListener('pointerdown', () => {
+    held = false;
+    cancel();
+    timer = setTimeout(() => {
+      timer = undefined;
+      held = true;
+      onHold();
+    }, LONG_PRESS_MS);
+  });
+  for (const type of ['pointerup', 'pointerleave', 'pointercancel'] as const) el.addEventListener(type, cancel);
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    cancel();
+    onHold();
+  });
+  el.addEventListener(
+    'click',
+    (e) => {
+      if (!held) return;
+      held = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { capture: true },
+  );
+}
 
 function placeholder(cell: SheetCell & { cap: NonNullable<SheetCell['cap']> }): HTMLElement {
   return h(
@@ -45,7 +90,7 @@ function thumb(ctx: AppContext, cell: SheetCell & { cap: NonNullable<SheetCell['
 }
 
 /** One pocket of the grid. */
-export function PocketCell(ctx: AppContext, cell: SheetCell): HTMLElement {
+export function PocketCell(ctx: AppContext, cell: SheetCell, onHold?: (subject: PlaceSubject) => void): HTMLElement {
   const li = h('li', { class: cell.cap ? 'pocket pocket--occupied' : 'pocket pocket--empty' });
   li.dataset.pocket = String(cell.pocket);
   li.dataset.row = String(cell.row);
@@ -69,6 +114,14 @@ export function PocketCell(ctx: AppContext, cell: SheetCell): HTMLElement {
         h('span', { class: 'pocket-brand' }, occupied.brand),
       ),
     );
+    if (onHold) {
+      const subject: PlaceSubject = {
+        capId: occupied.capId,
+        name: brand,
+        location: pocketLocation(cell.code) ?? undefined,
+      };
+      onLongPress(li, () => onHold(subject));
+    }
   } else {
     li.append(
       h(
@@ -156,8 +209,13 @@ export const AlbumSheetScreen: Screen = (ctx, route) => {
       class: 'sheet-grid',
       attrs: { style: `--cols: ${String(view.cols)}`, 'aria-label': t('sheet.grid') },
     });
-    grid.append(...sheetCells(view).map((cell) => PocketCell(ctx, cell)));
+    const hold = (subject: PlaceSubject) =>
+      void placeActions(ctx, el, subject).then((outcome) => {
+        if (outcome) void load();
+      });
+    grid.append(...sheetCells(view).map((cell) => PocketCell(ctx, cell, hold)));
     body.replaceChildren(h('p', { class: 'muted sheet-album-name' }, album.name), grid);
+    if (view.pockets.length > 0) body.append(h('p', { class: 'muted sheet-hint' }, t('sheet.moveHint')));
   }
 
   function failed(notFound: boolean): void {

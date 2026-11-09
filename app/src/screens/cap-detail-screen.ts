@@ -1,4 +1,4 @@
-// Cap detail (SCREENS.md #6, CAP-24): header (back to Collection, Edit, "⋯" with Share, Re-identify with AI (CAP-43)
+// Cap detail (SCREENS.md #6, CAP-24; "Where is it?" actions CAP-53): header (back to Collection, Edit, "⋯" with Share, Re-identify with AI (CAP-43)
 // and Delete), top photo with
 // the underside as a swappable thumbnail, title and producer · country · year, chips, stat tiles, fields card,
 // "Where is it?", the "Same brand" carousel and the history list. Data: `GET /caps/{capId}`, `/history` and
@@ -13,9 +13,10 @@ import { CapHistoryListSchema, NoContentSchema } from '../cap/schemas.js';
 import { linkOrigin, shareRequest } from '../cap/share.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
-import { forgetCap } from '../collection/state.js';
+import { forgetCap, invalidateCollection } from '../collection/state.js';
 import { capImage, capTitle, CapTile } from '../components/cap-tile.js';
 import { ConfirmSheet } from '../components/confirm-sheet.js';
+import { placeActions } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
@@ -138,7 +139,17 @@ export const CapDetailScreen: Screen = (ctx, route) => {
         chips(cap),
         stats(cap),
         fieldsCard(cap),
-        whereIsIt(cap),
+        whereIsIt(
+          context,
+          root,
+          cap,
+          (next) => {
+            rememberCap(context, next);
+            invalidateCollection(context);
+            render(context, root, next);
+          },
+          load,
+        ),
         variantsSection(context, cap),
         historySection(context, cap),
       ),
@@ -316,10 +327,36 @@ function fieldsCard(cap: Cap): Child {
   );
 }
 
-function whereIsIt(cap: Cap): HTMLElement {
+/**
+ * "Where is it?" (SCREENS.md #6, CAP-53): the current code or "Not in an album"; a tap opens Assign / Move, Swap with…,
+ * Remove from album (components/place-sheet.ts). After a change Detail re-renders from the response's `cap` (history
+ * included); a removal reloads the cap.
+ */
+function whereIsIt(
+  ctx: AppContext,
+  root: HTMLElement,
+  cap: Cap,
+  placed: (cap: Cap) => void,
+  reload: () => void,
+): HTMLElement {
   return h(
-    'div',
-    { class: 'card where-row' },
+    'button',
+    {
+      class: 'card where-row',
+      attrs: { type: 'button', 'data-action': 'where', 'aria-haspopup': 'dialog' },
+      on: {
+        click: () =>
+          void placeActions(ctx, root, { capId: cap.capId, name: capTitle(cap), location: cap.location }).then(
+            (outcome) => {
+              if (outcome?.kind === 'placed') placed(outcome.result.cap);
+              else if (outcome?.kind === 'cleared') {
+                invalidateCollection(ctx);
+                reload();
+              }
+            },
+          ),
+      },
+    },
     h('span', { class: 'muted' }, t('capDetail.where')),
     h('strong', { class: 'where-code' }, cap.location ? formatLocationCode(cap.location) : t('capDetail.notInAlbum')),
   );

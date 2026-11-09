@@ -173,7 +173,8 @@ describe('AI review (CAP-43)', () => {
       aiConfidence: 0.92,
     });
     expect(CapInput.safeParse(post?.body).success).toBe(true);
-    expect(calls.map((c) => c.path)).toEqual(['/caps']);
+    // CAP-53: a new cap's Save first reads the albums for the next-free proposal; none here → saved without one.
+    expect(calls.map((c) => c.path)).toEqual(['/albums', '/caps']);
     expect(ctx.navigate).toHaveBeenCalledWith(pathFor('capDetail', { id: ulid(9) }));
     expect(ctx.capture.current()).toBeNull();
 
@@ -185,7 +186,10 @@ describe('AI review (CAP-43)', () => {
     const el2 = review(flagged.ctx);
     q(el2, '[data-save="needsReview"]')?.click();
     await settle();
-    expect(flagged.calls[0]?.body).toMatchObject({ status: 'needsReview', source: `bedrock:${MODEL}` });
+    expect(flagged.calls.find((c) => c.path === '/caps')?.body).toMatchObject({
+      status: 'needsReview',
+      source: `bedrock:${MODEL}`,
+    });
   });
 
   it('[T-app-080] Ask again sends known = edited fields and re-fills only the untouched ones; Add underside asks with both', async () => {

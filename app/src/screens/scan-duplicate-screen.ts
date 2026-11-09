@@ -2,11 +2,16 @@
 // cap's (`GET /caps/{id}` → `imageUrls.top`), and an opt-in diff — nothing ticked by default. Update existing →
 // `PATCH` with only the ticked fields (+ "+1 quantity", + "Replace top photo") → the cap's Detail. It's a variant →
 // the form pre-filled with the scan's values and `variantOf`. Discard → Collection (SCREENS.md § Navigation); the
-// uploaded images stay orphaned in S3 for the lifecycle rule, no delete call. Styles: styles/scan-duplicate.css.
-import { Cap, type CapType, type Closure, type Material } from '@capcollector/shared';
+// uploaded images stay orphaned in S3 for the lifecycle rule, no delete call. A scan started from an empty pocket
+// (`targetLocationCode`, CAP-52) also offers "Put this one in A·3·17" (CAP-53, architect scope addition 2026-11-09):
+// the matched cap is moved there with the same confirmation as Detail's "Where is it?" (a move when it already has a
+// location, a swap offer when the pocket is taken), then its Detail. Styles: styles/scan-duplicate.css.
+import { Cap, formatLocationCode, type CapType, type Closure, type Material } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
+import { pocketLocation } from '../albums/model.js';
 import { capTitle, capImage } from '../components/cap-tile.js';
+import { moveTo } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
 import {
   diffRows,
@@ -137,7 +142,7 @@ export const ScanDuplicateScreen: Screen = (ctx) => {
       .then(
         (cap) => {
           storedPhoto.replaceChildren(capImage(cap));
-          body.replaceChildren(...review(ctx, session, match, cap, () => revoke(preview)));
+          body.replaceChildren(...review(ctx, el, session, match, cap, () => revoke(preview)));
         },
         (error: unknown) => {
           const notFound = (error instanceof HttpError || error instanceof ProblemError) && error.status === 404;
@@ -169,6 +174,7 @@ export const ScanDuplicateScreen: Screen = (ctx) => {
 /** The diff, the shortcuts and the three actions, once the stored cap is loaded. */
 function review(
   ctx: AppContext,
+  host: HTMLElement,
   session: CaptureSession,
   match: DuplicateMatch,
   cap: Cap,
@@ -277,6 +283,38 @@ function review(
     }
   }
 
+  // CAP-53: the pocket this scan was started from, for the matched cap.
+  const target = pocketLocation(session.targetLocationCode);
+  const placeHere =
+    target &&
+    h(
+      'button',
+      {
+        class: 'button button--secondary',
+        attrs: { type: 'button', 'data-action': 'place', 'data-pocket': formatLocationCode(target) },
+        on: {
+          click: () => {
+            if (saving) return;
+            saving = true;
+            refresh();
+            void moveTo(ctx, host, { capId: cap.capId, name: capTitle(cap), location: cap.location }, target)
+              .then((outcome) => {
+                if (!outcome) return;
+                ctx.capture.clear();
+                release();
+                invalidateCollection(ctx);
+                ctx.navigate(pathFor('capDetail', { id: cap.capId }));
+              })
+              .finally(() => {
+                saving = false;
+                refresh();
+              });
+          },
+        },
+      },
+      t('place.putHere', { code: formatLocationCode(target) }),
+    );
+
   refresh();
   return [
     h('p', { class: 'duplicate-title' }, capTitle(cap)),
@@ -288,6 +326,7 @@ function review(
       'div',
       { class: 'duplicate-actions' },
       update,
+      placeHere,
       h(
         'a',
         {
