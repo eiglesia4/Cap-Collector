@@ -14,7 +14,6 @@ import type { AppContext } from '../src/context';
 import { t } from '../src/i18n/i18n';
 import { buildInsertsPdf, planInserts, qrPayload, type InsertsInput } from '../src/print/inserts';
 import {
-  A4_LANDSCAPE,
   A4_PORTRAIT,
   PT_PER_MM,
   backSlot,
@@ -114,7 +113,7 @@ describe('insert discs: layout and PDF', () => {
     expect(planInserts({ ...input, discs: [], what: 'discs' }).pages).toEqual([]);
     expect(() => planInserts({ ...input, album: album({ pocketMm: undefined }) as never })).toThrow();
 
-    // Real bytes: A4 portrait disc pages, landscape index; brands outside WinAnsi do not break the build.
+    // Real bytes: A4 portrait disc and index pages; brands outside WinAnsi do not break the build.
     const odd = [placed(90, 2, 1, { brand: 'Tsingtao 青岛', variant: 'Ž' }), ...discs.slice(0, 2)];
     const bytes = await buildInsertsPdf({ ...input, discs: odd, sheets: [{ sheet: 2, caps: odd }] });
     const doc = await PDFDocument.load(bytes);
@@ -125,25 +124,26 @@ describe('insert discs: layout and PDF', () => {
     expect(sizes).toEqual([
       [210, 297],
       [210, 297],
-      [297, 210],
+      [210, 297],
     ]);
     expect(doc.getTitle()).toBe(t('print.pdfTitle', { letter: 'A' }));
     await expect(buildInsertsPdf({ ...input, discs: [], what: 'discs' })).rejects.toThrow();
   });
 
-  it('[T-app-104] the sheet index grid has cols × rows cells at the pitch, scaled only as far as A4 landscape needs', () => {
+  it('[T-app-104] the sheet index grid has cols × rows cells at the pitch, as large as fits A4 portrait (≈ 88 % for 6 × 7 at 36 mm)', () => {
     const g = indexGeometry(6, 7, 36);
-    // 6 × 7 at 36 mm = 216 × 252 mm: height limits (210 − 20 margin − 16 header = 174 mm).
-    expect(g.scale).toBeCloseTo(174 / 252);
+    // 6 × 7 at 36 mm = 216 × 252 mm: width limits (210 − 20 margin = 190 mm; height 297 − 20 − 16 header = 261 mm).
+    expect(g.scale).toBeCloseTo(Math.min(190 / 216, 261 / 252));
+    expect(Math.round(g.scale * 100)).toBe(88);
     expect(g.cell).toBeCloseTo(36 * g.scale);
-    expect(g.x0 + 6 * g.cell).toBeLessThanOrEqual(A4_LANDSCAPE.width - 10 + 1e-9);
-    expect(g.y0 + 7 * g.cell).toBeLessThanOrEqual(A4_LANDSCAPE.height - 10 + 1e-9);
-    expect(g.x0).toBeCloseTo((A4_LANDSCAPE.width - 6 * g.cell) / 2);
+    expect(g.x0 + 6 * g.cell).toBeLessThanOrEqual(A4_PORTRAIT.width - 10 + 1e-9);
+    expect(g.y0 + 7 * g.cell).toBeLessThanOrEqual(A4_PORTRAIT.height - 10 + 1e-9);
+    expect(g.x0).toBeCloseTo((A4_PORTRAIT.width - 6 * g.cell) / 2);
     // A small sheet fits at 1:1.
     const small = indexGeometry(2, 2, 36);
     expect(small.scale).toBe(1);
     expect(small.cell).toBe(36);
-    // The plan uses the album's geometry and pitch, one landscape page per sheet, in sheet order.
+    // The plan uses the album's geometry and pitch, one portrait page per sheet, in sheet order.
     const plan = planInserts({
       album: album({ cols: 5, rows: 4, pitchMm: 40 }) as never,
       discs: [],

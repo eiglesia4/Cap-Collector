@@ -2,14 +2,14 @@
 // round COMPART pockets, inner Ø ≈ 33 mm, pitch ≈ 36 mm; SCREENS.md #8). Pure maths in millimetres from the
 // top-left corner of the page; inserts.ts converts to PDF points. Discs: Ø = pocket − 3 mm, a dense grid with 3 mm
 // gutters centred on A4 portrait, the 20 mm calibration square in a band at the top of page 1 only; each back page
-// mirrors its front's columns so a duplex (long-edge) or second pass lands every back on its front. Sheet index: one
-// A4 landscape page per sheet with the `cols × rows` grid at the pocket pitch, scaled down only as far as needed to fit.
+// mirrors its front's columns so a duplex (long-edge) or second pass lands every back on its front. Sheet index
+// (physical-link.md § Sheet index): one A4 portrait page per sheet, the `cols × rows` grid in the physical sheet's
+// orientation, as large as fits inside the margins (≈ 88 % at 36 mm pitch), proportions kept.
 
 /** Points per millimetre (PDF user space is 1/72 in). */
 export const PT_PER_MM = 72 / 25.4;
 
 export const A4_PORTRAIT = { width: 210, height: 297 } as const;
-export const A4_LANDSCAPE = { width: 297, height: 210 } as const;
 export const MARGIN_MM = 10;
 export const GUTTER_MM = 3;
 /** The disc is this much smaller than the pocket (physical-link.md § Insert discs). */
@@ -136,12 +136,12 @@ export interface IndexGeometry {
 }
 
 /**
- * The `cols × rows` grid at `pitchMm` on A4 landscape, below the header band. SPEC-GAP CAP-54: the story asks for the
- * grid "drawn to scale", but a GRANDE sheet (6 × 7 at 36 mm = 216 × 252 mm) does not fit an A4 page at 1:1, so the
- * grid is scaled down just enough to fit and the page prints the scale.
+ * The `cols × rows` grid at `pitchMm` on A4 portrait, below the header band, as large as fits inside the margins
+ * (never above 1 : 1). A full 6 × 7 sheet at 36 mm (216 × 252 mm) prints at ≈ 88 % (decided by the architect on
+ * CAP-54, 2026-11-09).
  */
 export function indexGeometry(cols: number, rows: number, pitchMm: number): IndexGeometry {
-  const { width, height } = A4_LANDSCAPE;
+  const { width, height } = A4_PORTRAIT;
   const availW = width - 2 * MARGIN_MM;
   const availH = height - 2 * MARGIN_MM - INDEX_HEADER_MM;
   const scale = Math.min(1, availW / (cols * pitchMm), availH / (rows * pitchMm));

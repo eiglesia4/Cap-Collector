@@ -12,7 +12,6 @@ import { t } from '../i18n/i18n.js';
 import { MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
 import { APP_SCHEME } from '../router/deep-link.js';
 import {
-  A4_LANDSCAPE,
   A4_PORTRAIT,
   CALIBRATION_MM,
   MARGIN_MM,
@@ -296,9 +295,8 @@ export async function buildInsertsPdf(input: InsertsInput): Promise<Uint8Array> 
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   for (const plan of pages) {
-    const size = plan.kind === 'index' ? A4_LANDSCAPE : A4_PORTRAIT;
-    const page = doc.addPage([size.width * PT_PER_MM, size.height * PT_PER_MM]);
-    const d = new Drawer(page, regular, bold, size.height);
+    const page = doc.addPage([A4_PORTRAIT.width * PT_PER_MM, A4_PORTRAIT.height * PT_PER_MM]);
+    const d = new Drawer(page, regular, bold, A4_PORTRAIT.height);
     if (plan.kind === 'index') {
       const sheet = input.sheets.find((s) => s.sheet === plan.sheet);
       if (sheet) drawIndex(d, input, sheet, plan.geometry);

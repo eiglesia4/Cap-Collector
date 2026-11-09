@@ -193,7 +193,7 @@
 | T-app-101 | Already in collection reached from a pocket offers \"Put this one in A·3·17\" and sends the same move as Detail | app | `app/test/place.test.ts` |
 | T-app-102 | disc layout: Ø = pocket − 3, N discs → pages, positions on a 3 mm gutter grid, backs mirrored | app | `app/test/print.test.ts` |
 | T-app-103 | the PDF interleaves fronts and backs, has the calibration square on page 1 only and the right page count | app | `app/test/print.test.ts` |
-| T-app-104 | the sheet index grid has cols × rows cells at the pitch, scaled only as far as A4 landscape needs | app | `app/test/print.test.ts` |
+| T-app-104 | the sheet index grid has cols × rows cells at the pitch, as large as fits A4 portrait (≈ 88 % for 6 × 7 at 36 mm) | app | `app/test/print.test.ts` |
 | T-app-105 | scopes: this sheet, since the last print (updatedAt), whole album; index pages cover the sheets printed | app | `app/test/print.test.ts` |
 | T-app-106 | the disc QR encodes collectors://cap/<id>, which the app opens as that cap | app | `app/test/print.test.ts` |
 | T-app-107 | asks for pocket/pitch first (PATCH), then scope + what → preview, Generate downloads / shares the PDF, Mark as printed | app | `app/test/print.test.ts` |
