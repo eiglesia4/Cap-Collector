@@ -1,6 +1,8 @@
 // Route → screen table of the shell (CAP-21). Screens without their story yet render a placeholder.
 import type { Screen } from '../context.js';
 import type { RouteName } from '../router/routes.js';
+import { AlbumSheetScreen } from './album-sheet-screen.js';
+import { AlbumsScreen } from './albums-screen.js';
 import { CapDetailScreen } from './cap-detail-screen.js';
 import { EditCapScreen, NewCapScreen, ScanReviewScreen } from './cap-form-screen.js';
 import { CollectionScreen } from './collection-screen.js';
@@ -23,7 +25,8 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   newCap: NewCapScreen,
   scanDuplicate: ScanDuplicateScreen,
   scanReview: ScanReviewScreen,
-  albums: placeholderScreen('albums.title', 'albums.placeholder', 'collection'),
+  albums: AlbumsScreen,
+  albumSheet: AlbumSheetScreen,
   exchange: ExchangeScreen,
   settings: SettingsScreen,
   signIn: SignInScreen,

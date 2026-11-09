@@ -12,6 +12,8 @@
 // highlighted as unsure, the scan's photos (not re-uploaded); Save → `POST /caps` with `source = bedrock:<aiModel>`,
 // hashes, `aiModel`, `aiConfidence`; Ask again (`known` = edited fields, re-fills only untouched ones); Add underside.
 // Re-identify (CAP-43, mode `edit` + `ai`): "AI suggests: X" per differing field, applied only when accepted → PATCH.
+// Pre-assigned pocket (CAP-52, an empty pocket of the album sheet): the scan's `targetLocationCode`, or `/new?pocket=`,
+// is sent as `CapInput.location` (CAP-50) so the new cap lands in that pocket; a 409 means it is taken meanwhile.
 import {
   AnalyseResponse,
   Cap,
@@ -24,9 +26,12 @@ import {
   type Closure,
   type Condition,
   type Material,
+  type AlbumLocation,
+  formatLocationCode,
 } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
+import { pocketLocation } from '../albums/model.js';
 import { brandSuggestions } from '../cap/brand.js';
 import {
   EMPTY_VALUES,
@@ -109,6 +114,8 @@ export interface CapFormOptions {
   readonly notes?: string;
   /** Runs after a successful save, before leaving (CAP-45: mark the exchange request `reviewed`). */
   readonly onSaved?: (cap: Cap) => Promise<void>;
+  /** Pocket a new cap goes to (CAP-52: manual entry from an empty pocket); a scan's `targetLocationCode` otherwise. */
+  readonly location?: AlbumLocation;
 }
 
 /** The scan's uploaded photos as form images. */
@@ -180,6 +187,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   if (mode === 'edit' && cap === undefined) throw new Error('edit mode needs a cap');
   if (mode === 'ai-prefilled' && !scan?.response?.fields) throw new Error('ai-prefilled mode needs an identified scan');
   const aiFields = mode === 'ai-prefilled' ? scan?.response?.fields : undefined;
+  const location = mode === 'edit' ? null : (options.location ?? pocketLocation(scan?.targetLocationCode));
   const baseValues: FormValues = cap
     ? valuesFromCap(cap)
     : aiFields
@@ -682,6 +690,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           ...(scan ? scanFields(scan, images) : {}),
           ...(mode === 'ai-prefilled' && scan ? reviewProvenance(scan) : {}),
           ...extra,
+          ...(location ? { location } : {}),
         };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
@@ -922,6 +931,12 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         field('forTrade', textInput('forTrade', { inputmode: 'numeric', pattern: '[0-9]*' })),
       ),
     ),
+    location &&
+      h(
+        'p',
+        { class: 'muted form-pocket', attrs: { 'data-pocket': formatLocationCode(location) } },
+        t('form.goesTo', { code: formatLocationCode(location) }),
+      ),
     formError,
     mode === 'edit' && h('label', { class: 'check' }, reviewToggle, t('form.needsReview')),
     h('div', { class: 'form-actions' }, saveButton, mode === 'edit' ? false : flagButton),
@@ -973,7 +988,11 @@ export const NewCapScreen: Screen = (ctx, route) => {
   const session = ctx.capture.current();
   const scanId = route.query.scanId;
   const scan = scanId !== undefined && session?.scanId === scanId && session.top?.ref ? session : undefined;
-  if (!scan) return CapForm(ctx, { mode: 'empty' });
+  if (!scan) {
+    // "Enter manually" from a scan pre-assigned to a pocket (CAP-52): the empty form, saved into that pocket.
+    const location = pocketLocation(route.query.pocket);
+    return CapForm(ctx, { mode: 'empty', ...(location ? { location } : {}) });
+  }
   // "It's a variant" from Already in collection (CAP-42): only for the cap this scan matched.
   const variantOf = route.query.variantOf;
   if (variantOf === undefined || scan.response?.match?.capId !== variantOf)

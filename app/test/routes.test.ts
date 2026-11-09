@@ -18,6 +18,7 @@ describe('routes', () => {
       '/scan/duplicate',
       '/scan/review',
       '/albums',
+      '/albums/:albumId/sheets/:sheet',
       '/exchange',
       '/settings',
       '/sign-in',
