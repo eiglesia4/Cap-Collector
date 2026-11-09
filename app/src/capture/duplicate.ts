@@ -61,8 +61,10 @@ export function hasTicks(ticks: Ticks): boolean {
   return ticks.fields.size > 0 || ticks.quantity || ticks.photo;
 }
 
-/** Who makes a change taken from this scan: the AI model that identified it, else the user (`manual`). */
+/** Who makes a change taken from this scan: the external AI or the model that identified it, else `manual`. */
 export function scanSource(session: CaptureSession): Source {
+  // An external AI's answer (CAP-45) is authored by that provider, whatever the analyse call said.
+  if (session.exchange !== undefined) return session.exchange.source;
   const model = session.response?.aiModel;
   if (model === undefined || session.response?.fields === undefined) return 'manual';
   const parsed = Source.safeParse(`bedrock:${model}`);

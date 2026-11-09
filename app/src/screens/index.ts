@@ -4,6 +4,7 @@ import type { RouteName } from '../router/routes.js';
 import { CapDetailScreen } from './cap-detail-screen.js';
 import { EditCapScreen, NewCapScreen, ScanReviewScreen } from './cap-form-screen.js';
 import { CollectionScreen } from './collection-screen.js';
+import { ExchangeScreen } from './exchange-screen.js';
 import { placeholderScreen } from './placeholder-screen.js';
 import { ScanDuplicateScreen } from './scan-duplicate-screen.js';
 import { ReidentifyScreen } from './reidentify-screen.js';
@@ -23,7 +24,7 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   scanDuplicate: ScanDuplicateScreen,
   scanReview: ScanReviewScreen,
   albums: placeholderScreen('albums.title', 'albums.placeholder', 'collection'),
-  exchange: placeholderScreen('exchange.title', 'exchange.placeholder', 'collection'),
+  exchange: ExchangeScreen,
   settings: SettingsScreen,
   signIn: SignInScreen,
 };

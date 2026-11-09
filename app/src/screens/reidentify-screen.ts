@@ -1,8 +1,8 @@
 // Re-identify with AI (CAP-43; Detail ⋯ → "Re-identify with AI"; ADR-003 tick rule; openapi `POST /scans/analyse` with
 // `capId` + `known`): the stored cap's own images (no upload) and dHash go to the analyser with what the record already
 // has; the answer opens the one form in `edit` mode with "AI suggests: X" next to each differing field, applied only
-// when the user accepts it → `PATCH`. A cap saved without a hash (manual photos, CAP-25) gets one computed here from its
-// stored top photo, the same circular crop + dHash as a scan (CAP-36).
+// when the user accepts it → `PATCH`. A cap saved without a hash (manual photos, CAP-25) gets one computed from its
+// stored top photo (images/stored.ts).
 import { AnalyseResponse, Cap, Source } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
@@ -10,33 +10,13 @@ import { reidentifyBody, suggestionsFor } from '../capture/review.js';
 import { newUlid } from '../capture/ulid.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
-import { resizeToWebp, type CapPhoto } from '../images/resize.js';
+import { storedHash, type StoredPhotoOptions } from '../images/stored.js';
 import { pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
 import { CapForm } from './cap-form-screen.js';
 
-export interface ReidentifyOptions {
-  /** Circular crop + dHash of the stored photo when the cap has no hash; tests inject a fake. */
-  readonly prepare?: (file: Blob) => Promise<CapPhoto>;
-  /** GET of the stored photo's presigned URL. */
-  readonly fetchImage?: (url: string) => Promise<Blob>;
+export interface ReidentifyOptions extends StoredPhotoOptions {
   readonly newId?: () => string;
-}
-
-async function fetchBlob(url: string): Promise<Blob> {
-  const res = await fetch(url);
-  if (!res.ok) throw new HttpError(res.status);
-  return res.blob();
-}
-
-/** The cap's stored hash, or one computed from its stored top photo. */
-async function hashOf(cap: Cap, options: ReidentifyOptions): Promise<string> {
-  if (cap.dhash !== undefined) return cap.dhash;
-  const url = cap.imageUrls?.top;
-  if (url === undefined) throw new Error('no image URL to hash');
-  const blob = await (options.fetchImage ?? fetchBlob)(url);
-  const photo = await (options.prepare ?? ((file: Blob) => resizeToWebp(file, { crop: 'circle' })))(blob);
-  return photo.dhash;
 }
 
 export function ReidentifyView(ctx: AppContext, capId: string, options: ReidentifyOptions = {}): HTMLElement {
@@ -58,7 +38,7 @@ export function ReidentifyView(ctx: AppContext, capId: string, options: Reidenti
     frame(status('reidentify.asking'));
     try {
       const cap = await ctx.api.request(`/caps/${encodeURIComponent(capId)}`, { schema: Cap });
-      const dhash = await hashOf(cap, options);
+      const dhash = await storedHash(cap, 'top', options);
       const body = reidentifyBody(cap, (options.newId ?? (() => newUlid()))(), dhash);
       const response = await ctx.api.request('/scans/analyse', { method: 'POST', body, schema: AnalyseResponse });
       const suggestions = suggestionsFor(cap, response.fields);

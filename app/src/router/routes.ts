@@ -95,3 +95,17 @@ export function pathFor(name: RouteName, params: Record<string, string> = {}): s
     return encodeURIComponent(value);
   });
 }
+
+/**
+ * The Exchange screen for one subject (CAP-45, SCREENS.md § Navigation): `?scanId=` from Review / Manual ("Export for
+ * external AI"), `?capId=` from Detail ⋯ ("Ask external AI"), `?requestId=` to upload the answer of that request.
+ */
+export function exchangePath(params: { scanId?: string; capId?: string; requestId?: string } = {}): string {
+  const query = new URLSearchParams();
+  for (const key of ['scanId', 'capId', 'requestId'] as const) {
+    const value = params[key];
+    if (value !== undefined) query.set(key, value);
+  }
+  const qs = query.toString();
+  return pathFor('exchange') + (qs === '' ? '' : `?${qs}`);
+}

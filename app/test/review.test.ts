@@ -207,7 +207,8 @@ describe('AI review (CAP-43)', () => {
     ctx.capture.start(session(true));
     const el = review(ctx);
     expect(q(el, '[data-action="add-underside"]')?.hidden).toBe(true); // the scan already has one
-    expect(q(el, '[data-action="export"]')).toBeNull(); // waits for CAP-45
+    // "Export for external AI" (CAP-45): this scan on the Exchange screen.
+    expect(q(el, '[data-action="export"]')?.getAttribute('href')).toBe(`/exchange?scanId=${SCAN_ID}`);
     type(el, 'brand', 'Mahou Clásica');
     q(el, '[data-action="ask-again"]')?.click();
     await settle();
