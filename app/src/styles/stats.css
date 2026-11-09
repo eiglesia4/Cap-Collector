@@ -1,0 +1,90 @@
+/* Stats tab (CAP-58): totals grid and CSS bar lists — no chart library. */
+.stats-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.stats-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.stats-total {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.stats-total dt {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.stats-total dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+}
+
+.stats-section__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin: 0 0 var(--space-2);
+}
+
+.stats-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: minmax(6rem, 38%) 1fr 3rem;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.stats-bar--link {
+  min-height: var(--touch);
+}
+
+.stats-bar--link .stats-bar__label {
+  text-decoration: underline;
+  text-decoration-color: var(--color-line);
+  text-underline-offset: 3px;
+}
+
+.stats-bar__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-bar__track {
+  height: 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-line) 45%, transparent);
+  overflow: hidden;
+}
+
+.stats-bar__fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--color-accent);
+}
+
+.stats-bar__count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

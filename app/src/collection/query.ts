@@ -1,7 +1,7 @@
 // Collection query (CAP-23, SCREENS.md #1): what the search field, the filter chips and the sort sheet select, and its
 // mapping 1:1 onto the `GET /caps` query parameters (openapi.yaml § /caps). One value per dimension — the API takes a
 // single `type` and a single `country` — and chips of different dimensions combine with AND.
-import type { Cap, CapType } from '@capcollector/shared';
+import { CapType, CountryCode, type Cap } from '@capcollector/shared';
 
 export const SORTS = ['brand', 'newest', 'country', 'year'] as const;
 export type Sort = (typeof SORTS)[number];
@@ -23,6 +23,39 @@ export interface CollectionQuery {
 }
 
 export const DEFAULT_QUERY: CollectionQuery = { q: '', type: null, country: null, needsReview: false, sort: 'brand' };
+
+/** A Collection filter that can be linked to (CAP-58: Stats bars): `/?country=ES`, `/?type=beer`, `/?status=needsReview`. */
+export interface CollectionFilter {
+  readonly type?: CapType;
+  readonly country?: string;
+  readonly needsReview?: boolean;
+}
+
+export function collectionFilterPath(filter: CollectionFilter): string {
+  const params = new URLSearchParams();
+  if (filter.type !== undefined) params.set('type', filter.type);
+  if (filter.country !== undefined) params.set('country', filter.country);
+  if (filter.needsReview) params.set('status', 'needsReview');
+  const qs = params.toString();
+  return qs === '' ? '/' : `/?${qs}`;
+}
+
+/**
+ * The query a linked filter opens: only that filter on top of the defaults (search and other chips cleared). Null when
+ * the route carries no valid filter, so Collection keeps the query it had.
+ */
+export function queryFromRoute(params: Readonly<Record<string, string>>): CollectionQuery | null {
+  const type = CapType.safeParse(params.type);
+  const country = CountryCode.safeParse(params.country);
+  const needsReview = params.status === 'needsReview';
+  if (!type.success && !country.success && !needsReview) return null;
+  return {
+    ...DEFAULT_QUERY,
+    type: type.success ? type.data : null,
+    country: country.success ? country.data : null,
+    needsReview,
+  };
+}
 
 /** True when a search or chip narrows the list (the "All" chip is then not selected). */
 export function isFiltered(query: CollectionQuery): boolean {

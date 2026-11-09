@@ -14,6 +14,7 @@ import {
   capsPath,
   DEFAULT_QUERY,
   isFiltered,
+  queryFromRoute,
   RECENT_SIZE,
   SORTS,
   topCountries,
@@ -62,8 +63,15 @@ function fetchPage(ctx: AppContext, query: CollectionQuery) {
     ctx.api.request(capsPath(query, { cursor }), { schema: CapPageSchema });
 }
 
-export const CollectionScreen: Screen = (ctx) => {
+export const CollectionScreen: Screen = (ctx, route) => {
   const store = collectionState(ctx);
+  // A linked filter (`/?country=ES`, from a Stats bar, CAP-58) replaces the kept query and reloads.
+  const linked = queryFromRoute(route.query);
+  if (linked !== null && JSON.stringify(linked) !== JSON.stringify(store.query)) {
+    store.query = linked;
+    store.started = false;
+    store.scrollY = 0;
+  }
   const win = window;
 
   // ── header ──
