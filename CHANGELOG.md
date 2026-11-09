@@ -7,6 +7,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-59: `caps-location-put` gets `images-get` (it returns `{ cap, swapped? }` with presigned `imageUrls`, CAP-50);
+  T-infra-027 now derives the Cap-returning handlers from the API sources (`withImageUrls`).
 - CAP-45: Exchange screen — `request.zip` built on the client (single and batch), Share/Download, Copy prompt/JSON, pending list with status chips, upload answer (format/version check, requestId match or attach to a cap, dHash warning, ignored fields), continue to review with `source: external:<provider>`.
 - CAP-62: HTTP API CORS allows any origin (`*`) with `allowCredentials: false` — API Gateway rejected
   `capacitor://localhost` ("Invalid format for origin") and the session is a bearer token, not a cookie (architect
