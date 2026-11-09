@@ -1,7 +1,8 @@
 // Sign-in screen (CAP-22, ADR-008 §4, SCREENS.md § Visual system): one "Sign in with Apple" button styled per
 // Apple's HIG (black, Apple logo, full width), with error states for a refused Apple ID (403), an unreachable
 // network and a build without Apple configuration. On success the session store changes and the shell routes to
-// Collection (app.ts); a cancelled sheet just re-enables the button.
+// Collection — or the cap link that was waiting for it (CAP-54) — (app.ts); a cancelled sheet re-enables the button and
+// drops that pending link.
 import { signIn, type SignInFailure } from '../auth/sign-in.js';
 import type { Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
@@ -57,6 +58,7 @@ export const SignInScreen: Screen = (ctx) => {
           void signIn(ctx).then((result) => {
             button.disabled = false;
             button.removeAttribute('aria-busy');
+            if (result.kind === 'cancelled') ctx.cancelPendingRoute?.();
             if (result.kind !== 'failed') return;
             error.textContent = t(FAILURE_MESSAGE[result.reason]);
             if (result.appleSub !== undefined) subSlot.replaceChildren(AppleSubPanel(result.appleSub));

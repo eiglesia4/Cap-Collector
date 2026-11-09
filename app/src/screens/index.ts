@@ -8,6 +8,7 @@ import { EditCapScreen, NewCapScreen, ScanReviewScreen } from './cap-form-screen
 import { CollectionScreen } from './collection-screen.js';
 import { ExchangeScreen } from './exchange-screen.js';
 import { placeholderScreen } from './placeholder-screen.js';
+import { PrintScreen } from './print-screen.js';
 import { ScanDuplicateScreen } from './scan-duplicate-screen.js';
 import { ReidentifyScreen } from './reidentify-screen.js';
 import { ScanScreen } from './scan-screen.js';
@@ -27,6 +28,7 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   scanReview: ScanReviewScreen,
   albums: AlbumsScreen,
   albumSheet: AlbumSheetScreen,
+  albumPrint: PrintScreen,
   exchange: ExchangeScreen,
   settings: SettingsScreen,
   signIn: SignInScreen,
