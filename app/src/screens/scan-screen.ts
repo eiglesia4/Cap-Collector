@@ -2,9 +2,12 @@
 // or "Upload photo" (Mac/web, ADR-001: the camera is never called), "Enter manually" (→ the empty form, CAP-25).
 // Drives the capture flow (src/capture/flow.ts): optional underside, upload, `POST /scans/analyse`, then the
 // outcome's screen; a 503 shows the "AI unavailable" sheet. Opening the tab starts a clean capture: whatever scan
-// context was left by Cancel / Retake from a review screen is cleared here. Styles: styles/scan.css.
-import { AnalyseResponse } from '@capcollector/shared';
+// context was left by Cancel / Retake from a review screen is cleared here. `/scan?pocket=A·3·17` (an empty pocket of
+// the album sheet, CAP-52) pre-assigns the scan: `targetLocationCode` goes into the scan context and the analyse body,
+// and the review's Save places the new cap there (CapInput.location, CAP-50). Styles: styles/scan.css.
+import { AnalyseResponse, formatLocationCode } from '@capcollector/shared';
 
+import { newIntoPath, pocketLocation } from '../albums/model.js';
 import { readUseAi } from '../capture/ai-setting.js';
 import { createCaptureFlow, manualEntryPath, type CaptureState } from '../capture/flow.js';
 import { newUlid } from '../capture/ulid.js';
@@ -21,6 +24,8 @@ export interface ScanOptions {
   readonly prepare?: (file: Blob) => Promise<CapPhoto>;
   readonly put?: PutFn;
   readonly newId?: () => string;
+  /** Pocket the scan is pre-assigned to (`A·3·17`, from an empty pocket of the album sheet, CAP-52). */
+  readonly targetLocationCode?: string;
 }
 
 const IMAGE_FILES = { accept: 'image/*' } as const;
@@ -36,6 +41,7 @@ function revoke(url: string | null): void {
 export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElement {
   const web = ctx.platform.kind === 'web';
   ctx.capture.clear();
+  const target = options.targetLocationCode;
   const flow = createCaptureFlow({
     store: ctx.capture,
     prepare: options.prepare ?? ((file) => resizeToWebp(file, { crop: 'circle' })),
@@ -43,6 +49,7 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     analyse: (body) => ctx.api.request('/scans/analyse', { method: 'POST', body, schema: AnalyseResponse }),
     useAi: () => readUseAi(ctx.platform.store),
     newId: options.newId ?? (() => newUlid()),
+    ...(target !== undefined ? { targetLocationCode: target } : {}),
   });
 
   let preview: string | null = null;
@@ -145,7 +152,7 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
         parts.push(
           h('p', { class: 'muted' }, t(web ? 'scan.uploadHint' : 'scan.hint')),
           ...pickButtons('top'),
-          manual(pathFor('newCap')),
+          manual(target !== undefined ? newIntoPath(target) : pathFor('newCap')),
         );
         break;
       case 'preparing':
@@ -180,6 +187,8 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     'section',
     { class: 'screen scan' },
     ScreenHeader(t(web ? 'scan.uploadTitle' : 'scan.title'), cancel),
+    target !== undefined &&
+      h('p', { class: 'scan-target', attrs: { 'data-target': target } }, t('scan.into', { code: target })),
     guide,
     body,
   );
@@ -188,4 +197,8 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   return el;
 }
 
-export const ScanScreen: Screen = (ctx) => ScanView(ctx);
+export const ScanScreen: Screen = (ctx, route) => {
+  // Only a well-formed album pocket code pre-assigns the scan; anything else is a plain scan.
+  const pocket = pocketLocation(route.query.pocket);
+  return ScanView(ctx, pocket ? { targetLocationCode: formatLocationCode(pocket) } : {});
+};

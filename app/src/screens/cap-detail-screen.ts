@@ -7,6 +7,7 @@
 import { Cap, formatLocationCode, Location, type CapHistory } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
+import { rememberCap } from '../albums/known.js';
 import { sameBrand } from '../cap/brand.js';
 import { CapHistoryListSchema, NoContentSchema } from '../cap/schemas.js';
 import { linkOrigin, shareRequest } from '../cap/share.js';
@@ -91,7 +92,11 @@ export const CapDetailScreen: Screen = (ctx, route) => {
     Promise.resolve()
       .then(() => ctx.api.request(`/caps/${encodeURIComponent(capId)}`, { schema: Cap }))
       .then(
-        (cap) => render(ctx, el, cap),
+        (cap) => {
+          // The album sheet view reuses this cap's thumbnail while its URL is valid (CAP-52).
+          rememberCap(ctx, cap);
+          render(ctx, el, cap);
+        },
         (error: unknown) => {
           const notFound = isNotFound(error);
           body.replaceChildren(

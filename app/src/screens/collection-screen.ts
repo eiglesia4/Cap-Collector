@@ -2,7 +2,10 @@
 // Settings); search (debounced, `q`), filter chips (All · type · top countries · Needs review), the "Recently added"
 // strip, the 3-column grid with cursor-based infinite scroll, pull-to-refresh on iOS and the empty state. Filters,
 // loaded pages and scroll live in collection/state.ts so coming back from a cap's detail restores them.
-import type { Cap, CapType } from '@capcollector/shared';
+// An album + sheet code typed in the search (`A·3`, CAP-52) offers "Open sheet A·3" and Enter opens the sheet view.
+import type { Album, Cap, CapType } from '@capcollector/shared';
+
+import { albumSheetPath, AlbumListSchema, parseSheetCode, sheetCode, sheetTarget } from '../albums/model.js';
 
 import type { CapPage } from '../collection/cap-page.js';
 import { CapPageSchema } from '../collection/cap-page.js';
@@ -125,15 +128,52 @@ export const CollectionScreen: Screen = (ctx) => {
   });
   search.placeholder = t('collection.searchPlaceholder');
   search.value = store.query.q;
+
+  // `A·3` → the sheet view of album A, sheet 3 (CAP-52); albums are fetched once, on the first sheet code typed.
+  const sheetLink = h('a', { class: 'sheet-shortcut', attrs: { 'data-link': true, 'data-sheet-link': '' } });
+  sheetLink.hidden = true;
+  let albums: Promise<Album[]> | null = null;
+  const sheetPathFor = async (value: string): Promise<string | null> => {
+    const code = parseSheetCode(value);
+    if (code === null) return null;
+    albums ??= ctx.api.request('/albums', { schema: AlbumListSchema }).catch(() => {
+      albums = null;
+      return [];
+    });
+    const album = sheetTarget(await albums, code);
+    return album ? albumSheetPath(album.albumId, code.sheet) : null;
+  };
+  const showSheetLink = async (value: string) => {
+    const path = await sheetPathFor(value);
+    if (search.value !== value) return;
+    const code = parseSheetCode(value);
+    sheetLink.hidden = path === null || code === null;
+    if (path === null || code === null) return;
+    sheetLink.setAttribute('href', path);
+    sheetLink.textContent = t('collection.openSheet', { code: sheetCode(code.letter, code.sheet) });
+  };
+
+  if (parseSheetCode(search.value) !== null) void showSheetLink(search.value);
+
   let debounce: ReturnType<typeof setTimeout> | undefined;
   search.addEventListener('input', () => {
     clearTimeout(debounce);
-    debounce = setTimeout(() => update({ q: search.value }), SEARCH_DEBOUNCE_MS);
+    if (parseSheetCode(search.value) === null) sheetLink.hidden = true;
+    debounce = setTimeout(() => {
+      update({ q: search.value });
+      void showSheetLink(search.value);
+    }, SEARCH_DEBOUNCE_MS);
   });
   search.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     clearTimeout(debounce);
-    update({ q: search.value });
+    const value = search.value;
+    if (parseSheetCode(value) === null) return update({ q: value });
+    void sheetPathFor(value).then((path) => {
+      if (path !== null && search.value === value) return ctx.navigate(path);
+      update({ q: value });
+      void showSheetLink(value);
+    });
   });
 
   const chips = h('div', { class: 'chips', attrs: { role: 'toolbar', 'aria-label': t('collection.filters') } });
@@ -275,6 +315,7 @@ export const CollectionScreen: Screen = (ctx) => {
     ScreenHeader(t('collection.title'), h('span', { class: 'header-actions' }, sort, more)),
     count,
     search,
+    sheetLink,
     chips,
     recent,
     grid,

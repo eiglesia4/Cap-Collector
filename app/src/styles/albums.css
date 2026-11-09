@@ -1,0 +1,246 @@
+/* Albums list, album sheet and the sheet grid (CAP-52, SCREENS.md #7; § Visual system: caps always drawn as circles,
+   pockets as dark squares). The grid mirrors the physical sheet: `--cols` columns, row-major. */
+
+.album-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.album-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.album-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.album-letter {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  color: var(--color-ground);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.album-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.album-name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-kind,
+.album-usage {
+  font-size: 14px;
+}
+
+.album-usage {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.albums-message:empty {
+  display: none;
+}
+
+.album-form {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.sheet-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+
+.album-geometry.field-row {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 14px;
+}
+
+.album-geometry[hidden] {
+  display: none;
+}
+
+/* ── sheet view ── */
+
+.sheet-header {
+  flex-wrap: wrap;
+}
+
+.sheet-nav {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sheet-arrow {
+  min-width: var(--touch);
+  font-size: 24px;
+}
+
+.sheet-picker > summary {
+  cursor: pointer;
+  font-size: 22px;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.sheet-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sheet-picker-menu {
+  left: 50%;
+  right: auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  min-width: 0;
+  transform: translateX(-50%);
+}
+
+.sheet-picker-menu .menu-item {
+  justify-content: center;
+  min-width: var(--touch);
+  text-align: center;
+}
+
+.sheet-picker-menu .menu-item[aria-current='page'] {
+  background: var(--color-ink);
+  color: var(--color-ground);
+}
+
+.sheet-album-name {
+  margin: 0 0 var(--space-3);
+  text-align: center;
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 6px;
+  background: var(--color-ink);
+}
+
+.pocket {
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: 3px;
+  background: #2a2925;
+}
+
+.pocket-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ground);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pocket-thumb {
+  display: grid;
+  place-items: center;
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pocket-number {
+  border: 1px dashed rgb(250 250 247 / 25%);
+  color: rgb(250 250 247 / 40%);
+}
+
+.pocket-brand {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pocket--empty .pocket-link:focus-visible .pocket-number,
+.pocket--empty .pocket-link:hover .pocket-number {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Collection search: "Open sheet A·3" (CAP-52). */
+.sheet-shortcut {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--touch);
+  padding: 0 var(--space-4);
+  border-radius: 999px;
+  background: var(--color-ink);
+  color: var(--color-ground);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sheet-shortcut[hidden] {
+  display: none;
+}
+
+/* Scan / form pre-assigned to a pocket (CAP-52). */
+.scan-target,
+.form-pocket {
+  margin: 0;
+  font-weight: 700;
+  text-align: center;
+}
