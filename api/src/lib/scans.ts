@@ -2,6 +2,8 @@
 // second, brand re-check), ADR-003 (every capture ends in one of three outcomes), openapi.yaml /scans/analyse
 // ("nothing is saved" except the Scan item), data-model.md § Scan and § dHash comparison (in-memory Hamming over the
 // user's live caps). Invariant (CLAUDE.md): the vision adapter is called ONLY when no stored hash is a near-match.
+// CAP-63: with `useAi: false` the brand re-check (step 3) still runs on `known.brand`/`known.variant`, so an answer
+// pasted from an external AI (ADR-007, CAP-45) gets the same server-side duplicate check.
 import { type AnalyseRequest, AnalyseResponse, Scan, type ScanOutcome, normaliseBrand } from '@capcollector/shared';
 import { z } from 'zod';
 
@@ -112,14 +114,34 @@ export async function analyse(deps: AnalyseDeps, uid: string, req: AnalyseReques
     return answer({ outcome: 'duplicate', match });
   }
 
-  // "AI off": duplicate check only, then manual / exchange.
+  // Step 3 over GSI2 for a given brand + variant, limited to this user's live caps (minus the re-identified cap).
+  const mine = new Map(hashes.map((h) => [h.capId, h]));
+  const brandMatch = async (brand: string, variant: string | undefined) => {
+    const hit = (await repos.caps.listGsi2(brand, variant)).find(
+      (e) => mine.has(e.capId) && sameVariant(e.variant, variant),
+    );
+    if (!hit) return undefined;
+    // SPEC-GAP CAP-37: `DuplicateMatch.hammingDistance` is required even for `by: brand`; we report the image distance
+    // to the matched cap, or 64 (maximally different) when that cap has no stored hash.
+    const stored = mine.get(hit.capId);
+    const d = nearestByHash(stored ? [stored] : [], req.dhash, req.dhashUnderside)?.distance ?? 64;
+    return { capId: hit.capId, hammingDistance: d, by: 'brand' as const };
+  };
+
+  const known = req.known;
+  // "AI off": duplicate checks only (dHash above, then brand + variant from `known` when given — CAP-63), then
+  // manual / exchange. The adapter is never called on this path.
   if (!req.useAi) {
+    const match = known?.brand ? await brandMatch(known.brand, known.variant) : undefined;
+    if (match) {
+      await store({ outcome: 'duplicate', match, aiCalled: false });
+      return answer({ outcome: 'duplicate', match });
+    }
     await store({ outcome: 'unidentified', aiCalled: false });
     return answer({ outcome: 'unidentified', suggestions: [] });
   }
 
   // Step 2 — the vision model.
-  const known = req.known;
   const result: IdentifyResult = await vision.identify({ imageKeys: req.imageKeys, ...(known ? { known } : {}) });
   if (result.status === 'unavailable') {
     await store({ outcome: 'unidentified', aiCalled: true });
@@ -136,19 +158,17 @@ export async function analyse(deps: AnalyseDeps, uid: string, req: AnalyseReques
     return answer({ outcome: 'unidentified', aiModel: result.aiModel, suggestions: result.suggestions.slice(0, 5) });
   }
 
-  // Step 3 — normalised brand + variant re-check over GSI2, limited to this user's live caps.
-  const mine = new Map(hashes.map((h) => [h.capId, h]));
+  // Step 3 — normalised brand + variant re-check on the adapter's answer. `known` is only a prior: when the adapter
+  // names another brand, the adapter's wins (CAP-63) and we note it — scan id only, no field values in the logs.
   const { brand, variant } = result.fields;
-  const hit = (await repos.caps.listGsi2(brand, variant)).find(
-    (e) => mine.has(e.capId) && sameVariant(e.variant, variant),
-  );
-  const outcome: ScanOutcome = hit ? 'duplicate' : 'identified';
-  if (hit) {
-    // SPEC-GAP CAP-37: `DuplicateMatch.hammingDistance` is required even for `by: brand`; we report the image distance
-    // to the matched cap, or 64 (maximally different) when that cap has no stored hash.
-    const stored = mine.get(hit.capId);
-    const d = nearestByHash(stored ? [stored] : [], req.dhash, req.dhashUnderside)?.distance ?? 64;
-    const match = { capId: hit.capId, hammingDistance: d, by: 'brand' as const };
+  if (known?.brand && normaliseBrand(known.brand) !== normaliseBrand(brand)) {
+    console.info(
+      JSON.stringify({ msg: 'analyse: adapter brand differs from known; using the adapter', scanId: req.scanId }),
+    );
+  }
+  const match = await brandMatch(brand, variant);
+  const outcome: ScanOutcome = match ? 'duplicate' : 'identified';
+  if (match) {
     await store({ outcome, match, ...ai });
     return answer({ outcome, match, fields: result.fields, aiModel: result.aiModel, ...confidenceOf(result) });
   }
