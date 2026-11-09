@@ -354,7 +354,10 @@ describe('deep link resumes after sign-in', () => {
     window.history.replaceState(null, '', `/cap/${id}`);
     const cancelled = await shellContext({ signedIn: false, platform: fakePlatform('native') });
     handle = renderApp(root, cancelled);
-    root.querySelector<HTMLButtonElement>('.button--apple')?.click();
+    const apple = () => root.querySelector<HTMLButtonElement>('.button--apple');
+    // The attempt is prepared on mount (CAP-64) before the button is enabled.
+    await vi.waitFor(() => expect(apple()?.disabled).toBe(false));
+    apple()?.click();
     for (let i = 0; i < 10; i++) await flush();
     expect(cancelled.platform.signInWithApple).toHaveBeenCalled();
     await cancelled.session.save(TEST_SESSION);

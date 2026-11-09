@@ -8,7 +8,7 @@ import { createApiClient, type ApiClient } from '../src/api/client';
 import { HttpError, NetworkError, NotConfiguredError, ProblemError } from '../src/api/errors';
 import { renderApp, type AppHandle, type ShellContext } from '../src/app';
 import { base64url, createPkce, s256 } from '../src/auth/pkce';
-import { restoreSession, signIn } from '../src/auth/sign-in';
+import { prepareSignIn, restoreSession, signIn, type SignInDeps } from '../src/auth/sign-in';
 import { t } from '../src/i18n/i18n';
 import { AppleSdkLoadError, AppleSignInUnavailableError, type AppleCredential } from '../src/platform/platform';
 import { createSessionStore, SESSION_KEY } from '../src/session/session-store';
@@ -24,6 +24,13 @@ function appleAnswering(answer: (req: { nonce: string; state: string }) => Apple
   const sheet = vi.fn(async (req: { nonce: string; state: string }) => answer(req));
   platform.signInWithApple = sheet;
   return { platform, sheet };
+}
+
+/** prepare + sign in, as the screen does on mount and tap. */
+async function run(deps: SignInDeps) {
+  const ready = await prepareSignIn(deps);
+  if (ready.kind !== 'ready') return ready;
+  return signIn(deps, ready.prepared);
 }
 
 describe('PKCE', () => {
@@ -59,7 +66,7 @@ describe('sign-in flow', () => {
     const api = fakeApi();
     const store = memoryStore();
     const session = createSessionStore(store);
-    expect(await signIn({ platform, api, session, crypto })).toEqual({ kind: 'signed-in' });
+    expect(await run({ platform, api, session, crypto })).toEqual({ kind: 'signed-in' });
     const body = vi.mocked(api.signInWithApple).mock.calls[0]?.[0];
     expect(body).toEqual({ identityToken: 'id-token', authorizationCode: 'code-1', codeVerifier: expect.any(String) });
     expect(sheet.mock.calls[0]?.[0].nonce).toBe(await s256(body?.codeVerifier ?? '', crypto));
@@ -69,13 +76,13 @@ describe('sign-in flow', () => {
     // No authorization code from Apple: the optional field is left out.
     const noCode = appleAnswering((req) => ({ identityToken: 'id-token', state: req.state }));
     const api2 = fakeApi();
-    await signIn({ platform: noCode.platform, api: api2, session: createSessionStore(memoryStore()), crypto });
+    await run({ platform: noCode.platform, api: api2, session: createSessionStore(memoryStore()), crypto });
     expect(vi.mocked(api2.signInWithApple).mock.calls[0]?.[0]).not.toHaveProperty('authorizationCode');
 
     const attempt = async (answer: Parameters<typeof appleAnswering>[0], apiOverrides: Partial<ApiClient> = {}) => {
       const s = memoryStore();
       const a = fakeApi(apiOverrides);
-      const result = await signIn({
+      const result = await run({
         platform: appleAnswering(answer).platform,
         api: a,
         session: createSessionStore(s),
@@ -146,12 +153,14 @@ describe('sign-in screen and guard', () => {
     expect(app.router.current().route.name).toBe('signIn');
     expect(root.querySelector<HTMLElement>('.tab-bar')?.hidden).toBe(true);
     expect(root.querySelector('h1')?.textContent).toBe(t('app.name'));
+    await settled();
     expect(appleButton()?.textContent).toBe(t('signIn.button'));
     expect(root.querySelector('.apple-logo')?.getAttribute('aria-hidden')).toBe('true');
 
     app.router.navigate('/stats');
     expect(window.location.pathname).toBe('/sign-in');
 
+    await settled();
     appleButton()?.click();
     expect(appleButton()?.disabled).toBe(true);
     await settled();
@@ -174,6 +183,7 @@ describe('sign-in screen and guard', () => {
     const ctx = await shellContext({ platform, api: fakeApi({ signInWithApple }), signedIn: false });
     mount('/', ctx);
 
+    await settled();
     appleButton()?.click();
     await settled();
     expect(alert()).toBe(t('signIn.notAllowed'));
@@ -191,6 +201,7 @@ describe('sign-in screen and guard', () => {
     const unconfigured = fakePlatform('web');
     unconfigured.signInWithApple = vi.fn(async () => Promise.reject(new AppleSignInUnavailableError('x')));
     mount('/', await shellContext({ platform: unconfigured, signedIn: false }));
+    await settled();
     appleButton()?.click();
     await settled();
     expect(alert()).toBe(t('signIn.unavailable'));
@@ -198,6 +209,7 @@ describe('sign-in screen and guard', () => {
     handle?.destroy();
     const cancelling = appleAnswering(() => null);
     mount('/', await shellContext({ platform: cancelling.platform, signedIn: false }));
+    await settled();
     appleButton()?.click();
     await settled();
     expect(alert()).toBe('');

@@ -1,10 +1,13 @@
-// Web flow of Sign in with Apple (ADR-008 §4, CAP-22): Apple's JS SDK (`AppleID.auth`) loaded on demand, in popup
-// mode, with the Service ID and return URL from config (doc/plans/CAP-22-sign-in.md lists the values Edu
-// registers in the Apple Developer portal). Used by the Mac/web build and, until the native plugin is installed,
-// by the iPhone app as well.
+// Web flow of Sign in with Apple (ADR-008 §4, CAP-22): Apple's JS SDK (`AppleID.auth`) in popup mode, with the
+// Service ID and return URL from config (doc/plans/CAP-22-sign-in.md lists the values Edu registers in the Apple
+// Developer portal). CAP-64: Safari only opens a popup straight from the user's tap, so the work is split — `prepare`
+// (on screen mount and after every attempt) loads the SDK and `init`s it with that attempt's state and nonce, and
+// `signIn` calls `AppleID.auth.signIn()` synchronously, before any `await`. Apple's error codes reach the UI as
+// AppleSignInError (cancels resolve null).
 import type { AppleConfig } from '../../config.js';
 import {
   AppleSdkLoadError,
+  AppleSignInError,
   AppleSignInUnavailableError,
   type AppleCredential,
   type AppleSignInRequest,
@@ -62,38 +65,68 @@ export function scriptLoader(win: Window): () => Promise<AppleIdAuth> {
   };
 }
 
-export function createAppleWebSignIn(
-  config: AppleConfig | null,
-  load: () => Promise<AppleIdAuth>,
-): (request: AppleSignInRequest) => Promise<AppleCredential | null> {
-  return async (request) => {
-    if (!config) throw new AppleSignInUnavailableError('Sign in with Apple is not configured for this build');
-    const auth = await load();
-    // Name and e-mail are not requested: the API keys the allow-list on `sub` only (ADR-008 §4).
-    auth.init({
-      clientId: config.serviceId,
-      scope: '',
-      redirectURI: config.redirectUri,
-      state: request.state,
-      nonce: request.nonce,
-      usePopup: true,
-    });
-    let response: Awaited<ReturnType<AppleIdAuth['signIn']>>;
-    try {
-      response = await auth.signIn();
-    } catch (error) {
-      const code = appleError(error);
-      if (code !== null && CANCEL_ERRORS.has(code)) return null;
-      throw new Error(`Sign in with Apple failed: ${code ?? 'unknown error'}`, { cause: error });
-    }
-    const { id_token: identityToken, code, state } = response.authorization ?? {};
-    if (typeof identityToken !== 'string' || identityToken === '') {
-      throw new Error('Sign in with Apple returned no identity token');
-    }
-    return {
-      identityToken,
-      ...(typeof code === 'string' && code !== '' && { authorizationCode: code }),
-      ...(typeof state === 'string' && { state }),
-    };
+export interface AppleWebSignIn {
+  prepare(request: AppleSignInRequest): Promise<void>;
+  signIn(request: AppleSignInRequest): Promise<AppleCredential | null>;
+}
+
+type AppleResponse = Awaited<ReturnType<AppleIdAuth['signIn']>>;
+
+function credential(response: AppleResponse): AppleCredential {
+  const { id_token: identityToken, code, state } = response.authorization ?? {};
+  if (typeof identityToken !== 'string' || identityToken === '') {
+    throw new Error('Sign in with Apple returned no identity token');
+  }
+  return {
+    identityToken,
+    ...(typeof code === 'string' && code !== '' && { authorizationCode: code }),
+    ...(typeof state === 'string' && { state }),
+  };
+}
+
+function failed(error: unknown): null {
+  const code = appleError(error);
+  if (code !== null && CANCEL_ERRORS.has(code)) return null;
+  throw code === null
+    ? new Error('Sign in with Apple failed: unknown error', { cause: error })
+    : new AppleSignInError(code);
+}
+
+export function createAppleWebSignIn(config: AppleConfig | null, load: () => Promise<AppleIdAuth>): AppleWebSignIn {
+  /** The SDK, once `init`ed for `state`; `signIn` refuses any other attempt. */
+  let ready: { auth: AppleIdAuth; state: string } | null = null;
+  return {
+    async prepare(request) {
+      if (!config) throw new AppleSignInUnavailableError('Sign in with Apple is not configured for this build');
+      if (ready?.state === request.state) return;
+      ready = null;
+      const auth = await load();
+      // Name and e-mail are not requested: the API keys the allow-list on `sub` only (ADR-008 §4).
+      auth.init({
+        clientId: config.serviceId,
+        scope: '',
+        redirectURI: config.redirectUri,
+        state: request.state,
+        nonce: request.nonce,
+        usePopup: true,
+      });
+      ready = { auth, state: request.state };
+    },
+    // Deliberately not `async` and no `await` before `auth.signIn()`: the popup must open inside the tap.
+    signIn(request) {
+      if (!config) return Promise.reject(new AppleSignInUnavailableError('Sign in with Apple is not configured'));
+      const prepared = ready;
+      if (prepared?.state !== request.state) {
+        return Promise.reject(new Error('Sign in with Apple was not prepared for this attempt'));
+      }
+      ready = null;
+      let pending: Promise<AppleResponse>;
+      try {
+        pending = prepared.auth.signIn();
+      } catch (error) {
+        pending = Promise.reject(error);
+      }
+      return pending.then(credential, failed);
+    },
   };
 }

@@ -1,6 +1,6 @@
 // Browser implementation of the Platform adapter: <input type=file> for camera and files, Web Share API,
 // localStorage (with an in-memory fallback when storage is blocked) — ADR-001, CAP-21 — and Sign in with Apple JS
-// (CAP-22).
+// (CAP-22; prepared before the tap since CAP-64).
 import type { AppleConfig } from '../../config.js';
 import { createAppleWebSignIn, scriptLoader, type AppleIdAuth } from './apple-sign-in.js';
 import { isCancel, type KeyValueStore, type PickOptions, type Platform, type ShareRequest } from '../platform.js';
@@ -63,9 +63,11 @@ export interface WebPlatformOptions {
 }
 
 export function createWebPlatform(win: Window, options: WebPlatformOptions = {}): Platform {
+  const apple = createAppleWebSignIn(options.apple ?? null, options.loadAppleSdk ?? scriptLoader(win));
   return {
     kind: 'web',
-    signInWithApple: createAppleWebSignIn(options.apple ?? null, options.loadAppleSdk ?? scriptLoader(win)),
+    prepareAppleSignIn: apple.prepare,
+    signInWithApple: apple.signIn,
     supportsNativeAppleSignIn: () => false,
     onDeepLink: () => () => undefined,
     async camera() {

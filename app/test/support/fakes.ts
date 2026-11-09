@@ -28,6 +28,7 @@ export function fakePlatform(kind: 'web' | 'native' = 'native', store = memorySt
     pickFiles: vi.fn(async () => []),
     share: vi.fn(async () => false),
     store,
+    prepareAppleSignIn: vi.fn(async () => undefined),
     signInWithApple: vi.fn(async () => null),
     supportsNativeAppleSignIn: () => false,
     onDeepLink: vi.fn(() => () => undefined),
