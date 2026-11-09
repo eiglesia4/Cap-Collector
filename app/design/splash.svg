@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Launch screen, light (CAP-56): the icon's mark centred on the ground (SCREENS.md § Visual system). 2732² so the
+     storyboard's aspect fill crops only background on every iPhone. Rendered by `npx tsx app/design/render.ts`. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#FAFAF7"/>
+  <circle cx="1366" cy="1366" r="183" fill="#FAFAF7" stroke="#1B1A17" stroke-width="34"/>
+  <circle cx="1366" cy="1366" r="107" fill="#B8651B"/>
+</svg>
