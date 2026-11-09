@@ -7,6 +7,11 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Added
 
+- CAP-62: HTTP API CORS allows any origin (`*`) with `allowCredentials: false` — API Gateway rejected
+  `capacitor://localhost` ("Invalid format for origin") and the session is a bearer token, not a cookie (architect
+  decision 2026-11-09, ADR-008 note); the API no longer imports `WebUrl`, so domains need no special deploy order.
+  `app_origins` now feeds only the images bucket CORS (explicit list) and accepts `http(s)://host[:port]` or exactly
+  `capacitor://localhost`. `HttpApi` keeps its logical ID: CORS updates in place (T-infra-042).
 - CAP-60: the stacks never create the six `/cap/<inst>/<stage>/*` SSM settings, they only read them (fixes the
   `cap-naeva-dev-data` "already exists" deploy failure); `settings:bootstrap` / `settings:show` / `settings:restore`
   (`infra/lib/settings.ts`, AWS CLI, values never printed nor in argv); migration runbook in `infra/README.md`

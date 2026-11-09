@@ -48,7 +48,7 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
     table: data.table,
     imagesBucket: data.imagesBucket,
   });
-  // The API imports CollectorsData outputs (table, buckets, WebUrl), so data must be deployed first.
+  // The API references CollectorsData resources (table, buckets), so data must be deployed first.
   api.addStackDependency(data);
 
   // AWS tagging (CONVENTIONS.md § AWS tagging): once, at app level, so every current and future stack and every

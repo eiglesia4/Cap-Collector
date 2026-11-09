@@ -200,4 +200,62 @@ describe('CollectorsData stack', () => {
     write({ app_origins: 'capacitor://localhost' });
     expect(() => loadInstallationConfig(target, dir)).toThrow(/"app_origins" must be a list/);
   });
+
+  it('[T-infra-042] app_origins accepts http(s) origins and exactly capacitor://localhost; API CORS is * without credentials, the bucket keeps the explicit list', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
+    const target = { installation: 'naeva', stage: 'dev' };
+    const load = (app_origins: unknown) => {
+      writeFileSync(
+        join(dir, 'naeva.dev.json'),
+        JSON.stringify({
+          config_version: 'v',
+          region: 'r',
+          app_origins,
+          ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
+          ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
+        }),
+      );
+      return loadInstallationConfig(target, dir).app_origins;
+    };
+    expect(load(['capacitor://localhost', 'http://localhost:5173'])).toEqual([
+      'capacitor://localhost',
+      'http://localhost:5173',
+    ]);
+    for (const bad of [
+      'capacitor://example.org',
+      'capacitor://localhost:8080',
+      'ionic://localhost',
+      'localhost:5173',
+      'https://x/',
+      'ftp://example.org',
+      'https://Localhost',
+      'https://example.org:port',
+    ]) {
+      expect(() => load([bad]), bad).toThrow(/http\(s\) origins without a path/);
+    }
+
+    // Committed naeva/dev config (architect decision 2026-11-09, ADR-008 note): the HTTP API allows any origin with
+    // no credentials (bearer token, no cookies), so no non-http(s) origin ever reaches API Gateway; the images bucket
+    // keeps app_origins + the web origin, explicit.
+    expect(loadInstallationConfig(target).app_origins).toEqual(['capacitor://localhost', 'http://localhost:5173']);
+    const built = buildApp(new App({ context: { ...target, 'aws:cdk:bundling-stacks': [] } }));
+    Template.fromStack(built.api).hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: {
+        AllowOrigins: ['*'],
+        AllowCredentials: false,
+        AllowHeaders: ['authorization', 'content-type'],
+        AllowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        MaxAge: 86400,
+      },
+    });
+    Template.fromStack(built.data).hasResourceProperties('AWS::S3::Bucket', {
+      CorsConfiguration: {
+        CorsRules: [
+          Match.objectLike({
+            AllowedOrigins: ['capacitor://localhost', 'http://localhost:5173', 'https://caps.naevatec.com'],
+          }),
+        ],
+      },
+    });
+  });
 });

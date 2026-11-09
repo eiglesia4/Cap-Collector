@@ -6,10 +6,9 @@
  *   (and protected) from day one; context `requireAllHandlers=true` turns a missing handler into a synth error.
  * - The authorizer is api/src/auth/authorizer.ts once dev-api merges it (CAP-19); until then a deny-all stub.
  * - Least privilege per function from the manifest's `grants`; SSM-backed settings only where `secrets` says so.
- * - CORS allows `app_origins` from config/ plus the web origin. With `domains` in config (CAP-29) that origin is
- *   `https://<domains.web>` taken from config, with no import: CloudFormation refuses to change an export another
- *   stack imports, and CAP-29 changes `WebUrl`. Without `domains`, it is the CloudFront URL imported from the
- *   CollectorsData `WebUrl` output (CAP-27).
+ * - CORS allows any origin (`*`) without credentials (CAP-62, architect decision 2026-11-09, ADR-008 note): the iOS
+ *   origin `capacitor://localhost` is not an http(s) origin, which API Gateway refuses, and the session is a bearer
+ *   token in `Authorization` — no cookies, so there are no ambient credentials for CORS to protect.
  * - Custom domain (CAP-29): with `domains.api`, a regional API Gateway domain name (ACM certificate ARN from SSM)
  *   mapped to the default stage; DNS is a GoDaddy CNAME to the `ApiDomainTarget` output.
  * - Bedrock (CAP-40, ADR-008 §7): only scans-analyse may invoke the model of config `ai.modelId`; a daily
@@ -48,12 +47,7 @@ import { CfnSubscription, SubscriptionProtocol, Topic } from 'aws-cdk-lib/aws-sn
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
-import {
-  dataExportName,
-  isDisposableStage,
-  settingParameterName,
-  UNSET_PARAMETER_VALUE,
-} from './collectors-data-stack.js';
+import { isDisposableStage, settingParameterName, UNSET_PARAMETER_VALUE } from './collectors-data-stack.js';
 import {
   type Deployment,
   deploymentTags,
@@ -111,14 +105,6 @@ export function orphanHandlers(routes: readonly Route[], apiSrcDir: string): str
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts') && !f.endsWith('.test.ts'))
     .map((f) => f.slice(0, -'.ts'.length))
     .filter((h) => !known.has(h));
-}
-
-/**
- * The web build's origin for API CORS: from config when `domains` is set (no `Fn::ImportValue`, so CollectorsData may
- * change its `WebUrl` export — decided in CAP-27 review, 2026-11-07), else imported from CollectorsData (CAP-27).
- */
-export function webOrigin(deployment: Deployment, config: InstallationConfig): string {
-  return config.domains ? `https://${config.domains.web}` : Fn.importValue(dataExportName(deployment, 'WebUrl'));
 }
 
 /**
@@ -249,7 +235,9 @@ export class CollectorsApiStack extends Stack {
       apiName: resourceName(deployment, 'api'),
       description: 'CapCollector HTTP API (doc/spec/openapi.yaml)',
       corsPreflight: {
-        allowOrigins: [...config.app_origins, webOrigin(deployment, config)],
+        // `*` + no credentials (CAP-62): bearer token, no cookies; app_origins only feeds the images bucket CORS.
+        allowOrigins: ['*'],
+        allowCredentials: false,
         allowMethods: [
           CorsHttpMethod.GET,
           CorsHttpMethod.POST,
