@@ -159,6 +159,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Changed
 
+- CAP-66: removed `@capacitor-community/apple-sign-in` (pinned Capacitor 7) and re-synced iOS; `CapApp-SPM/Package.swift` now resolves on Capacitor 8.6.0 with the in-app plugin from CAP-65.
 - CAP-47 (method): after rebasing a `CAP-*` branch, push with `git push --force-with-lease origin CAP-<n>-<slug>`
   (never plain `--force`, never `main`); `/revise` keeps both sides of additive conflicts (`app.css`, `CHANGELOG.md`)
   and regenerates `TEST.md` with `npm run catalog`.
