@@ -86,14 +86,15 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
   'uploads-create': { grants: ['images-put'] },
 
   // CAP-20: every handler that returns a Cap presigns GET URLs for its images (`Cap.imageUrls`); CAP-35 adds
-  // caps-create and caps-patch, which return the Cap since CAP-30. T-infra-027 keeps the list complete.
+  // caps-create and caps-patch, which return the Cap since CAP-30; CAP-59 adds caps-location-put, which returns
+  // `{ cap, swapped? }` (CAP-50). T-infra-027 keeps the list complete.
   'caps-list': { grants: ['table', 'images-get'] },
   'caps-create': { grants: ['table', 'images-get'] },
   'caps-get': { grants: ['table', 'images-get'] },
   'caps-patch': { grants: ['table', 'images-get'] },
   'caps-delete': T,
   'caps-history': T,
-  'caps-location-put': T,
+  'caps-location-put': { grants: ['table', 'images-get'] },
   'caps-location-delete': T,
 
   // CAP-40 (ADR-004, ADR-008 §7): scans-analyse reads the photos, compares dHashes against the table and only then

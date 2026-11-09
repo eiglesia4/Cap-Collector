@@ -172,9 +172,17 @@ describe('CollectorsApi stack', () => {
     ]);
   });
 
-  it('[T-infra-027] every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch', () => {
+  it('[T-infra-027] every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch/location-put', () => {
     // CAP-35: a Cap in a response carries presigned `imageUrls`; without s3:GetObject S3 refuses those URLs.
-    const CAP_RETURNING = ['caps-list', 'caps-get', 'caps-create', 'caps-patch'];
+    // CAP-59: caps-location-put returns `{ cap, swapped? }` (CAP-50).
+    const CAP_RETURNING = ['caps-list', 'caps-get', 'caps-create', 'caps-patch', 'caps-location-put'];
+    // Kept complete from the API sources: every handler that calls withImageUrls is in the list.
+    const handlersDir = join(REPO_ROOT, 'api', 'src', 'handlers');
+    const presigning = readdirSync(handlersDir)
+      .filter((f) => f.endsWith('.ts') && readFileSync(join(handlersDir, f), 'utf8').includes('withImageUrls('))
+      .map((f) => f.slice(0, -'.ts'.length));
+    expect(presigning.length).toBeGreaterThan(0);
+    expect(CAP_RETURNING).toEqual(expect.arrayContaining(presigning));
     for (const handler of CAP_RETURNING) {
       expect(WIRING[handler]?.grants, handler).toEqual(expect.arrayContaining(['table', 'images-get']));
     }
