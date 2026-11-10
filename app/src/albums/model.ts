@@ -154,6 +154,28 @@ export function validateAlbum(values: AlbumFormValues): AlbumValidation {
   return { ok: true, input };
 }
 
+/** Bounds of the pocket / pitch editors (print screen CAP-54, Settings CAP-58), in mm. */
+export const POCKET_RANGE = { min: 10, max: 100 } as const;
+export const PITCH_RANGE = { min: 10, max: 120 } as const;
+
+/**
+ * Typed pocket / pitch (comma or point decimals) → numbers, or which message to show: out of range
+ * (`print.measureInvalid`) or pitch below pocket (`albums.errorPitch`).
+ */
+export function parseMeasures(
+  pocket: string,
+  pitch: string,
+):
+  { ok: true; pocketMm: number; pitchMm: number } | { ok: false; error: 'print.measureInvalid' | 'albums.errorPitch' } {
+  const pocketMm = Number(pocket.trim().replace(',', '.'));
+  const pitchMm = Number(pitch.trim().replace(',', '.'));
+  const inRange = (n: number, r: { min: number; max: number }) => n >= r.min && n <= r.max;
+  if (pocket.trim() === '' || pitch.trim() === '' || !inRange(pocketMm, POCKET_RANGE) || !inRange(pitchMm, PITCH_RANGE))
+    return { ok: false, error: 'print.measureInvalid' };
+  if (pitchMm < pocketMm) return { ok: false, error: 'albums.errorPitch' };
+  return { ok: true, pocketMm, pitchMm };
+}
+
 /** `PATCH /albums/{id}` body: only what changed (absent = untouched, CAP-49 `AlbumPatchBody`); null when nothing did. */
 export function albumPatch(prev: Album, input: AlbumInput): Record<string, unknown> | null {
   const body: Record<string, unknown> = {};

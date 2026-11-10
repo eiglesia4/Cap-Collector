@@ -14,12 +14,13 @@ import { ReidentifyScreen } from './reidentify-screen.js';
 import { ScanScreen } from './scan-screen.js';
 import { SettingsScreen } from './settings-screen.js';
 import { SignInScreen } from './sign-in-screen.js';
+import { StatsScreen } from './stats-screen.js';
 
 export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   collection: CollectionScreen,
   scan: ScanScreen,
   wishlist: placeholderScreen('wishlist.title', 'wishlist.placeholder'),
-  stats: placeholderScreen('stats.title', 'stats.placeholder'),
+  stats: StatsScreen,
   capDetail: CapDetailScreen,
   capEdit: EditCapScreen,
   capReidentify: ReidentifyScreen,

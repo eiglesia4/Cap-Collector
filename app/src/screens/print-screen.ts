@@ -6,20 +6,13 @@
 // "Mark as printed" (the per-album timestamp of "since last print").
 import { Album, type Cap } from '@capcollector/shared';
 
-import { AlbumListSchema, albumSheetPath, sheetCount } from '../albums/model.js';
+import { AlbumListSchema, albumSheetPath, parseMeasures, sheetCount } from '../albums/model.js';
+import { fetchAllCaps } from '../collection/all-caps.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { buildInsertsPdf, planInserts, type PrintWhat } from '../print/inserts.js';
 import { discDiameter, SUGGESTED_PITCH_MM, SUGGESTED_POCKET_MM } from '../print/layout.js';
-import {
-  albumCaps,
-  fetchAllCaps,
-  indexSheets,
-  markPrinted,
-  readLastPrint,
-  scopeCaps,
-  type PrintScope,
-} from '../print/scope.js';
+import { albumCaps, indexSheets, markPrinted, readLastPrint, scopeCaps, type PrintScope } from '../print/scope.js';
 import { h } from '../ui/dom.js';
 
 export interface PrintOptions {
@@ -70,11 +63,9 @@ function MeasureForm(ctx: AppContext, album: Album, saved: (album: Album) => voi
       on: {
         submit: (e) => {
           e.preventDefault();
-          const pocketMm = Number(pocket.value.replace(',', '.'));
-          const pitchMm = Number(pitch.value.replace(',', '.'));
-          if (!(pocketMm >= 10 && pocketMm <= 100 && pitchMm >= 10 && pitchMm <= 120))
-            return fail('print.measureInvalid');
-          if (pitchMm < pocketMm) return fail('albums.errorPitch');
+          const measures = parseMeasures(pocket.value, pitch.value);
+          if (!measures.ok) return fail(measures.error);
+          const { pocketMm, pitchMm } = measures;
           void ctx.api
             .request(`/albums/${encodeURIComponent(album.albumId)}`, {
               method: 'PATCH',

@@ -1,0 +1,69 @@
+/* Settings (CAP-58): sections, album measurements, the scans list. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-4);
+}
+
+.settings-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+summary.settings-title {
+  cursor: pointer;
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+}
+
+.settings-subtitle {
+  font-size: 1rem;
+  margin: var(--space-3) 0 0;
+}
+
+.settings-albums {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-measures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-measures__album {
+  margin: 0;
+  font-weight: 600;
+}
+
+.scan-week {
+  font-weight: 600;
+  margin: 0;
+}
+
+.scan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scan-row {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: var(--space-2);
+  font-size: 0.9rem;
+}
+
+.scan-row__ai {
+  font-variant-numeric: tabular-nums;
+}

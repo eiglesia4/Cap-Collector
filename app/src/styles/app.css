@@ -3,6 +3,8 @@
 @import './exchange.css';
 @import './review.css';
 @import './scan-duplicate.css';
+@import './settings.css';
+@import './stats.css';
 @import './scan.css';
 
 *,

@@ -42,7 +42,8 @@ export function createRouter({ window: win, onRoute }: RouterOptions): Router {
     const url = new URL(target.href, win.location.href);
     if (url.origin !== win.location.origin || target.target === '_blank') return;
     event.preventDefault();
-    navigate(url.pathname);
+    // Keep the query: linked filters (`/?country=ES`, CAP-58) and `?sheet=` live there.
+    navigate(url.pathname + url.search);
   }
 
   return {
