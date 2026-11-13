@@ -1,6 +1,11 @@
 // Settings (CAP-60): the stacks never create /cap/<inst>/<stage>/* parameters, they only read them; the bootstrap
 // script creates the missing ones (`unset`, tagged), `show` reports state without values, `restore` overwrites from a
-// backup. The AWS CLI is faked: nothing here touches the cloud.
+// backup. Values reach the CLI through a private temp file, never argv (CAP-67). The AWS CLI is faked: nothing here
+// touches the cloud.
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, sep } from 'node:path';
+
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +18,7 @@ import {
   bootstrapSettings,
   type Command,
   formatShow,
+  putParameter,
   restoreSettings,
   settingsTarget,
   showSettings,
@@ -44,15 +50,37 @@ const SIX = [
 ];
 const target = () => settingsTarget({ CAP_INSTALLATION: 'naeva', CAP_STAGE: 'dev' });
 
-/** A fake SSM behind the CLI: `put-parameter` from stdin JSON, `get-parameters` from --names. */
+/** What a put-parameter call saw in its `--cli-input-json file://…` while the CLI ran. */
+interface InputFile {
+  readonly path: string;
+  readonly mode: number;
+  readonly body: string;
+}
+
+const inputPath = (c: Command): string => {
+  const arg = c.args[c.args.indexOf('--cli-input-json') + 1] ?? '';
+  expect(arg).toMatch(/^file:\/\//);
+  return arg.slice('file://'.length);
+};
+
+/** Reads the input file the way the AWS CLI would, recording its path, permissions and content. */
+const readInput = (c: Command): InputFile => {
+  const path = inputPath(c);
+  return { path, mode: statSync(path).mode & 0o777, body: readFileSync(path, 'utf8') };
+};
+
+/** A fake SSM behind the CLI: `put-parameter` from the input file, `get-parameters` from --names. */
 function fakeSsm(initial: Record<string, string>) {
   const store = new Map(Object.entries(initial));
   const calls: Command[] = [];
+  const inputs: InputFile[] = [];
   const tags = new Map<string, unknown>();
   const run = (c: Command): string => {
     calls.push(c);
     if (c.args[1] === 'put-parameter') {
-      const p = JSON.parse(c.input ?? '{}') as { Name: string; Value: string; Overwrite: boolean; Tags?: unknown };
+      const file = readInput(c);
+      inputs.push(file);
+      const p = JSON.parse(file.body) as { Name: string; Value: string; Overwrite: boolean; Tags?: unknown };
       if (store.has(p.Name) && !p.Overwrite) {
         throw new Error(`An error occurred (ParameterAlreadyExists) when calling the PutParameter operation`);
       }
@@ -69,7 +97,7 @@ function fakeSsm(initial: Record<string, string>) {
     }
     throw new Error(`unexpected ${c.args.join(' ')}`);
   };
-  return { store, calls, tags, run };
+  return { store, calls, inputs, tags, run };
 }
 
 describe('Settings', () => {
@@ -115,9 +143,9 @@ describe('Settings', () => {
         ]),
       );
     }
-    // Every put is a creation (no Overwrite), in the stack's region, with the value on stdin, never in argv.
+    // Every put is a creation (no Overwrite), in the stack's region, with the value in a temp file, never in argv.
+    for (const f of ssm.inputs) expect(JSON.parse(f.body)).toMatchObject({ Overwrite: false, Type: 'String' });
     for (const c of ssm.calls) {
-      expect(JSON.parse(c.input ?? '{}')).toMatchObject({ Overwrite: false, Type: 'String' });
       expect(c.args).toEqual(expect.arrayContaining(['--region', 'eu-west-1', '--cli-input-json']));
       expect(c.args.join(' ')).not.toMatch(/unset|real-secret/);
     }
@@ -139,13 +167,14 @@ describe('Settings', () => {
       InvalidParameters: [],
     };
     ssm.calls.length = 0;
+    ssm.inputs.length = 0;
     expect(restoreSettings(t, JSON.stringify(backup), ssm.run)).toEqual({
       restored: ['/cap/naeva/dev/apple-client-ids'],
       skipped: ['/cap/naeva/dev/web-certificate-arn'],
     });
     expect(ssm.store.get('/cap/naeva/dev/apple-client-ids')).toBe('com.naevatec.collectors');
     expect(ssm.calls).toHaveLength(1);
-    expect(JSON.parse(ssm.calls[0]?.input ?? '{}')).toMatchObject({ Overwrite: true });
+    expect(JSON.parse(ssm.inputs[0]?.body ?? '{}')).toMatchObject({ Overwrite: true });
     expect(ssm.calls[0]?.args.join(' ')).not.toContain('com.naevatec.collectors');
     const foreign = { Parameters: [{ Name: '/cap/naeva/prod/session-secret', Value: 'x' }] };
     expect(() => restoreSettings(t, JSON.stringify(foreign), ssm.run)).toThrow(/not a setting of naeva\/dev/);
@@ -179,5 +208,75 @@ describe('Settings', () => {
     // It asks for the six names, without decryption.
     expect(ssm.calls[0]?.args).not.toContain('--with-decryption');
     expect(ssm.calls[0]?.args).toEqual(expect.arrayContaining(SIX));
+  });
+
+  it('[T-infra-043] put-parameter input goes through a private temp file (0600, holds the value), removed after success and after a CLI failure', () => {
+    const t = target();
+    const secret = 'temp-file-secret-value';
+    const input = JSON.stringify({
+      Name: '/cap/naeva/dev/session-secret',
+      Value: secret,
+      Type: 'String',
+      Overwrite: true,
+    });
+
+    let seen: InputFile | undefined;
+    let call: Command | undefined;
+    putParameter(t, input, (c) => {
+      call = c;
+      seen = readInput(c);
+      return '{"Version":2}';
+    });
+    expect(call?.args).toEqual([
+      'ssm',
+      'put-parameter',
+      '--region',
+      'eu-west-1',
+      '--cli-input-json',
+      `file://${seen?.path ?? ''}`,
+    ]);
+    expect(call?.args.join(' ')).not.toContain('/dev/stdin');
+    expect(seen?.path.startsWith(`${tmpdir()}${sep}cap-settings-`)).toBe(true);
+    expect(seen?.path.endsWith('.json')).toBe(true);
+    expect(seen?.mode).toBe(0o600);
+    expect(seen?.body).toBe(input);
+    expect(existsSync(seen?.path ?? '')).toBe(false);
+    expect(existsSync(dirname(seen?.path ?? ''))).toBe(false);
+
+    // A failing CLI call: the error propagates and the file and its directory are still removed.
+    let failed: InputFile | undefined;
+    expect(() =>
+      putParameter(t, input, (c) => {
+        failed = readInput(c);
+        throw new Error('An error occurred (AccessDeniedException) when calling the PutParameter operation');
+      }),
+    ).toThrow(/AccessDenied/);
+    expect(failed?.mode).toBe(0o600);
+    expect(existsSync(failed?.path ?? '')).toBe(false);
+    expect(existsSync(dirname(failed?.path ?? ''))).toBe(false);
+    // Each call gets its own directory.
+    expect(dirname(failed?.path ?? '')).not.toBe(dirname(seen?.path ?? ''));
+  });
+
+  it('[T-infra-044] no value ever appears in the recorded argv of bootstrap or restore', () => {
+    const t = target();
+    const ssm = fakeSsm({});
+    bootstrapSettings(t, ssm.run);
+    const values = ['com.naevatec.collectors,com.naevatec.collectors.web', 's3cr3t+/=base64', 'ops@example.org'];
+    const backup = {
+      Parameters: [
+        { Name: '/cap/naeva/dev/apple-client-ids', Value: values[0] },
+        { Name: '/cap/naeva/dev/session-secret', Value: values[1] },
+        { Name: '/cap/naeva/dev/alert-email', Value: values[2] },
+      ],
+    };
+    restoreSettings(t, JSON.stringify(backup), ssm.run);
+    expect(ssm.calls).toHaveLength(SIX.length + values.length);
+    const argv = ssm.calls.map((c) => [c.cmd, ...c.args].join(' ')).join('\n');
+    for (const v of [...values, UNSET_PARAMETER_VALUE]) expect(argv).not.toContain(v);
+    expect(argv).not.toContain('/dev/stdin');
+    // …while every value did reach SSM through its input file.
+    for (const [i, v] of values.entries()) expect(ssm.store.get(backup.Parameters[i]?.Name ?? '')).toBe(v);
+    for (const f of ssm.inputs) expect(existsSync(f.path)).toBe(false);
   });
 });

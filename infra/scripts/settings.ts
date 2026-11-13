@@ -16,11 +16,11 @@ import {
   showSettings,
 } from '../lib/settings.js';
 
-const run = ({ cmd, args, input }: Command): string => {
+const run = ({ cmd, args }: Command): string => {
   try {
-    return execFileSync(cmd, [...args], { encoding: 'utf8', stdio: 'pipe', ...(input !== undefined && { input }) });
+    return execFileSync(cmd, [...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
-    // Only the CLI's stderr: the command's stdin (which may hold a value) is never echoed.
+    // Only the CLI's stderr: never the command's input file (which holds a value) nor its stdout.
     const stderr = (e as { stderr?: unknown }).stderr;
     throw new Error(typeof stderr === 'string' && stderr ? stderr.trim() : `${cmd} ${args[0] ?? ''} failed`, {
       cause: e,
