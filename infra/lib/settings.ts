@@ -2,8 +2,13 @@
  * `/cap/<inst>/<stage>/*` settings (CAP-60): the stacks only read them, so they are created once, by hand, with
  * `npm run settings:bootstrap` and inspected with `settings:show`; `settings:restore` puts back a backup taken before
  * the CAP-60 migration (infra/README.md § Settings). Same shape as lib/web-deploy.ts: the AWS CLI behind an injected
- * runner, target from CAP_INSTALLATION / CAP_STAGE, region from config. Values are never printed or put in argv.
+ * runner, target from CAP_INSTALLATION / CAP_STAGE, region from config. Values are never printed or put in argv: a
+ * put-parameter input goes through a private temp file (CAP-67; `file:///dev/stdin` fails with the AWS CLI on macOS).
  */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { type Deployment, deploymentTags, loadInstallationConfig, validateDeployment } from './config.js';
 import { settingParameterName, UNSET_PARAMETER_VALUE } from './collectors-data-stack.js';
 import { SETTINGS } from './routes.js';
@@ -11,8 +16,6 @@ import { SETTINGS } from './routes.js';
 export interface Command {
   readonly cmd: string;
   readonly args: readonly string[];
-  /** Sent on stdin (`--cli-input-json file:///dev/stdin`): how a value reaches the CLI without showing in `ps`. */
-  readonly input?: string;
 }
 
 /** Runs a command and returns its stdout; throws with the CLI's stderr in the message on a non-zero exit. */
@@ -50,11 +53,24 @@ const putInput = (name: string, value: string, overwrite: boolean, tags?: Readon
     ...(tags && { Tags: Object.entries(tags).map(([Key, Value]) => ({ Key, Value })) }),
   });
 
-const put = (target: SettingsTarget, input: string): Command => ({
-  cmd: 'aws',
-  args: ['ssm', 'put-parameter', '--region', target.region, '--cli-input-json', 'file:///dev/stdin'],
-  input,
-});
+/**
+ * Runs `aws ssm put-parameter` with its input JSON (which holds the value) in `<tmp>/cap-settings-XXXX/input.json`:
+ * the directory is private (mkdtemp, 0700), the file 0600 and created exclusively, and both are removed in `finally`,
+ * also when the CLI fails. Only the path reaches argv (CAP-67, decided 2026-11-13).
+ */
+export function putParameter(target: SettingsTarget, input: string, run: Runner, tmpRoot: string = tmpdir()): void {
+  const dir = mkdtempSync(join(tmpRoot, 'cap-settings-'));
+  try {
+    const file = join(dir, 'input.json');
+    writeFileSync(file, input, { mode: 0o600, flag: 'wx' });
+    run({
+      cmd: 'aws',
+      args: ['ssm', 'put-parameter', '--region', target.region, '--cli-input-json', `file://${file}`],
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /**
  * Creates each missing setting with `unset` and the mandatory tags; an existing one is left exactly as it is
@@ -69,7 +85,7 @@ export function bootstrapSettings(
   const skipped: string[] = [];
   for (const name of target.names) {
     try {
-      run(put(target, putInput(name, UNSET_PARAMETER_VALUE, false, tags)));
+      putParameter(target, putInput(name, UNSET_PARAMETER_VALUE, false, tags), run);
       created.push(name);
     } catch (e) {
       if (!/ParameterAlreadyExists/.test(e instanceof Error ? e.message : String(e))) throw e;
@@ -124,7 +140,7 @@ export function restoreSettings(
       skipped.push(p.Name);
       continue;
     }
-    run(put(target, putInput(p.Name, p.Value, true)));
+    putParameter(target, putInput(p.Name, p.Value, true), run);
     restored.push(p.Name);
   }
   return { restored, skipped };
