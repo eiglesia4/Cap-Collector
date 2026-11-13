@@ -59,6 +59,22 @@ npm run settings:show      -w @capcollector/infra   # name + set / unset / missi
 npm run settings:restore   -w @capcollector/infra -- infra/.local/settings-backup.json   # overwrite from a backup
 ```
 
+Values reach the AWS CLI through a private temp file (`$TMPDIR/cap-settings-*/input.json`, mode 0600, deleted right
+after each call, also on error), never through argv or stdin (CAP-67: the CLI cannot read `file:///dev/stdin` on
+macOS).
+
+**New target: bootstrap comes first, before the first `deploy`.** Every deploy reads all six settings, so on a target
+with none of them CloudFormation fails with "parameter not found":
+
+```bash
+# 1. Create the six settings as `unset`.
+npm run settings:bootstrap -w @capcollector/infra
+# 2. Fill the auth ones (and alert-email, certificates when ready) — Deploy above, Custom domains below.
+# 3. Check, then deploy.
+npm run settings:show -w @capcollector/infra
+npm run deploy
+```
+
 **Migration, once per target that was deployed before CAP-60.** The deployed `CollectorsData` template still owns
 the parameters, so the first deploy after CAP-60 _deletes_ them. Check first:
 
