@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, mcp__atlassian__*, mcp__jira
 
 Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en orden y no te saltes ninguno. Tu identidad es `$CAP_AGENT` (si no está definido, para y pídelo).
 
-**Tu worktree (fijo).** Trabajas siempre en `../capcollector-wt/$CAP_AGENT` (lo crea Edu con `.claude/scripts/agent-worktrees.sh`). Antes de nada comprueba que `basename "$(git rev-parse --show-toplevel)"` es `$CAP_AGENT`; si no, **para** y dilo. Nunca trabajes en el checkout principal (es de Edu) ni en el worktree de otro agente. En reposo tu worktree está en **detached HEAD sobre `origin/main`** y limpio.
+**Tu worktree (fijo).** Si eres `dev-*`, trabajas siempre en `../capcollector-wt/$CAP_AGENT` (lo crea Edu con `.claude/scripts/agent-worktrees.sh`): comprueba que `basename "$(git rev-parse --show-toplevel)"` es `$CAP_AGENT`; si no, **para** y dilo. El `integrator` trabaja en el checkout principal y, en sus historias, crea la rama ahí mismo y vuelve a `main` al acabar en vez de aparcar en detached. Nunca trabajes en el worktree de otro agente; un dev nunca trabaja en el checkout principal. En reposo tu worktree está en **detached HEAD sobre `origin/main`** y limpio.
 
 1. **Elegir la historia.** Tu etiqueta de territorio sale de `$CAP_AGENT`: `dev-app` → `area-app` · `dev-api` → `area-api` · `dev-infra` → `area-infra` · `integrator` → `area-integration` (cualquier otro valor: para y dilo). Con el MCP de Atlassian (site `naevatec.atlassian.net`), busca:
    `project = CAP AND status = "Ready" AND issuetype != Epic AND labels = <tu etiqueta> ORDER BY Rank ASC`

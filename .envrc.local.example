@@ -1,5 +1,5 @@
-# Copiar a .envrc.local (ignorado). El checkout de Edu lleva el suyo; .claude/scripts/agent-worktrees.sh
-# copia este fichero a cada ../capcollector-wt/<agente>/.envrc.local con su CAP_AGENT.
+# Copiar a .envrc.local (ignorado). En el checkout principal, CAP_AGENT=integrator; .claude/scripts/agent-worktrees.sh
+# copia este fichero a cada ../capcollector-wt/<dev-agente>/.envrc.local con su CAP_AGENT.
 export CAP_AGENT="dev-api"              # architect | dev-app | dev-api | dev-infra | integrator
 export JIRA_EMAIL="tu@naevatec.com"
 export JIRA_TOKEN="..."

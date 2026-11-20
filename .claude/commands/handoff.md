@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Grep, Glob, mcp__atlassian__*, mcp__jira__*
 
 Deja el trabajo en un estado del que cualquiera pueda continuar:
 
-1. `git status` y `git log origin/main..HEAD --oneline` en tu worktree (`../capcollector-wt/$CAP_AGENT`). Si hay cambios sin commit, haz un commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y súbela. Luego **aparca**: `git switch --detach origin/main` (la rama queda en origin para quien la retome).
+1. `git status` y `git log origin/main..HEAD --oneline` en tu directorio (`../capcollector-wt/$CAP_AGENT`, o el checkout principal si eres el integrador). Si hay cambios sin commit, haz un commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y súbela. Luego **aparca**: `git switch --detach origin/main` (el integrador: `git switch main`) (la rama queda en origin para quien la retome).
 2. Identifica la historia (rama `CAP-<n>-…` o `$ARGUMENTS`). Comenta en Jira (en inglés):
    ```
    [cap-status] agent=$CAP_AGENT ticket=CAP-<n> state=<in_progress|blocked>

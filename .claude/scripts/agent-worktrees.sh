@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# One persistent worktree per agent (decided 2026-11-20, CAP-70): ../capcollector-wt/<agent>.
-# Run from Edu's main checkout. Idempotent: creates the missing agent worktrees (detached on origin/main),
+# One persistent worktree per dev agent (decided 2026-11-20, CAP-70): ../capcollector-wt/<agent>. The integrator
+# works in the main checkout itself (on `main`), as in Edu's other projects. Run from the main checkout. Idempotent: creates the missing agent worktrees (detached on origin/main),
 # gives each its own .envrc.local with CAP_AGENT set, runs npm ci, and removes the old per-story worktrees
 # (../capcollector-wt/CAP-*, integrate-*) when they are clean and pushed. Never deletes work: anything dirty
 # or unpushed is reported and left in place.
 set -euo pipefail
 
-AGENTS=(integrator dev-app dev-api dev-infra)
+AGENTS=(dev-app dev-api dev-infra)
 root="$(git rev-parse --show-toplevel)"
 wt_base="$(cd "$root/.." && pwd)/capcollector-wt"
 cd "$root"
@@ -56,4 +56,5 @@ done
 echo
 git worktree list
 echo
-echo "Start an agent:  cd $wt_base/<agent> && claude      (then /integrate, /next, /revise)"
+echo "Integrator: cd $root && claude  (CAP_AGENT=integrator in its .envrc.local) → /integrate, /next"
+echo "Dev agent:  cd $wt_base/<agent> && claude → /next, /revise"
