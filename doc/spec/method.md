@@ -34,7 +34,7 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 - Closing comment (English, parsed by the dashboard): first line `[cap-status] agent=<name> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>`, then **Done · Tests · Spec deviations · Pending · PR · Needs human**.
 
 ## Git
-- Repo `capcollector` (GitHub, private). Branch `CAP-<n>-<slug>` from `main`; one worktree per agent (`../capcollector-wt/CAP-<n>`); one story = one PR; squash merge by the integrator only; author = Edu (no agent co-author lines); `pre-push` hook blocks direct push to `main`; `gitleaks` pre-commit.
+- Repo `capcollector` (GitHub, private). Branch `CAP-<n>-<slug>` from `main`; one persistent worktree per agent (`../capcollector-wt/<agent>`, created by `.claude/scripts/agent-worktrees.sh`; each story is a branch inside it; idle = detached on `origin/main`; decided in CAP-70, 2026-11-20); one story = one PR; squash merge by the integrator only; author = Edu (no agent co-author lines); `pre-push` hook blocks direct push to `main`; `gitleaks` pre-commit.
 - Commits `CAP-<n>: <what>` in English. PR body: Done · Tests · Spec covered · Deviations.
 - Tags per milestone: `v0.1.0-v0`, `v0.2.0-v1`, `v0.5.0-v2`, `v0.8.0-v3`, `v1.0.0-v4`.
 
