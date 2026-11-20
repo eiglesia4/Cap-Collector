@@ -11,8 +11,23 @@ root="$(git rev-parse --show-toplevel)"
 wt_base="$(cd "$root/.." && pwd)/capcollector-wt"
 cd "$root"
 
+# Sets `export CAP_AGENT="<agent>"` in an .envrc.local: replaces the line, or appends it when missing.
+set_agent() {
+  local file="$1" agent="$2"
+  if grep -qE '^export CAP_AGENT=' "$file"; then
+    sed -i.bak -E "s/^export CAP_AGENT=.*/export CAP_AGENT=\"$agent\"/" "$file" && rm -f "$file.bak"
+  else
+    printf '\nexport CAP_AGENT="%s"\n' "$agent" >> "$file"
+  fi
+  echo "      $(basename "$(dirname "$file")")/.envrc.local: CAP_AGENT=$agent"
+}
+
 git fetch --prune origin
 mkdir -p "$wt_base"
+
+# 0. The main checkout belongs to the integrator.
+if [[ ! -f "$root/.envrc.local" ]]; then cp "$root/.envrc.local.example" "$root/.envrc.local"; chmod 600 "$root/.envrc.local"; fi
+set_agent "$root/.envrc.local" integrator
 
 # 1. Old per-story worktrees → removed when clean and pushed.
 git worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' | while read -r dir; do
@@ -45,10 +60,10 @@ for agent in "${AGENTS[@]}"; do
   fi
   if [[ ! -f "$dir/.envrc.local" ]]; then
     src="$root/.envrc.local"; [[ -f "$src" ]] || src="$root/.envrc.local.example"
-    sed -E "s/^export CAP_AGENT=.*/export CAP_AGENT=\"$agent\"/" "$src" > "$dir/.envrc.local"
+    cp "$src" "$dir/.envrc.local"
     chmod 600 "$dir/.envrc.local"
-    echo "      .envrc.local with CAP_AGENT=$agent"
   fi
+  set_agent "$dir/.envrc.local" "$agent"
   if command -v direnv >/dev/null; then (cd "$dir" && direnv allow . >/dev/null); fi
   if [[ ! -d "$dir/node_modules" ]]; then (cd "$dir" && npm ci --silent) && echo "      npm ci done"; fi
 done
@@ -56,5 +71,6 @@ done
 echo
 git worktree list
 echo
-echo "Integrator: cd $root && claude  (CAP_AGENT=integrator in its .envrc.local) → /integrate, /next"
-echo "Dev agent:  cd $wt_base/<agent> && claude → /next, /revise"
+echo "Start any agent with the claude-agent shell function (CLAUDE.md § Configuración):"
+echo "  cd $root && claude-agent                 → $(cat "$root/.project_name")_integrator"
+echo "  cd $wt_base/<agent> && claude-agent      → $(cat "$root/.project_name")_<agent>"
