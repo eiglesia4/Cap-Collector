@@ -132,7 +132,7 @@ direnv allow && git config core.hooksPath .githooks
 
 Arrancar cualquier agente: `cd <su directorio> && claude-agent`. La sesión se llama `<.project_name>_<AGENT_NAME>` (`CAP_integrator`, `CAP_dev-app`…) y queda visible con Remote Control en la app del móvil y en claude.ai/code. `.project_name` (`CAP`, versionado, también lo usa Warp) está en el checkout y en cada worktree; `AGENT_NAME` lo exporta `.envrc` a partir del `CAP_AGENT` de cada `.envrc.local`, que el script deja puesto (`integrator` en el checkout principal). La función, una vez en `~/.zshrc` (sirve para todos los proyectos con `.project_name`):
 
-````zsh
+```zsh
 claude-agent() {
   local root name
   root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a git repo"; return 1; }
@@ -140,5 +140,6 @@ claude-agent() {
   [[ -n $AGENT_NAME ]] || { echo "AGENT_NAME unset (direnv allow?)"; return 1; }
   claude --rc "${name}_${AGENT_NAME}" "$@"
 }
-``` El script es idempotente: vuelve a lanzarlo si falta un worktree o tras borrar uno.
-````
+```
+
+El script es idempotente: vuelve a lanzarlo si falta un worktree o tras borrar uno.
