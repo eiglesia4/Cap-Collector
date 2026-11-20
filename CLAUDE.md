@@ -130,4 +130,4 @@ direnv allow && git config core.hooksPath .githooks
 .claude/scripts/agent-worktrees.sh                  # crea ../capcollector-wt/{dev-app,dev-api,dev-infra}
 ```
 
-Arrancar el integrador: `cd <repo> && claude`. Arrancar un dev: `cd ../capcollector-wt/<agente> && claude` (su `.envrc.local` ya trae `CAP_AGENT`). El script es idempotente: vuelve a lanzarlo si falta un worktree o tras borrar uno.
+Arrancar el integrador: `cd <repo> && claude --rc CAP_integrator`. Arrancar un dev: `cd ../capcollector-wt/<agente> && claude --rc CAP_<agente>` (p. ej. `CAP_dev-app`; su `.envrc.local` ya trae `CAP_AGENT`). `--rc` (Remote Control) deja la sesión visible con ese nombre en la app del móvil y en claude.ai/code. El script es idempotente: vuelve a lanzarlo si falta un worktree o tras borrar uno.
