@@ -13,3 +13,6 @@ coverage/
 
 # CAP-60: settings backups (values of /cap/* parameters) — never committed.
 infra/.local/
+
+# Xcode-generated SPM state for the workspace (Package.resolved, configuration) — regenerated on open/build.
+app/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/

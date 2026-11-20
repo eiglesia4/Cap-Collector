@@ -5,43 +5,15 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ## [Unreleased]
 
-### Added
+### V2
 
-- CAP-58: Stats tab computed on the client (totals; bars by country, type, year or decade, status, added per month; country/type/needs-review bars open a filtered Collection) and Settings (default album, pocket/pitch per album, scans & AI cost, About).
-- CAP-65: native Sign in with Apple through an in-app Swift Capacitor plugin (AuthenticationServices, no scopes, PKCE nonce), replacing @capacitor-community/apple-sign-in in the app code.
-- CAP-64: web Sign in with Apple prepares the SDK and PKCE before the tap and opens the popup synchronously, so Safari no longer blocks it; a blocked popup and Apple error codes are shown.
-- CAP-54: print insert discs (Ø pocket − 3, mirrored backs with QR, calibration square) and an A4 portrait sheet index; print screen with scopes; a deep link opened while signed out resumes after sign-in.
-- CAP-53: place caps — next-free pocket proposal on save (Yes / Choose… / Not now), Detail "Where is it?" assign/move/swap/remove with the sheet grid in pick mode or a typed code, 409 → Swap offer, sheet long-press, "Put this one in A·3·17" from Already in collection.
-- CAP-56: App Store readiness — single 1024 px app icon and light/dark launch image rendered from SVG sources (`app/design/`), Info.plist release keys (encryption exemption, full screen, portrait), `PrivacyInfo.xcprivacy`, version 0.5.0 (1), TestFlight checklist in `app/README.md`.
+#### Added
+
 - CAP-63: `POST /scans/analyse` runs the ADR-004 brand + variant re-check from `known.brand`/`known.variant` when `useAi` is false (external-AI answers get the server-side step 3; adapter never called).
-- CAP-52: Albums screen (list, create/edit with next free letter, 409 inline) and album sheet view (`cols × rows` grid mirroring the physical sheet, sheet navigation, thumbnails or brand placeholders); tap pocket → Detail, empty pocket → scan pre-assigned via `CapInput.location`; `A·3` in search opens the sheet.
-- CAP-59: `caps-location-put` gets `images-get` (it returns `{ cap, swapped? }` with presigned `imageUrls`, CAP-50);
-  T-infra-027 now derives the Cap-returning handlers from the API sources (`withImageUrls`).
 - CAP-45: Exchange screen — `request.zip` built on the client (single and batch), Share/Download, Copy prompt/JSON, pending list with status chips, upload answer (format/version check, requestId match or attach to a cap, dHash warning, ignored fields), continue to review with `source: external:<provider>`.
-- CAP-62: HTTP API CORS allows any origin (`*`) with `allowCredentials: false` — API Gateway rejected
-  `capacitor://localhost` ("Invalid format for origin") and the session is a bearer token, not a cookie (architect
-  decision 2026-11-09, ADR-008 note); the API no longer imports `WebUrl`, so domains need no special deploy order.
-  `app_origins` now feeds only the images bucket CORS (explicit list) and accepts `http(s)://host[:port]` or exactly
-  `capacitor://localhost`. `HttpApi` keeps its logical ID: CORS updates in place (T-infra-042).
-- CAP-60: the stacks never create the six `/cap/<inst>/<stage>/*` SSM settings, they only read them (fixes the
-  `cap-naeva-dev-data` "already exists" deploy failure); `settings:bootstrap` / `settings:show` / `settings:restore`
-  (`infra/lib/settings.ts`, AWS CLI, values never printed nor in argv); migration runbook in `infra/README.md`
-  § Settings; `infra/.local/` gitignored (T-infra-039…041).
 - CAP-43: AI review screen — form in `ai-prefilled` mode with unsure fields (confidence < 0.7) highlighted, Save with `source: bedrock:<aiModel>`, Ask again with `known` edits, Add underside, Re-identify from Detail with per-field Accept.
 - CAP-42: "Already in collection" screen — reason line, new vs stored photo, opt-in field diff (nothing ticked), "+1 quantity", "Replace top photo" (with its `dhash`), PATCH of only the ticked changes, variant path with `variantOf`, discard.
-- CAP-50: cap location API — `PUT /caps/{id}/location` in one transaction (cap, GSI1, `LOCK#`, history) with `swap`, `DELETE` to clear (idempotent), location accepted on `POST /caps`; 409 names the occupant, 404 unknown letter, 422 geometry or kind mismatch.
-- CAP-57: backups — AWS Backup vault + plan `cap-<inst>-<stage>` with a daily 03:00 UTC rule on the table
-  (`ops.backupRetentionDays`, naeva.dev 35; no cold storage; vault follows the stack's removal policy); images bucket
-  expires noncurrent versions after 90 days (replaces their IA transition) and keeps the 7-day multipart abort;
-  restore runbook in `infra/README.md` § Backups (T-infra-036…038).
 - CAP-41: scan screen and capture flow — circular guide, Shoot / Library (web: Upload photo), optional underside, upload, dHash, `POST /scans/analyse`, routing to the three outcomes, 503 sheet, "Use AI identification" setting; manual entry pre-filled from a scan.
-- CAP-55: app dependencies for client-side insert-card PDFs — `pdf-lib` ^1.17.1, `qrcode` ^1.5.4 (+ `@types/qrcode` dev); used by CAP-54.
-- CAP-51: operations — required `ops` config (`budgetEur`, `logRetentionDays`; naeva.dev 10 / 30); alarms on the
-  alerts topic for API 5xx (≥ 5/5 min), Lambda errors (≥ 3/5 min per function, `MAX(METRICS())` in groups of ≤ 9),
-  DynamoDB read + write throttles and authorizer throttles; monthly AWS Budget filtered by `project=EIM_CAP` (80 %
-  actual, 100 % forecast, e-mail under `HasAlertEmail`); configured retention on every log group, CDK's S3 auto-delete
-  provider included (`LogRetention`); the four mandatory tags on CDK's raw provider resources (T-infra-032…035).
-- CAP-49: Albums API — list / create / patch (GRANDE 6 × 7 defaults, 409 on taken letter, kind change or shrink below an occupied pocket), sheet view over GSI1 and next free pocket; `DynamoAlbumRepository` with conditional puts.
 - CAP-36: client dHash (64-bit, BT.601 luma, 9 × 8 area average, MSB-first hex) of the square inscribed in the cap circle, and the circular crop of the capture photo (ADR-004 §1).
 - CAP-39: Bedrock vision adapter (ADR-004 §3, ADR-008 §7) — Converse with `EXCHANGE_INSTRUCTIONS`, top/underside
   WebP and the field schema + `known` (600 tokens, temperature 0, 8 s); the answer goes through the exchange-upload
@@ -64,9 +36,6 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
   default 10 → `duplicate` with the AI never called), `useAi=false` → `unidentified`, `VisionAdapter` interface with a
   stub (unavailable → Scan stored, 503), brand + variant re-check over GSI2; every call stores a `Scan`; `GET /scans`
   newest first with cursor (T-api-042…050).
-- CAP-31: the share link is the HTTPS mirror `<VITE_WEB_URL>/cap/<capId>` on iPhone and Mac (amended ADR-008 §5);
-  new optional `VITE_WEB_URL` (bare https origin, validated at load); without it the web falls back to
-  `location.origin` and the iPhone shares text only; `collectors://` share branch removed (T-app-060, T-app-061).
 - CAP-40: infra for scans — required `ai: { modelId, dhashThreshold }` in `infra/config/*.json` (naeva/dev:
   `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, threshold 10); new grant `bedrock` (`bedrock:InvokeModel` on the
   configured model / inference profile only) for `scans-analyse`, which also gets `images-get`, `CAP_BEDROCK_MODEL_ID`,
@@ -74,6 +43,62 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
   `cap-<inst>-<stage>-alerts` topic, e-mail from SSM `alert-email` (T-infra-028…031).
 - CAP-32: `@capacitor/app` 8.1.2 in `app` (same major as `@capacitor/core`) for `collectors://` deep links (CAP-33);
   SPM `Package.swift` synced; the root Capacitor import boundary already covers `@capacitor/*`.
+
+### V3
+
+#### Added
+
+- CAP-65: native Sign in with Apple through an in-app Swift Capacitor plugin (AuthenticationServices, no scopes, PKCE nonce), replacing @capacitor-community/apple-sign-in in the app code.
+- CAP-54: print insert discs (Ø pocket − 3, mirrored backs with QR, calibration square) and an A4 portrait sheet index; print screen with scopes; a deep link opened while signed out resumes after sign-in.
+- CAP-53: place caps — next-free pocket proposal on save (Yes / Choose… / Not now), Detail "Where is it?" assign/move/swap/remove with the sheet grid in pick mode or a typed code, 409 → Swap offer, sheet long-press, "Put this one in A·3·17" from Already in collection.
+- CAP-56: App Store readiness — single 1024 px app icon and light/dark launch image rendered from SVG sources (`app/design/`), Info.plist release keys (encryption exemption, full screen, portrait), `PrivacyInfo.xcprivacy`, version 0.5.0 (1), TestFlight checklist in `app/README.md`.
+- CAP-52: Albums screen (list, create/edit with next free letter, 409 inline) and album sheet view (`cols × rows` grid mirroring the physical sheet, sheet navigation, thumbnails or brand placeholders); tap pocket → Detail, empty pocket → scan pre-assigned via `CapInput.location`; `A·3` in search opens the sheet.
+- CAP-59: `caps-location-put` gets `images-get` (it returns `{ cap, swapped? }` with presigned `imageUrls`, CAP-50);
+  T-infra-027 now derives the Cap-returning handlers from the API sources (`withImageUrls`).
+- CAP-50: cap location API — `PUT /caps/{id}/location` in one transaction (cap, GSI1, `LOCK#`, history) with `swap`, `DELETE` to clear (idempotent), location accepted on `POST /caps`; 409 names the occupant, 404 unknown letter, 422 geometry or kind mismatch.
+- CAP-57: backups — AWS Backup vault + plan `cap-<inst>-<stage>` with a daily 03:00 UTC rule on the table
+  (`ops.backupRetentionDays`, naeva.dev 35; no cold storage; vault follows the stack's removal policy); images bucket
+  expires noncurrent versions after 90 days (replaces their IA transition) and keeps the 7-day multipart abort;
+  restore runbook in `infra/README.md` § Backups (T-infra-036…038).
+- CAP-55: app dependencies for client-side insert-card PDFs — `pdf-lib` ^1.17.1, `qrcode` ^1.5.4 (+ `@types/qrcode` dev); used by CAP-54.
+- CAP-51: operations — required `ops` config (`budgetEur`, `logRetentionDays`; naeva.dev 10 / 30); alarms on the
+  alerts topic for API 5xx (≥ 5/5 min), Lambda errors (≥ 3/5 min per function, `MAX(METRICS())` in groups of ≤ 9),
+  DynamoDB read + write throttles and authorizer throttles; monthly AWS Budget filtered by `project=EIM_CAP` (80 %
+  actual, 100 % forecast, e-mail under `HasAlertEmail`); configured retention on every log group, CDK's S3 auto-delete
+  provider included (`LogRetention`); the four mandatory tags on CDK's raw provider resources (T-infra-032…035).
+- CAP-49: Albums API — list / create / patch (GRANDE 6 × 7 defaults, 409 on taken letter, kind change or shrink below an occupied pocket), sheet view over GSI1 and next free pocket; `DynamoAlbumRepository` with conditional puts.
+
+#### Changed
+
+- CAP-66: removed `@capacitor-community/apple-sign-in` (pinned Capacitor 7) and re-synced iOS; `CapApp-SPM/Package.swift` now resolves on Capacitor 8.6.0 with the in-app plugin from CAP-65.
+
+### V4
+
+#### Added
+
+- CAP-58: Stats tab computed on the client (totals; bars by country, type, year or decade, status, added per month; country/type/needs-review bars open a filtered Collection) and Settings (default album, pocket/pitch per album, scans & AI cost, About).
+
+## [v0.2.0-v1] – 2026-11-13
+
+V1: sign in, catalogue and browse on the web (Mac) and iPhone. Tagged on the `main` of 2026-11-13 (946af60):
+V1 and V2–V4 merges are interleaved, so the tagged tree also contains the V2–V4 work listed under
+[Unreleased]. Includes the V0 foundation (CAP-11…13); `v0.1.0-v0` was never tagged.
+
+### Added
+
+- CAP-64: web Sign in with Apple prepares the SDK and PKCE before the tap and opens the popup synchronously, so Safari no longer blocks it; a blocked popup and Apple error codes are shown.
+- CAP-62: HTTP API CORS allows any origin (`*`) with `allowCredentials: false` — API Gateway rejected
+  `capacitor://localhost` ("Invalid format for origin") and the session is a bearer token, not a cookie (architect
+  decision 2026-11-09, ADR-008 note); the API no longer imports `WebUrl`, so domains need no special deploy order.
+  `app_origins` now feeds only the images bucket CORS (explicit list) and accepts `http(s)://host[:port]` or exactly
+  `capacitor://localhost`. `HttpApi` keeps its logical ID: CORS updates in place (T-infra-042).
+- CAP-60: the stacks never create the six `/cap/<inst>/<stage>/*` SSM settings, they only read them (fixes the
+  `cap-naeva-dev-data` "already exists" deploy failure); `settings:bootstrap` / `settings:show` / `settings:restore`
+  (`infra/lib/settings.ts`, AWS CLI, values never printed nor in argv); migration runbook in `infra/README.md`
+  § Settings; `infra/.local/` gitignored (T-infra-039…041).
+- CAP-31: the share link is the HTTPS mirror `<VITE_WEB_URL>/cap/<capId>` on iPhone and Mac (amended ADR-008 §5);
+  new optional `VITE_WEB_URL` (bare https origin, validated at load); without it the web falls back to
+  `location.origin` and the iPhone shares text only; `collectors://` share branch removed (T-app-060, T-app-061).
 - CAP-25: cap form (SCREENS.md #5, ADR-003 modes `empty | edit`) on `/new` and `/cap/:id/edit` — brand autocomplete,
   ISO country search, enum selects, tag chips, inline `CapInput` validation and 422 `Problem.errors[]` per field;
   photos resized client-side to WebP ≤ 1024 px and uploaded via presigned PUT with retry; `POST /caps` or a PATCH with
@@ -160,7 +185,6 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 ### Changed
 
-- CAP-66: removed `@capacitor-community/apple-sign-in` (pinned Capacitor 7) and re-synced iOS; `CapApp-SPM/Package.swift` now resolves on Capacitor 8.6.0 with the in-app plugin from CAP-65.
 - CAP-47 (method): after rebasing a `CAP-*` branch, push with `git push --force-with-lease origin CAP-<n>-<slug>`
   (never plain `--force`, never `main`); `/revise` keeps both sides of additive conflicts (`app.css`, `CHANGELOG.md`)
   and regenerates `TEST.md` with `npm run catalog`.
