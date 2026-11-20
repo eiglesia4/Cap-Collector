@@ -70,6 +70,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-67: `settings:bootstrap`/`restore` pass the put-parameter input through a private temp file (mkdtemp, 0600, removed in `finally`) instead of `--cli-input-json file:///dev/stdin`, which failed on macOS; README notes bootstrap comes before the first deploy.
 - CAP-66: removed `@capacitor-community/apple-sign-in` (pinned Capacitor 7) and re-synced iOS; `CapApp-SPM/Package.swift` now resolves on Capacitor 8.6.0 with the in-app plugin from CAP-65.
 
 ### V4
