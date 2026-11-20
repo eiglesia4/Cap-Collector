@@ -155,7 +155,6 @@ describe('Operations', () => {
     expect(budgets).toHaveLength(1);
     const props = budgets[0]?.[1].Properties ?? {};
     expect(props.Budget).toEqual({
-      BudgetName: 'cap-naeva-dev-monthly',
       BudgetType: 'COST',
       TimeUnit: 'MONTHLY',
       BudgetLimit: { Amount: config.ops.budgetEur, Unit: 'USD' },
@@ -184,6 +183,19 @@ describe('Operations', () => {
       { notificationType: 'ACTUAL', threshold: 80 },
       { notificationType: 'FORECASTED', threshold: 100 },
     ]);
+  });
+
+  it('[T-infra-045] monthly budget survives replacement: no fixed BudgetName, Name tag and MonthlyBudgetName output instead', () => {
+    const { api } = templates();
+    const budgets = resources(api).filter(([, r]) => r.Type === 'AWS::Budgets::Budget');
+    expect(budgets).toHaveLength(1);
+    const [id, budget] = budgets[0] ?? ['', { Type: '' }];
+    const props = budget.Properties ?? {};
+    // A fixed name collides when CloudFormation creates the replacement before deleting the old budget (CAP-69).
+    expect(props.Budget).not.toHaveProperty('BudgetName');
+    expect(props.Budget).toMatchObject({ TimeUnit: 'MONTHLY', CostFilters: { TagKeyValue: [BUDGET_TAG_FILTER] } });
+    expect(props.ResourceTags).toContainEqual({ Key: 'Name', Value: 'cap-naeva-dev-monthly' });
+    expect(api.toJSON().Outputs).toHaveProperty('MonthlyBudgetName.Value', ref(id));
   });
 
   it('[T-infra-035] tags: every taggable resource in both stacks carries project, UserName, installation, stage', () => {

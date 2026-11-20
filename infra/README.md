@@ -114,18 +114,29 @@ ARN before the parameters are removed.
 Every alarm notifies the topic `cap-<inst>-<stage>-alerts`, so it reaches the `alert-email` above (nothing is sent
 while it is `unset`). Missing data never fires (`notBreaching`). Thresholds live in [`lib/ops.ts`](lib/ops.ts).
 
-| Alarm / budget                                    | Fires when                                                                                            | Look first at                                             |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `cap-<inst>-<stage>-api-5xx`                      | the HTTP API returns ≥ 5 `5xx` in 5 min                                                               | the log groups of the functions behind the failing routes |
-| `cap-<inst>-<stage>-lambda-errors-<n>`            | any one function of that group has ≥ 3 `Errors` in 5 min (groups of ≤ 9; the description lists them)  | that function's log group                                 |
-| `cap-<inst>-<stage>-dynamodb-throttles`           | the table records ≥ 1 read or write throttle event in 5 min                                           | a hot partition or a runaway client (on-demand table)     |
-| `cap-<inst>-<stage>-authorizer-throttles`         | the authorizer is throttled at least once in 5 min                                                    | account Lambda concurrency, a client retry loop           |
-| `cap-<inst>-<stage>-bedrock-invocations` (CAP-40) | more than 300 Bedrock invocations of `ai.modelId` in a day                                            | Scan items: is the dHash check being skipped?             |
-| AWS Budget `cap-<inst>-<stage>-monthly`           | spend tagged `project=EIM_CAP` reaches 80 % of `ops.budgetEur` (actual) or is forecast to reach 100 % | Cost Explorer filtered by `project`                       |
+| Alarm / budget                                      | Fires when                                                                                            | Look first at                                             |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `cap-<inst>-<stage>-api-5xx`                        | the HTTP API returns ≥ 5 `5xx` in 5 min                                                               | the log groups of the functions behind the failing routes |
+| `cap-<inst>-<stage>-lambda-errors-<n>`              | any one function of that group has ≥ 3 `Errors` in 5 min (groups of ≤ 9; the description lists them)  | that function's log group                                 |
+| `cap-<inst>-<stage>-dynamodb-throttles`             | the table records ≥ 1 read or write throttle event in 5 min                                           | a hot partition or a runaway client (on-demand table)     |
+| `cap-<inst>-<stage>-authorizer-throttles`           | the authorizer is throttled at least once in 5 min                                                    | account Lambda concurrency, a client retry loop           |
+| `cap-<inst>-<stage>-bedrock-invocations` (CAP-40)   | more than 300 Bedrock invocations of `ai.modelId` in a day                                            | Scan items: is the dHash check being skipped?             |
+| AWS Budget tagged `Name=cap-<inst>-<stage>-monthly` | spend tagged `project=EIM_CAP` reaches 80 % of `ops.budgetEur` (actual) or is forecast to reach 100 % | Cost Explorer filtered by `project`                       |
 
 The budget filters on the **cost allocation tag** `project`: activate it once in Billing → Cost allocation tags (it
 takes up to 24 h to apply), or the budget sees no spend. Its two e-mail notifications follow the same rule as the
 topic: they exist only while `alert-email` is not `unset`.
+
+The budget has **no fixed name** (CAP-69): CloudFormation generates it, because setting or changing `alert-email`
+(and most other budget changes) **replaces** the budget, creating the new one before deleting the old, and a fixed
+name collides. Find it in Billing → Budgets by the `Name` tag `cap-<inst>-<stage>-monthly`, or read the stack output:
+
+```bash
+aws cloudformation describe-stacks --profile <profile> --stack-name cap-<inst>-<stage>-api \
+  --query "Stacks[0].Outputs[?OutputKey=='MonthlyBudgetName'].OutputValue" --output text
+```
+
+Each replacement starts a fresh budget (its history in Billing restarts); nothing else depends on it.
 
 Log groups: every Lambda keeps its logs `ops.logRetentionDays` (config). CDK's own helper Lambda for emptying the
 buckets of `dev` gets the same retention through a `LogRetention` resource, which also works on a stack deployed

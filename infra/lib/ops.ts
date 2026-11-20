@@ -10,6 +10,7 @@
 import {
   Aws,
   type CfnCondition,
+  CfnOutput,
   CfnResource,
   CustomResourceProviderBase,
   Duration,
@@ -163,7 +164,14 @@ export interface MonthlyBudgetProps {
   readonly tags: Readonly<Record<string, string>>;
 }
 
-/** Monthly cost budget filtered by `project=EIM_CAP`, e-mail at 80 % actual / 100 % forecast. */
+/**
+ * Monthly cost budget filtered by `project=EIM_CAP`, e-mail at 80 % actual / 100 % forecast.
+ *
+ * No `budgetName` (CAP-69): most `AWS::Budgets::Budget` changes, the notifications among them (`alert-email` set or
+ * changed), need replacement, and CloudFormation creates the new budget before deleting the old one, so a fixed name
+ * collides ("same name but a different internalId"). The generated name is found through the `Name` tag
+ * (`cap-<inst>-<stage>-monthly`) or the stack output `MonthlyBudgetName`.
+ */
 export function addMonthlyBudget(stack: Stack, props: MonthlyBudgetProps): CfnBudget {
   // Raw CloudFormation casing: values inside Fn.conditionIf are not converted by the L1 (synth validation catches it).
   const notifications = BUDGET_NOTIFICATIONS.map(({ notificationType, threshold }) => ({
@@ -175,9 +183,8 @@ export function addMonthlyBudget(stack: Stack, props: MonthlyBudgetProps): CfnBu
     },
     Subscribers: [{ SubscriptionType: 'EMAIL', Address: props.alertEmail }],
   }));
-  return new CfnBudget(stack, 'MonthlyBudget', {
+  const budget = new CfnBudget(stack, 'MonthlyBudget', {
     budget: {
-      budgetName: resourceName(props.deployment, 'monthly'),
       budgetType: 'COST',
       timeUnit: 'MONTHLY',
       budgetLimit: { amount: props.budgetEur, unit: 'USD' },
@@ -185,8 +192,15 @@ export function addMonthlyBudget(stack: Stack, props: MonthlyBudgetProps): CfnBu
     },
     // Same pattern as the alerts subscription (SPEC-GAP CAP-40): one template, decided at deploy time.
     notificationsWithSubscribers: Fn.conditionIf(props.hasAlertEmail.logicalId, notifications, Aws.NO_VALUE),
-    resourceTags: Object.entries(props.tags).map(([key, value]) => ({ key, value })),
+    resourceTags: Object.entries({ ...props.tags, Name: resourceName(props.deployment, 'monthly') }).map(
+      ([key, value]) => ({ key, value }),
+    ),
   });
+  new CfnOutput(stack, 'MonthlyBudgetName', {
+    value: budget.ref,
+    description: 'Generated name of the monthly AWS Budget (Billing → Budgets; tag Name = cap-<inst>-<stage>-monthly)',
+  });
+  return budget;
 }
 
 /** The raw `Handler` and `Role` resources of a CDK custom-resource provider (e.g. S3 auto-delete on `dev`). */
