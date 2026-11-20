@@ -1,9 +1,11 @@
 ---
-description: Coge la siguiente historia Ready de Jira CAP de tu territorio, la implementa contra la spec en su propio worktree y abre el PR
+description: Coge la siguiente historia Ready de Jira CAP de tu territorio, la implementa contra la spec en el worktree del agente y abre el PR
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, mcp__atlassian__*, mcp__jira__*
 ---
 
 Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en orden y no te saltes ninguno. Tu identidad es `$CAP_AGENT` (si no está definido, para y pídelo).
+
+**Tu worktree (fijo).** Trabajas siempre en `../capcollector-wt/$CAP_AGENT` (lo crea Edu con `.claude/scripts/agent-worktrees.sh`). Antes de nada comprueba que `basename "$(git rev-parse --show-toplevel)"` es `$CAP_AGENT`; si no, **para** y dilo. Nunca trabajes en el checkout principal (es de Edu) ni en el worktree de otro agente. En reposo tu worktree está en **detached HEAD sobre `origin/main`** y limpio.
 
 1. **Elegir la historia.** Tu etiqueta de territorio sale de `$CAP_AGENT`: `dev-app` → `area-app` · `dev-api` → `area-api` · `dev-infra` → `area-infra` · `integrator` → `area-integration` (cualquier otro valor: para y dilo). Con el MCP de Atlassian (site `naevatec.atlassian.net`), busca:
    `project = CAP AND status = "Ready" AND issuetype != Epic AND labels = <tu etiqueta> ORDER BY Rank ASC`
@@ -16,10 +18,11 @@ Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en ord
 2. **Leer la especificación referenciada.** La historia cita secciones ("Spec: ADR-004; specs/exchange.md § Flow"). Ábrelas en `doc/spec/` (y en `$CAP_DOCS` si hay versión más nueva; si difiere, anótalo para el comentario final). Lee `CLAUDE.md` (invariantes) y `OWNERSHIP.md` (tus rutas). **No implementes desde el resumen de la historia.**
 
 3. **Arrancar.** Pasa la historia a "In Progress" y comenta en Jira:
-   `[cap-status] agent=$CAP_AGENT ticket=CAP-<n> state=in_progress` + una línea con el worktree.
-   Crea rama y worktree **desde `main`**:
-   `git fetch origin && git worktree add -b CAP-<n>-<slug> ../capcollector-wt/CAP-<n> origin/main && cd ../capcollector-wt/CAP-<n> && npm ci && git push -u origin CAP-<n>-<slug>`.
-   Nunca trabajes en el directorio principal ni en un worktree de otro agente.
+   `[cap-status] agent=$CAP_AGENT ticket=CAP-<n> state=in_progress` + una línea con la rama (`CAP-<n>-<slug>` en `capcollector-wt/$CAP_AGENT`).
+   Crea la rama **desde `main` en tu propio worktree** (no se crea ningún worktree nuevo):
+   `git status --porcelain` debe salir vacío (si no: es trabajo de otra historia → `/handoff` y para).
+   `git fetch --prune origin && git switch -c CAP-<n>-<slug> --no-track origin/main && npm ci && git push -u origin CAP-<n>-<slug>`.
+   Limpieza de paso: borra las ramas locales ya mergeadas (`git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -D`).
 
 4. **Implementar, paso a paso.** Solo en tus rutas de `OWNERSHIP.md`. Si la historia te lleva fuera de ellas (incluido añadir una dependencia a un `package.json`), no edites: anótalo en **Pending** y, si bloquea, etiqueta `needs-human`. Para cada paso: código → tests con ID `[T-<comp>-nnn]` → `npm test` y `npm run lint && npm run typecheck` → `npm run catalog` → commit `CAP-<n>: <what>` (inglés). Los criterios de aceptación son tests o comprobaciones explícitas.
 
@@ -41,4 +44,5 @@ Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en ord
 
    Pasa la historia a "In Review". No la pases a Done: lo hace el integrador al mergear. Si "Needs human: yes", añade la etiqueta `needs-human`.
 
-8. Resume al usuario en cinco líneas: historia, rama/worktree, PR, tests, desviaciones. Luego **pregunta si continúas con la siguiente** (WIP: no cojas otra si ya tienes una en In Review sin revisar).
+8. **Aparca tu worktree**: todo commiteado y empujado, luego `git switch --detach origin/main`. Así el integrador (u otra sesión) puede coger la rama, y tu siguiente `/next` arranca limpio.
+9. Resume al usuario en cinco líneas: historia, rama, PR, tests, desviaciones. Luego **pregunta si continúas con la siguiente** (WIP: no cojas otra si ya tienes una en In Review sin revisar).

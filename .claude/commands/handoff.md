@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Grep, Glob, mcp__atlassian__*, mcp__jira__*
 
 Deja el trabajo en un estado del que cualquiera pueda continuar:
 
-1. `git status` y `git log origin/main..HEAD --oneline` en tu worktree. Si hay cambios sin commit, haz un commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y súbela.
+1. `git status` y `git log origin/main..HEAD --oneline` en tu worktree (`../capcollector-wt/$CAP_AGENT`). Si hay cambios sin commit, haz un commit WIP en inglés `CAP-<n>: WIP — <what remains>` en tu rama (nunca en `main`) y súbela. Luego **aparca**: `git switch --detach origin/main` (la rama queda en origin para quien la retome).
 2. Identifica la historia (rama `CAP-<n>-…` o `$ARGUMENTS`). Comenta en Jira (en inglés):
    ```
    [cap-status] agent=$CAP_AGENT ticket=CAP-<n> state=<in_progress|blocked>
@@ -16,4 +16,4 @@ Deja el trabajo en un estado del que cualquiera pueda continuar:
    **Needs human:** no | yes — why.
    ```
 3. Si está bloqueada por diseño: crea una Story en CAP con parent EP-01 (CAP-1), etiqueta `design`, enlázala en el comentario y pon la historia en "Blocked" con `needs-human`.
-4. Resume al usuario en tres líneas: historia, rama/worktree, siguiente paso.
+4. Resume al usuario en tres líneas: historia, rama, siguiente paso.
