@@ -129,7 +129,13 @@ interface Call {
 
 /** Settings over a fake API answering `/albums`, `PATCH /albums/{id}` and `/scans` pages. */
 async function settings(
-  options: { albums?: unknown[]; scanPages?: unknown[][]; store?: Record<string, string>; patch?: 'fail' } = {},
+  options: {
+    albums?: unknown[];
+    scanPages?: unknown[][];
+    store?: Record<string, string>;
+    patch?: 'fail';
+    now?: Date;
+  } = {},
 ) {
   const calls: Call[] = [];
   const albums = options.albums ?? [wireAlbum('A', 1, { pocketMm: 33, pitchMm: 36 }), wireAlbum('B', 2)];
@@ -153,7 +159,9 @@ async function settings(
   });
   const shell = await shellContext({ api: fakeApi({ request: request as ApiClient['request'] }) });
   for (const [k, v] of Object.entries(options.store ?? {})) await shell.platform.store.set(k, v);
-  const ctx = { ...shell, navigate: vi.fn(), skipSignIn: vi.fn() };
+  // The screen reads the pinned clock (CAP-71): the fixtures are relative to NOW, never to the wall clock.
+  const clock = options.now ?? NOW;
+  const ctx = { ...shell, navigate: vi.fn(), skipSignIn: vi.fn(), now: () => clock };
   const el = SettingsScreen(ctx, matchRoute('/settings') ?? (undefined as never));
   document.body.replaceChildren(el);
   for (let i = 0; i < 5; i++) await flush();
@@ -286,6 +294,27 @@ describe('settings (CAP-58)', () => {
     }
     await vi.waitFor(() =>
       expect(empty.el.querySelector('.scan-report')?.textContent).toContain(t('settings.scans.empty')),
+    );
+  });
+
+  it('[T-app-124] the Scans & AI cost week follows the screen clock, not the wall clock: 30 days later it is empty and paging stops at page 1', async () => {
+    const recent = Array.from({ length: 60 }, (_, i) =>
+      wireScan(i, new Date(NOW.getTime() - (i + 1) * 3_600_000).toISOString(), {
+        aiCalled: true,
+        costEstimateUsd: 0.0025,
+      }),
+    );
+    const old = [wireScan(99, '2026-10-01T10:00:00.000Z', { aiCalled: true, costEstimateUsd: 5 })];
+    const later = new Date(NOW.getTime() + 30 * 24 * 3_600_000);
+    const { el, calls } = await settings({ scanPages: [recent, old], now: later });
+    const details = el.querySelector<HTMLDetailsElement>('details.settings-scans');
+    if (!details) throw new Error('no scans section');
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(() => expect(el.querySelectorAll('.scan-row')).toHaveLength(50));
+    expect(calls.filter((c) => c.path.startsWith('/scans')).map((c) => c.path)).toEqual(['/scans?limit=200']);
+    expect(el.querySelector('[data-week-cost]')?.textContent).toBe(
+      t('settings.scans.week', { cost: '$0.00', calls: '0', scans: '0' }),
     );
   });
 });

@@ -7,7 +7,7 @@ import type { CapType } from '@capcollector/shared';
 
 import { collectionFilterPath, type CollectionFilter } from '../collection/query.js';
 import { ScreenHeader } from '../components/screen-header.js';
-import type { Screen } from '../context.js';
+import { clockOf, type Screen } from '../context.js';
 import { countryName } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { TYPE_LABEL } from '../i18n/labels.js';
@@ -147,7 +147,7 @@ export const StatsScreen: Screen = (ctx) => {
       body.replaceChildren(h('p', { class: 'muted', attrs: { role: 'status' } }, t('stats.loading')));
     try {
       const caps = await statsCaps(ctx.api, again);
-      body.replaceChildren(...StatsView(collectionStats(caps, new Date())));
+      body.replaceChildren(...StatsView(collectionStats(caps, clockOf(ctx))));
     } catch {
       body.replaceChildren(
         h('p', { attrs: { role: 'alert' } }, t('stats.failed')),
