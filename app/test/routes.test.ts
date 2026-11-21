@@ -20,6 +20,7 @@ describe('routes', () => {
       '/albums',
       '/albums/:albumId/sheets/:sheet',
       '/albums/:albumId/print',
+      '/albums/layout',
       '/exchange',
       '/settings',
       '/sign-in',

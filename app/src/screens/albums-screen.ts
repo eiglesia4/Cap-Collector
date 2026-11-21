@@ -4,7 +4,8 @@
 // sheet: letter (the next free one proposed), name, kind, sheets/cols/rows (Leuchtturm GRANDE 6 × 7 by default),
 // optional pocket/pitch mm. `POST /albums` (409 → the letter is taken, inline) or `PATCH /albums/{id}` with the changed
 // fields only (409 → shrinking below an occupied pocket / renaming an album that holds caps). Tapping an album opens
-// its sheet 1 (album-sheet-screen.ts). Styles: styles/albums.css.
+// its sheet 1 (album-sheet-screen.ts). "Plan layout…" (CAP-75) opens the initial layout of the unplaced caps
+// (album-layout-screen.ts). Styles: styles/albums.css.
 import { Album, type AlbumInput } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
@@ -275,6 +276,14 @@ export const AlbumsScreen: Screen = (ctx) => {
     ScreenHeader(t('albums.title'), h('span', { class: 'header-actions' }, add, close)),
     list,
     message,
+    h(
+      'a',
+      {
+        class: 'button button--secondary album-plan',
+        attrs: { href: pathFor('albumLayout'), 'data-link': true, 'data-action': 'plan-layout' },
+      },
+      t('layout.open'),
+    ),
   );
 
   function row(album: Album): HTMLElement {

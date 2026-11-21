@@ -346,3 +346,75 @@ button.where-row {
   flex-direction: column;
   gap: var(--space-2);
 }
+
+/* Plan layout (CAP-75, physical-link.md § Initial layout): album order badges, planned sheets in the sheet-view grid
+   (planned caps in copper, pockets already taken dimmed), group labels per row, apply progress. */
+
+.album-plan {
+  margin-top: var(--space-4);
+}
+
+.layout-albums {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.layout-order {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  background: var(--color-ink);
+  color: var(--color-ground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.layout-order:empty {
+  visibility: hidden;
+}
+
+.layout-totals {
+  font-variant-numeric: tabular-nums;
+}
+
+.layout-sheet {
+  margin-bottom: var(--space-6);
+}
+
+.layout-groups {
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  font-size: 13px;
+  list-style: none;
+}
+
+.layout-grid .pocket--planned {
+  background: var(--color-accent);
+}
+
+.layout-grid .pocket--occupied {
+  opacity: 0.45;
+}
+
+.layout-grid .pocket[data-group] {
+  box-shadow: inset 3px 0 0 var(--color-ground);
+}
+
+.layout-grid .pocket-link {
+  cursor: default;
+}
+
+.layout-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.layout-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--color-accent);
+}

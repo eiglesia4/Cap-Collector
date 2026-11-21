@@ -2,13 +2,15 @@
 // album): every live cap placed in the album is read with `GET /caps` (no album filter in the contract, so all pages
 // via collection/all-caps.ts, filtered here), then narrowed to a scope. "Since last print" compares `updatedAt` (it
 // moves on placement, moves and edits) with a per-album timestamp kept in `platform.store`, set by "Mark as printed".
-// The index pages cover the sheets that hold a printed disc, each with all its caps. DOM-free.
+// The index pages cover the sheets that hold a printed disc, each with all its caps. CAP-75 adds "these sheets": the
+// sheets an initial layout just filled (physical-link.md § Initial layout: "print discs + sheet index for the planned
+// sheets"). DOM-free.
 import type { Album, AlbumLocation, Cap } from '@capcollector/shared';
 
 import type { KeyValueStore } from '../platform/platform.js';
 import type { IndexSheet } from './inserts.js';
 
-export type PrintScope = 'sheet' | 'since' | 'album';
+export type PrintScope = 'sheet' | 'since' | 'album' | 'sheets';
 
 export const lastPrintKey = (albumId: string) => `print.last.${albumId}`;
 
@@ -40,11 +42,17 @@ export interface ScopeOptions {
   readonly sheet: number;
   /** Last "Mark as printed"; null = never, so everything counts as new. */
   readonly since: Date | null;
+  /** The planned sheets of the "these sheets" scope (CAP-75). */
+  readonly sheets?: readonly number[];
 }
 
 /** The discs of a scope, in sheet / pocket order. */
 export function scopeCaps(inAlbum: readonly Placed[], scope: PrintScope, options: ScopeOptions): Placed[] {
   if (scope === 'sheet') return inAlbum.filter((c) => c.location.sheet === options.sheet);
+  if (scope === 'sheets') {
+    const chosen = new Set(options.sheets ?? []);
+    return inAlbum.filter((c) => chosen.has(c.location.sheet));
+  }
   if (scope === 'since') {
     const since = options.since;
     return since === null ? [...inAlbum] : inAlbum.filter((c) => new Date(c.updatedAt) > since);
@@ -52,15 +60,20 @@ export function scopeCaps(inAlbum: readonly Placed[], scope: PrintScope, options
   return [...inAlbum];
 }
 
-/** Index pages: every sheet holding one of `discs` — or the chosen sheet for the sheet scope — with all its caps. */
+/**
+ * Index pages: every sheet holding one of `discs` — plus the chosen sheet for the sheet scope and every planned sheet
+ * for "these sheets" — with all its caps.
+ */
 export function indexSheets(
   inAlbum: readonly Placed[],
   discs: readonly Placed[],
   scope: PrintScope,
   sheet: number,
+  planned: readonly number[] = [],
 ): IndexSheet[] {
   const numbers = new Set(discs.map((c) => c.location.sheet));
   if (scope === 'sheet') numbers.add(sheet);
+  if (scope === 'sheets') for (const n of planned) numbers.add(n);
   return [...numbers]
     .sort((a, b) => a - b)
     .map((n) => ({ sheet: n, caps: inAlbum.filter((c) => c.location.sheet === n) }));
