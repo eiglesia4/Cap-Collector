@@ -31,6 +31,15 @@ sheet's orientation, each cell with pocket number, code, brand and year; empty c
 A4 at 1 : 1, so the grid is drawn as large as fits inside 10 mm margins (≈ 88 % for 36 mm), proportions kept,
 and the page prints its scale ("scale 88 %"). Can be printed with the discs (same PDF, after them) or alone.
 
+## Initial layout (bulk placement)
+Decided with Edu on 2026-11-21 (CAP-75). For a first load (hundreds of caps scanned **without a location**), the app plans the physical albums afterwards instead of placing caps one by one.
+- Input: every cap with no location (or a filtered subset), and the albums chosen to fill, in order (e.g. `A`, then `B`).
+- Order: **type → country → brand** (then variant, then year; ties by `capId`). Unknown values go last within their level.
+- Gaps: a new **type** starts on a new sheet; a new **country** starts on a new row (the previous country's row is left partly empty for later additions). Brands within a country follow on without gaps.
+- The plan is a preview (sheet by sheet, the same grid as the sheet view) with totals: pockets used, gaps left, sheets needed per album. If capacity runs out, it says how many more sheets or which next album letter is needed, and places nothing.
+- Applying writes each location with the existing location API (one change per cap, history `source = manual`, reason "initial layout"). It is resumable: caps already placed are skipped on a re-run.
+- Then: print discs + sheet index for the planned sheets (§ Insert discs, § Sheet index) and fill the binder sheet by sheet.
+
 ## Keeping them in sync
 - Save proposes next free pocket; moves/swaps are explicit actions with history.
 - Phase 2 "Sheet photo check": photograph the sheet, dHash per cell vs expected → mismatch list.
