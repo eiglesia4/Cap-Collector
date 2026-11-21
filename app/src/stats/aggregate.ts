@@ -1,12 +1,12 @@
 // Stats of the collection (CAP-58; features.md § Phase 2 "Stats tab"; SCREENS.md inventory: Stats is a bottom tab),
 // computed on the client from every live cap (`GET /caps`, all pages): totals, and bar series by country (top 15 +
-// others), type, year (single years, or decades when the years are spread out), status and caps added per month over
+// others), brand (top 15 + others, CAP-79), type, year (single years, or decades when the years are spread out), status and caps added per month over
 // the last 12 months (`createdAt`, UTC months). DOM- and label-free: bars carry keys, the screen names them.
 import { CapStatus, CapType, type Cap } from '@capcollector/shared';
 
 import { normaliseBrand } from '../cap/brand.js';
 
-/** One bar: a country code, type, year / decade start, status or `YYYY-MM`; or `others` / `unknown`. */
+/** One bar: a country code, brand (as most often spelt), type, year / decade start, status or `YYYY-MM`; or `others` / `unknown`. */
 export interface Bar {
   readonly key: string;
   readonly count: number;
@@ -16,6 +16,8 @@ export const OTHERS = 'others';
 export const UNKNOWN = 'unknown';
 /** Countries shown by name; the rest are summed into "others". */
 export const TOP_COUNTRIES = 15;
+/** Brands shown by name (CAP-79); the rest are summed into "others". */
+export const TOP_BRANDS = 15;
 /** More distinct years than this → decade buckets. */
 export const MAX_YEAR_BARS = 12;
 export const MONTHS = 12;
@@ -35,6 +37,7 @@ export interface Totals {
 export interface Stats {
   readonly totals: Totals;
   readonly byCountry: readonly Bar[];
+  readonly byBrand: readonly Bar[];
   readonly byType: readonly Bar[];
   readonly byYear: { readonly unit: 'year' | 'decade'; readonly bars: readonly Bar[] };
   readonly byStatus: readonly Bar[];
@@ -71,6 +74,27 @@ function countryBars(caps: readonly Cap[]): Bar[] {
   const top = known.slice(0, TOP_COUNTRIES);
   const rest = known.slice(TOP_COUNTRIES).reduce((sum, b) => sum + b.count, 0);
   return [...top, ...(rest > 0 ? [{ key: OTHERS, count: rest }] : []), ...unknown];
+}
+
+/**
+ * Brands grouped as the brand index compares them (`normaliseBrand`), each bar keyed by its most frequent spelling
+ * (ties: first A–Z), top 15 by count + others. Brand is required, so there is no "unknown" bar.
+ */
+function brandBars(caps: readonly Cap[]): Bar[] {
+  const groups = new Map<string, Map<string, number>>();
+  for (const cap of caps) {
+    const key = normaliseBrand(cap.brand);
+    const spellings = groups.get(key) ?? new Map<string, number>();
+    spellings.set(cap.brand, (spellings.get(cap.brand) ?? 0) + 1);
+    groups.set(key, spellings);
+  }
+  const all = [...groups.values()].map((spellings) => {
+    const [name] = [...spellings.entries()].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))[0] ?? [''];
+    return { key: name, count: [...spellings.values()].reduce((n, c) => n + c, 0) };
+  });
+  const sorted = all.sort(byCountDesc);
+  const rest = sorted.slice(TOP_BRANDS).reduce((sum, b) => sum + b.count, 0);
+  return [...sorted.slice(0, TOP_BRANDS), ...(rest > 0 ? [{ key: OTHERS, count: rest }] : [])];
 }
 
 function yearBars(caps: readonly Cap[]): Stats['byYear'] {
@@ -111,6 +135,7 @@ export function collectionStats(all: readonly Cap[], now: Date): Stats {
       unplaced: caps.filter((c) => kind(c) === undefined).length,
     },
     byCountry: countryBars(caps),
+    byBrand: brandBars(caps),
     byType: bars(
       count(caps, (c) => c.type),
       (a, b) => b.count - a.count || typeOrder.indexOf(a.key) - typeOrder.indexOf(b.key),
