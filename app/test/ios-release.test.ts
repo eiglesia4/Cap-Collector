@@ -132,7 +132,7 @@ describe('iOS release readiness', () => {
     expect(pbx).toMatch(/\/\* PrivacyInfo\.xcprivacy in Resources \*\/,\n\t\t\t\);/);
   });
 
-  it('[T-app-094] the icon catalog has one opaque 1024 entry; the launch image has light and dark 2732² variants', () => {
+  it('[T-app-094] the icon catalog has one opaque 1024 entry (the brand copper cap); the launch image has light and dark 2732² variants with the mark', () => {
     const icons = catalog('AppIcon.appiconset');
     expect(icons).toEqual([{ filename: 'AppIcon-1024.png', idiom: 'universal', platform: 'ios', size: '1024x1024' }]);
     // App Store Connect rejects an icon with alpha: colour type 2 = RGB.
@@ -141,7 +141,18 @@ describe('iOS release readiness', () => {
       height: 1024,
       colourType: 2,
     });
-    expect(readFileSync(join(IOS, '..', '..', 'design', 'icon.svg'), 'utf8')).not.toMatch(/<text/);
+    const design = join(IOS, '..', '..', 'design');
+    const brand = join(IOS, '..', '..', '..', 'doc', 'spec', 'design', 'brand');
+    const icon = readFileSync(join(design, 'icon.svg'), 'utf8');
+    expect(icon).not.toMatch(/<text/);
+    // CAP-74: the icon is the architect's copper cap on ink, verbatim; the old ring-and-dot drawing is gone.
+    expect(icon).toBe(readFileSync(join(brand, 'icon.svg'), 'utf8'));
+    expect(readFileSync(join(design, 'splash.svg'), 'utf8')).toMatch(
+      /fill="#FAFAF7"\/><g transform=[^>]*>.*fill="#1B1A17"\/><\/g>/s,
+    );
+    expect(readFileSync(join(design, 'splash-dark.svg'), 'utf8')).toMatch(
+      /fill="#1B1A17"\/><g transform=[^>]*>.*fill="#FAFAF7"\/><\/g>/s,
+    );
 
     const splash = catalog('Splash.imageset');
     const dark = (i: CatalogImage) => i.appearances?.some((a) => a.appearance === 'luminosity' && a.value === 'dark');

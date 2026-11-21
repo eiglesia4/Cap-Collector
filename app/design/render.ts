@@ -1,5 +1,6 @@
-// Renders the iOS icon and launch images from the SVG sources in app/design (CAP-56): `npx tsx app/design/render.ts`
-// from the repo root, after editing an SVG; the PNGs are committed. Needs `rsvg-convert` (brew install librsvg).
+// Renders the iOS icon and launch images (CAP-56) and the web favicon / apple-touch-icon (CAP-74) from the SVG sources
+// in app/design (copies of doc/spec/design/brand/): `npx tsx app/design/render.ts` from the repo root, after editing an
+// SVG; the PNGs are committed. Needs `rsvg-convert` (brew install librsvg).
 // App Store Connect rejects an icon with an alpha channel: rsvg writes 8-bit RGB for an opaque drawing, and any RGBA
 // output (other librsvg versions) is re-encoded here as 8-bit RGB (colour type 2). Node built-ins only (no new
 // dependency).
@@ -99,10 +100,13 @@ export function rgbaToRgb(png: Buffer): Buffer {
   ]);
 }
 
-function render(svg: string, out: string): void {
-  const png = execFileSync('rsvg-convert', ['--format', 'png', join(here, svg)]);
+function render(svg: string, out: string, size?: number): void {
+  const sizeArgs = size === undefined ? [] : ['--width', String(size), '--height', String(size)];
+  const png = execFileSync('rsvg-convert', ['--format', 'png', ...sizeArgs, join(here, svg)]);
   writeFileSync(out, rgbaToRgb(png));
 }
+
+const publicDir = join(here, '..', 'public');
 
 const icon = join(assets, 'AppIcon.appiconset', 'AppIcon-1024.png');
 render('icon.svg', icon);
@@ -115,3 +119,9 @@ for (const [svg, base] of [
   // One 2732² image serves every scale (the Capacitor template's layout: `<name>.png`, `-1` and `-2`).
   for (const suffix of ['-1', '-2']) copyFileSync(first, join(assets, 'Splash.imageset', `${base}${suffix}.png`));
 }
+
+// Web (CAP-74, brand README: icon-light for favicon / web app icon): SVG favicon plus 32 px PNG and 180 px
+// apple-touch-icon, all served from app/public and linked by index.html.
+copyFileSync(join(here, 'icon-light.svg'), join(publicDir, 'favicon.svg'));
+render('icon-light.svg', join(publicDir, 'favicon-32.png'), 32);
+render('icon-light.svg', join(publicDir, 'apple-touch-icon.png'), 180);
