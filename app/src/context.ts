@@ -20,6 +20,11 @@ export interface AppContext {
   skipSignIn(): void;
   /** Sign-in cancelled: forget the cap link that was waiting for it (CAP-54). Absent outside the shell. */
   cancelPendingRoute?(): void;
+  /** Clock for time-window logic (CAP-71): the real clock in the app, pinned in tests. Read it with `clockOf`. */
+  now?(): Date;
 }
+
+/** The context's clock, or the real one when none is set (CAP-71). */
+export const clockOf = (ctx: Pick<AppContext, 'now'>): Date => ctx.now?.() ?? new Date();
 
 export type Screen = (ctx: AppContext, route: RouteMatch) => HTMLElement;

@@ -9,7 +9,7 @@ import { Album, CONTRACTS_VERSION, type Scan } from '@capcollector/shared';
 
 import { AlbumListSchema, parseMeasures } from '../albums/model.js';
 import { defaultAlbum, pocketAlbums, readLastAlbum, writeLastAlbum } from '../albums/place.js';
-import type { AppContext } from '../context.js';
+import { clockOf, type AppContext } from '../context.js';
 import { readUseAi, writeUseAi } from '../capture/ai-setting.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import { ConfigError } from '../config.js';
@@ -284,7 +284,7 @@ function ScansSection(ctx: AppContext): HTMLElement {
     loaded = true;
     body.replaceChildren(h('p', { class: 'muted', attrs: { role: 'status' } }, t('settings.scans.loading')));
     Promise.resolve()
-      .then(() => scanReport(ctx.api, new Date()))
+      .then(() => scanReport(ctx.api, clockOf(ctx)))
       .then(
         (report) => body.replaceChildren(...ScanReportView(report)),
         () => {
