@@ -98,6 +98,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-85: batch "Review skipped" re-analyses a skipped cap when a near-duplicate (dHash ≤ 12) was saved later in the same batch. It keeps the same `scanId` with no re-upload, and the server answers Already in collection without calling the AI, so the same cap cannot be saved twice (T-app-159).
 - CAP-71: Settings (scans & AI cost) and Stats (added per month) read an injectable clock (`AppContext.now`, `clockOf`); T-app-123 no longer depends on today's date, new T-app-124.
 
 ## [v0.2.0-v1] – 2026-11-13
