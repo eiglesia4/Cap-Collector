@@ -515,5 +515,16 @@
   "collection.chipBrand": "{brand} ✕",
   "collection.chipBrandRemove": "Remove the brand filter {brand}",
   "capDetail.brandLink": "All {brand} caps",
-  "stats.byBrand": "By brand"
+  "stats.byBrand": "By brand",
+  "settings.backup.title": "Backup",
+  "settings.backup.hint": "Your whole collection in one zip: every cap, every album and the photos. Keep it somewhere safe.",
+  "settings.backup.export": "Export backup",
+  "settings.backup.loading": "Reading your collection…",
+  "settings.backup.progress": "{caps} caps · photos {photos}/{total}",
+  "settings.backup.done": "Exported {caps} caps and {photos} photos.",
+  "settings.backup.photosOmitted": "Over {max} caps: exported without photos.",
+  "settings.backup.missing": "{count} photos couldn't be downloaded; they are listed in backup.json.",
+  "settings.backup.failed": "Couldn't export the backup. Try again.",
+  "settings.backup.last": "Last export: {date}",
+  "settings.backup.never": "Never exported."
 }

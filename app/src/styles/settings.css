@@ -67,3 +67,9 @@ summary.settings-title {
 .scan-row__ai {
   font-variant-numeric: tabular-nums;
 }
+
+/* Backup export (CAP-80): the progress / result line and the last export date under the button. */
+.settings-backup [data-backup] {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
