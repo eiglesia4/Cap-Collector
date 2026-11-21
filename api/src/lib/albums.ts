@@ -200,7 +200,7 @@ export async function sheetView(deps: AlbumDeps, uid: string, albumId: string, s
       capId: e.capId,
       brand: e.brand,
       ...(e.variant === undefined ? {} : { variant: e.variant }),
-      // The S3 key only; the client presigns through the cap's `imageUrls` on detail (SheetPocket.thumbKey).
+      // The S3 key; the handler adds the presigned `thumbUrl` (v0.3, CAP-78, images.ts `withThumbUrls`).
       thumbKey: e.images.top.key,
     })),
   };
