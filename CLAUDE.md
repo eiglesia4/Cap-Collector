@@ -130,7 +130,7 @@ direnv allow && git config core.hooksPath .githooks
 .claude/scripts/agent-worktrees.sh                  # crea ../capcollector-wt/{dev-app,dev-api,dev-infra}
 ```
 
-Arrancar cualquier agente: `cd <su directorio> && claude-agent`. La sesión se llama `<.project_name>_<AGENT_NAME>` (`CAP_integrator`, `CAP_dev-app`…) y queda visible con Remote Control en la app del móvil y en claude.ai/code. `.project_name` (`CAP`, versionado, también lo usa Warp) está en el checkout y en cada worktree; `AGENT_NAME` lo exporta `.envrc` a partir del `CAP_AGENT` de cada `.envrc.local`, que el script deja puesto (`integrator` en el checkout principal). La función, una vez en `~/.zshrc` (sirve para todos los proyectos con `.project_name`):
+Arrancar cualquier agente: `cd <su directorio> && claude-agent`. La sesión se llama `<.project_name>_<AGENT_NAME>` (`CAP_integrator`, `CAP_dev-app`…) y queda visible con Remote Control en la app del móvil y en claude.ai/code. `.project_name` (`CAP`; local e ignorado por git, también lo usa Warp) lo crea el script en el checkout y en cada worktree; `AGENT_NAME` lo exporta `.envrc` a partir del `CAP_AGENT` de cada `.envrc.local`, que el script deja puesto (`integrator` en el checkout principal). La función, una vez en `~/.zshrc` (sirve para todos los proyectos con `.project_name`):
 
 ```zsh
 claude-agent() {

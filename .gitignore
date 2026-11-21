@@ -16,3 +16,4 @@ infra/.local/
 
 # Xcode-generated SPM state for the workspace (Package.resolved, configuration) — regenerated on open/build.
 app/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+.project_name
