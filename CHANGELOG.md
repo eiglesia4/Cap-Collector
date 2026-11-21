@@ -46,12 +46,15 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-73: naeva/dev `ai.modelId` is now `eu.anthropic.claude-haiku-5-5`; the Bedrock grant (inference profile + any-region foundation model) and the invocations alarm follow from it; `infra/README.md` § Bedrock model (T-infra-030, T-infra-046).
 - CAP-72: the Bedrock vision adapter is ready for Claude Haiku 5.5: EU price entry, thinking disabled and no `temperature` for 5.5 (per-model capability map), and only `text` blocks parsed (T-api-086…088). The model switch itself is CAP-73.
 
 ### V3
 
 #### Added
 
+- CAP-78: the sheet view returns a presigned `SheetPocket.thumbUrl` (single 15-min `presignGet()`), and `GET /caps?brand=` filters by normalised brand together with the other filters (T-api-089…091). Deploy with the CAP-77 grant.
+- CAP-75: initial layout: plan every unplaced cap into the chosen albums (type → country → brand, a new sheet per type and a new row per country), preview by sheet, apply in order (resumable), then print discs and the sheet index for the planned sheets (T-app-127…132).
 - CAP-76: contracts v0.3.0: `GET /caps?brand=` (normalised brand, GSI2) and optional `SheetPocket.thumbUrl` (T-shared-008).
 - CAP-65: native Sign in with Apple through an in-app Swift Capacitor plugin (AuthenticationServices, no scopes, PKCE nonce), replacing @capacitor-community/apple-sign-in in the app code.
 - CAP-54: print insert discs (Ø pocket − 3, mirrored backs with QR, calibration square) and an A4 portrait sheet index; print screen with scopes; a deep link opened while signed out resumes after sign-in.
