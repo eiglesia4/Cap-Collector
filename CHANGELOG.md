@@ -44,10 +44,15 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 - CAP-32: `@capacitor/app` 8.1.2 in `app` (same major as `@capacitor/core`) for `collectors://` deep links (CAP-33);
   SPM `Package.swift` synced; the root Capacitor import boundary already covers `@capacitor/*`.
 
+#### Changed
+
+- CAP-72: the Bedrock vision adapter is ready for Claude Haiku 5.5: EU price entry, thinking disabled and no `temperature` for 5.5 (per-model capability map), and only `text` blocks parsed (T-api-086…088). The model switch itself is CAP-73.
+
 ### V3
 
 #### Added
 
+- CAP-76: contracts v0.3.0: `GET /caps?brand=` (normalised brand, GSI2) and optional `SheetPocket.thumbUrl` (T-shared-008).
 - CAP-65: native Sign in with Apple through an in-app Swift Capacitor plugin (AuthenticationServices, no scopes, PKCE nonce), replacing @capacitor-community/apple-sign-in in the app code.
 - CAP-54: print insert discs (Ø pocket − 3, mirrored backs with QR, calibration square) and an A4 portrait sheet index; print screen with scopes; a deep link opened while signed out resumes after sign-in.
 - CAP-53: place caps — next-free pocket proposal on save (Yes / Choose… / Not now), Detail "Where is it?" assign/move/swap/remove with the sheet grid in pick mode or a typed code, 409 → Swap offer, sheet long-press, "Put this one in A·3·17" from Already in collection.
@@ -70,6 +75,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-74: copper crown-cap brand mark on the app icon, the light and dark launch screens, sign-in and the web favicon / apple-touch-icon; replaces the old ring-and-dot drawing (T-app-094, 125, 126).
 - CAP-70: method — one persistent worktree per dev agent (`../capcollector-wt/<agent>`, `agent-worktrees.sh`), the integrator works in the main checkout, `.project_name` + `AGENT_NAME` session naming with the `claude-agent` launcher; CLAUDE.md code fence fixed.
 - CAP-69: the monthly AWS Budget has no fixed `BudgetName` (CloudFormation generates it), so a replacement (setting or changing `alert-email`) no longer fails with "same name but a different internalId"; found by the `Name` tag `cap-<inst>-<stage>-monthly` or the `MonthlyBudgetName` stack output (T-infra-045).
 - CAP-67: `settings:bootstrap`/`restore` pass the put-parameter input through a private temp file (mkdtemp, 0600, removed in `finally`) instead of `--cli-input-json file:///dev/stdin`, which failed on macOS; README notes bootstrap comes before the first deploy.
