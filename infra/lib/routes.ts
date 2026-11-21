@@ -110,7 +110,8 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
   'albums-list': T,
   'albums-create': T,
   'albums-patch': T,
-  'albums-sheet': T,
+  // CAP-77 (contracts v0.3, CAP-76): the sheet view returns `SheetPocket.thumbUrl`, a presigned GET per pocket.
+  'albums-sheet': { grants: ['table', 'images-get'] },
   'albums-next-free': T,
 
   // CAP-48 (ADR-007): exchange requests live in the table; create also writes the Scan link in the same transaction.

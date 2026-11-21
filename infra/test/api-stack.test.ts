@@ -53,6 +53,8 @@ const FIXTURES = join(REPO_ROOT, 'infra', 'cdk.out', 'test-fixtures');
 afterAll(() => rmSync(FIXTURES, { recursive: true, force: true }));
 
 /** An api/src tree in a temp dir with only the given handler files (and optionally the real authorizer). */
+type S3Statement = { Action: string | string[]; Resource: unknown };
+
 function fakeApiSrc(handlers: readonly string[], withAuthorizer = false): string {
   mkdirSync(FIXTURES, { recursive: true });
   const src = mkdtempSync(join(FIXTURES, 'api-src-'));
@@ -175,7 +177,8 @@ describe('CollectorsApi stack', () => {
   it('[T-infra-027] every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch/location-put', () => {
     // CAP-35: a Cap in a response carries presigned `imageUrls`; without s3:GetObject S3 refuses those URLs.
     // CAP-59: caps-location-put returns `{ cap, swapped? }` (CAP-50).
-    const CAP_RETURNING = ['caps-list', 'caps-get', 'caps-create', 'caps-patch', 'caps-location-put'];
+    // CAP-77: albums-sheet presigns `SheetPocket.thumbUrl` (contracts v0.3), so it is listed before the api lands it.
+    const CAP_RETURNING = ['caps-list', 'caps-get', 'caps-create', 'caps-patch', 'caps-location-put', 'albums-sheet'];
     // Kept complete from the API sources: every handler that calls withImageUrls is in the list.
     const handlersDir = join(REPO_ROOT, 'api', 'src', 'handlers');
     const presigning = readdirSync(handlersDir)
@@ -197,6 +200,25 @@ describe('CollectorsApi stack', () => {
         handler,
       ).toBe(true);
     }
+  });
+
+  it('[T-infra-047] albums-sheet presigns pocket thumbnails: s3:GetObject on the images bucket objects, never PutObject', () => {
+    // CAP-77 (contracts v0.3, CAP-76): `SheetPocket.thumbUrl` is a presigned GET; same pattern as CAP-59.
+    expect(WIRING['albums-sheet']?.grants).toEqual(['table', 'images-get']);
+    const { template } = apiStack({ apiSrcDir: fakeApiSrc(['albums-sheet']) });
+    const own = Object.values(template.findResources('AWS::IAM::Policy'))
+      .map((p) => JSON.stringify(p))
+      .filter((p) => p.includes('"AlbumsSheetServiceRole'));
+    expect(own).toHaveLength(1);
+    const statements = (JSON.parse(own[0] ?? '{}') as { Properties: { PolicyDocument: { Statement: S3Statement[] } } })
+      .Properties.PolicyDocument.Statement;
+    const s3 = statements.filter((s) => [s.Action].flat().some((a) => a.startsWith('s3:')));
+    expect(s3).toHaveLength(1);
+    expect(s3[0]?.Action).toBe('s3:GetObject');
+    // The images bucket objects (`<bucket arn>/*`), nothing else.
+    expect(JSON.stringify(s3[0]?.Resource)).toMatch(/GetAttImages\w*Arn\w*"},"\/\*"/);
+    expect(JSON.stringify(statements)).not.toContain('s3:PutObject');
+    expect(JSON.stringify(statements)).not.toContain('bedrock:');
   });
 
   it('[T-infra-017] a manifest handler without a file is served by the 501 stub, or fails synth in strict mode', () => {
