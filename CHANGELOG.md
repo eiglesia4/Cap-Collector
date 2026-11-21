@@ -89,6 +89,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-83: batch mode 2/3: Scan gets a Single · Batch switch (remembered per device; "Upload tray photo" on the web). The Tray adjust screen shows the detected caps as numbered, editable circles (move, resize, add, remove, 30 max). Start crops each one from the full-resolution photo into an on-device `BatchStore` (IndexedDB); the tray photo is never kept. `encodeWithin` is now shared by single and batch capture (T-app-140…149).
 - CAP-82: batch mode 1/3 (ADR-009): on-device tray segmentation in pure TS. `detectCaps` finds up to 30 caps in reading order (touching caps split, border caps flagged uncertain), and `cropCircle` turns each into a `CapPhoto` with the single-capture dHash contract. No UI yet (T-vision-001…012).
 - CAP-80: backup export from Settings: one zip with `backup.json` (`capcollector.backup` v1: all live caps without `imageUrls`, albums, `missingImages`, and `photosOmitted` above 2 000 caps) plus one WebP per photo; share on iPhone, download on the Mac; format in `exchange.md § Backup` (T-app-136…139).
 - CAP-79: contracts v0.3 in the app: sheet pockets show photos from `thumbUrl` (falling back to the placeholder), Collection understands `?brand=` with a removable chip, Detail links to all caps of the brand, and Stats has "By brand" bars (T-app-133…135).
