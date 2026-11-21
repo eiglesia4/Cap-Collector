@@ -70,6 +70,8 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-70: method — one persistent worktree per dev agent (`../capcollector-wt/<agent>`, `agent-worktrees.sh`), the integrator works in the main checkout, `.project_name` + `AGENT_NAME` session naming with the `claude-agent` launcher; CLAUDE.md code fence fixed.
+- CAP-69: the monthly AWS Budget has no fixed `BudgetName` (CloudFormation generates it), so a replacement (setting or changing `alert-email`) no longer fails with "same name but a different internalId"; found by the `Name` tag `cap-<inst>-<stage>-monthly` or the `MonthlyBudgetName` stack output (T-infra-045).
 - CAP-67: `settings:bootstrap`/`restore` pass the put-parameter input through a private temp file (mkdtemp, 0600, removed in `finally`) instead of `--cli-input-json file:///dev/stdin`, which failed on macOS; README notes bootstrap comes before the first deploy.
 - CAP-66: removed `@capacitor-community/apple-sign-in` (pinned Capacitor 7) and re-synced iOS; `CapApp-SPM/Package.swift` now resolves on Capacitor 8.6.0 with the in-app plugin from CAP-65.
 
@@ -78,6 +80,10 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 #### Added
 
 - CAP-58: Stats tab computed on the client (totals; bars by country, type, year or decade, status, added per month; country/type/needs-review bars open a filtered Collection) and Settings (default album, pocket/pitch per album, scans & AI cost, About).
+
+#### Changed
+
+- CAP-71: Settings (scans & AI cost) and Stats (added per month) read an injectable clock (`AppContext.now`, `clockOf`); T-app-123 no longer depends on today's date, new T-app-124.
 
 ## [v0.2.0-v1] – 2026-11-13
 
