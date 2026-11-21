@@ -6,6 +6,7 @@ import {
   BedrockRuntimeClient,
   type ContentBlock,
   ConverseCommand,
+  type ConverseCommandInput,
   type ConverseCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime';
 import { GetObjectCommand, type GetObjectCommandOutput } from '@aws-sdk/client-s3';
@@ -15,9 +16,11 @@ import { z } from 'zod';
 import { ValidationError } from '../http.js';
 import type { IdentifyInput, IdentifyResult, VisionAdapter, VisionUsage } from './adapter.js';
 import { type ParsedAnswer, parseAnswer, toResult } from './answer.js';
+import { capabilitiesFor } from './models.js';
 import { type Price, costUsd, priceFor } from './prices.js';
 
 export const MAX_TOKENS = 600;
+/** Sent only to models that think on request only (`thinkingDefault: 'none'`); Haiku 5.5 rejects it (CAP-72). */
 export const TEMPERATURE = 0;
 /** One model call may take this long before the scan answers 503 (CAP-39). */
 export const BEDROCK_TIMEOUT_MS = 8000;
@@ -67,7 +70,7 @@ export class BedrockVisionAdapter implements VisionAdapter {
       modelId: this.opts.modelId,
       system: [{ text: EXCHANGE_INSTRUCTIONS }],
       messages: [{ role: 'user', content: [...images, { text: promptText(input) }] }],
-      inferenceConfig: { maxTokens: MAX_TOKENS, temperature: TEMPERATURE },
+      ...modelParams(this.opts.modelId),
     });
 
     const tokens = { inputTokens: 0, outputTokens: 0 };
@@ -160,10 +163,31 @@ const TRANSIENT = new Set([
   'ModelNotReadyException',
 ]);
 
-/** Concatenated text blocks of the assistant message (Converse may split the answer). */
+/**
+ * Inference settings per model capability (CAP-72). A model that thinks by default (Claude Haiku 5.5) gets thinking
+ * turned off through the Anthropic request body (`additionalModelRequestFields.thinking`) — accepted at its default
+ * effort (`medium`) — so the 600-token cap holds the JSON answer alone, and no `temperature` (non-default sampling
+ * values are rejected by that model). A classic model keeps the CAP-39 request unchanged.
+ */
+export function modelParams(
+  modelId: string,
+): Pick<ConverseCommandInput, 'inferenceConfig' | 'additionalModelRequestFields'> {
+  if (capabilitiesFor(modelId).thinkingDefault === 'adaptive') {
+    return {
+      inferenceConfig: { maxTokens: MAX_TOKENS },
+      additionalModelRequestFields: { thinking: { type: 'disabled' } },
+    };
+  }
+  return { inferenceConfig: { maxTokens: MAX_TOKENS, temperature: TEMPERATURE } };
+}
+
+/**
+ * Concatenated `text` blocks of the assistant message (Converse may split the answer). Reasoning blocks
+ * (`reasoningContent`) are skipped: only the visible answer is parsed (CAP-72).
+ */
 function answerText(out: ConverseCommandOutput): string {
   return (out.output?.message?.content ?? [])
-    .map((b) => b.text ?? '')
+    .flatMap((b) => (typeof b.text === 'string' ? [b.text] : []))
     .join('')
     .trim();
 }

@@ -21,14 +21,17 @@ import {
   BEDROCK_TIMEOUT_MS,
   BedrockVisionAdapter,
   MAX_TOKENS,
+  TEMPERATURE,
   type BedrockAdapterOptions,
 } from '../src/lib/vision/bedrock.js';
+import { MODEL_CAPABILITIES, capabilitiesFor, foundationModelId } from '../src/lib/vision/models.js';
 import { FAKE_FIXTURES_DIR, FakeVisionAdapter } from '../src/lib/vision/fake.js';
 import { PRICE_TABLE, costUsd, priceFor } from '../src/lib/vision/prices.js';
 import { useAwsTestEnv } from './support/aws-env.js';
 
 const UID = 'apple-sub-1';
 const MODEL = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+const HAIKU_55 = 'eu.anthropic.claude-haiku-5-5';
 const BUCKET = 'cap-dev-images';
 const TOP_KEY = `${UID}/${newId()}/top.webp`;
 const UNDER_KEY = `${UID}/${newId()}/underside.webp`;
@@ -349,6 +352,66 @@ describe('vision: Bedrock adapter', () => {
       outputTokens: 150,
       costEstimateUsd: 0.00195,
     });
+  });
+
+  it('[T-api-086] Haiku 5.5 answer with a reasoning block before the text: only the text JSON is parsed, and the cost uses the Haiku 5.5 price on all reported tokens (thinking included)', async () => {
+    const out = {
+      output: {
+        message: {
+          role: 'assistant',
+          content: [
+            { reasoningContent: { reasoningText: { text: '{"fields":{"brand":"Wrong"}}', signature: 'sig' } } },
+            { text: answer({ brand: 'Mahou', country: 'ES' }, { brand: 0.92 }) },
+          ],
+        },
+      },
+      usage: { inputTokens: 2000, outputTokens: 300 },
+    } as unknown as ConverseCommandOutput;
+    const { adapter, calls } = setup([out], { modelId: HAIKU_55 });
+    const r = await adapter.identify({ imageKeys: { top: TOP_KEY } });
+    expect(calls).toHaveLength(1);
+    expect(r).toMatchObject({
+      status: 'identified',
+      fields: { brand: 'Mahou', country: 'ES' },
+      aiModel: HAIKU_55,
+      usage: { inputTokens: 2000, outputTokens: 300, costEstimateUsd: 0.000385 },
+    });
+
+    // A reasoning-only answer (no text block) is malformed: one retry, then unidentified.
+    const onlyReasoning = {
+      output: { message: { role: 'assistant', content: [{ reasoningContent: { reasoningText: { text: 'hm' } } }] } },
+      usage: { inputTokens: 2000, outputTokens: 50 },
+    } as unknown as ConverseCommandOutput;
+    const bad = setup([onlyReasoning], { modelId: HAIKU_55 });
+    expect(await bad.adapter.identify({ imageKeys: { top: TOP_KEY } })).toMatchObject({ status: 'unidentified' });
+    expect(bad.calls).toHaveLength(2);
+  });
+
+  it('[T-api-087] request per model capability: eu.anthropic.claude-haiku-5-5 gets thinking disabled and no temperature (600 tokens); the Haiku 4.5 request is unchanged', async () => {
+    expect(capabilitiesFor(HAIKU_55)).toEqual({ thinkingDefault: 'adaptive' });
+    expect(capabilitiesFor('anthropic.claude-haiku-5-5')).toBe(MODEL_CAPABILITIES['anthropic.claude-haiku-5-5']);
+    expect(capabilitiesFor(MODEL)).toEqual({ thinkingDefault: 'none' });
+    expect(foundationModelId('global.anthropic.claude-haiku-5-5')).toBe('anthropic.claude-haiku-5-5');
+
+    const h55 = setup([answer({ brand: 'Mahou' })], { modelId: HAIKU_55 });
+    await h55.adapter.identify({ imageKeys: { top: TOP_KEY } });
+    const in55 = h55.calls[0]!.command.input;
+    expect(in55.modelId).toBe(HAIKU_55);
+    expect(in55.inferenceConfig).toEqual({ maxTokens: MAX_TOKENS });
+    expect(in55.additionalModelRequestFields).toEqual({ thinking: { type: 'disabled' } });
+
+    const h45 = setup([answer({ brand: 'Mahou' })]);
+    await h45.adapter.identify({ imageKeys: { top: TOP_KEY } });
+    const in45 = h45.calls[0]!.command.input;
+    expect(in45.inferenceConfig).toEqual({ maxTokens: 600, temperature: TEMPERATURE });
+    expect(in45).not.toHaveProperty('additionalModelRequestFields');
+  });
+
+  it('[T-api-088] priceFor(eu.anthropic.claude-haiku-5-5) returns the EU ≤ 100k-token tier; the Haiku 4.5 entry is kept', () => {
+    expect(priceFor(HAIKU_55)).toEqual({ inPer1k: 0.00011, outPer1k: 0.00055 });
+    expect(priceFor('anthropic.claude-haiku-5-5')).toBe(PRICE_TABLE['anthropic.claude-haiku-5-5']);
+    expect(priceFor(MODEL)).toEqual({ inPer1k: 0.001, outPer1k: 0.005 });
+    expect(costUsd(priceFor(HAIKU_55), 2500, 200)).toBe(0.000385);
   });
 
   it('[T-api-063] CAP_VISION picks the adapter (bedrock default needs CAP_BEDROCK_MODEL_ID; fake; off); price override needs both variables', () => {
