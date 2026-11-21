@@ -36,8 +36,20 @@ invoked more than 300 times in a day (cost guard). The e-mail comes from `/cap/<
 aws ssm put-parameter --overwrite --name /cap/naeva/dev/alert-email --value '<your e-mail>'
 ```
 
-**Bedrock model (CAP-40):** `ai.modelId` in `config/<inst>.<stage>.json`. Check what the region offers (and enable
-model access in the Bedrock console once); in eu-west-1 recent Claude models come as `eu.` inference profiles:
+**Bedrock model (CAP-40, CAP-73):** `ai.modelId` in `config/<inst>.<stage>.json`. naeva/dev uses **Claude Haiku 5.5**
+through the EU cross-region inference profile `eu.anthropic.claude-haiku-5-5`. The stack derives everything else from
+that one value: `scans-analyse` may invoke the profile in this account and region plus the foundation model
+`anthropic.claude-haiku-5-5` in any region (the profile routes inside the EU), and the daily-invocations alarm watches
+`ModelId = eu.anthropic.claude-haiku-5-5`.
+
+- **Before the deploy:** grant model access for **Claude Haiku 5.5** in the Bedrock console (eu-west-1, _Model
+  access_). Without it, the deploy succeeds but every scan that reaches the AI fails with `AccessDeniedException`.
+- **Switch back:** change the one line in the config (the previous model was
+  `"modelId": "eu.anthropic.claude-haiku-4-5-20251001-v1:0"`) and redeploy `CollectorsApi`; grant, env and alarm
+  follow. The api adapter already prices that model; a model it does not know (price entry, thinking settings,
+  `api/src/lib/vision/`, CAP-72) needs a dev-api story first.
+
+Check what the region offers; in eu-west-1 recent Claude models come as `eu.` inference profiles:
 
 ```bash
 aws bedrock list-inference-profiles --region eu-west-1 --query "inferenceProfileSummaries[?contains(inferenceProfileId,'haiku')].inferenceProfileId"

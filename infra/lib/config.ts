@@ -222,7 +222,7 @@ function validateAi(file: string, value: unknown): AiConfig {
   if (typeof modelId !== 'string' || !MODEL_ID_RE.test(modelId)) {
     throw new Error(
       `${file}: "ai.modelId" must be a Bedrock model id or inference profile id like ` +
-        '"eu.anthropic.claude-haiku-4-5-20251001-v1:0" (never an ARN)',
+        '"eu.anthropic.claude-haiku-5-5" (never an ARN)',
     );
   }
   if (
