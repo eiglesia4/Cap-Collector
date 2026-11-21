@@ -8,6 +8,13 @@ set -euo pipefail
 
 AGENTS=(dev-app dev-api dev-infra)
 root="$(git rev-parse --show-toplevel)"
+# Only from the main checkout: run inside a worktree, ".." would be capcollector-wt/ and the worktrees would nest.
+git_dir="$(cd "$(git rev-parse --git-dir)" && pwd -P)"
+common_dir="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+if [[ "$git_dir" != "$common_dir" ]]; then
+  echo "Run this from the main checkout (e.g. /Volumes/Code/Personal/Cap-Collector), not from a worktree." >&2
+  exit 1
+fi
 wt_base="$(cd "$root/.." && pwd)/capcollector-wt"
 cd "$root"
 
