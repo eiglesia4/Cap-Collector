@@ -3,11 +3,14 @@
 // store, sent as `useAi` by the capture flow), the default album of the "next free" proposal (CAP-53's stored letter),
 // each album's pocket / pitch in mm (`PATCH /albums/{id}`, read by the insert PDF, CAP-54), "Scans & AI cost" (the
 // last 50 `GET /scans` and the week's AI cost, ADR-004 threshold tuning), About (app, API, web and contracts
-// versions) and Sign out (CAP-22: clears the stored session; the shell then shows the sign-in screen).
+// versions), "Export backup" (CAP-80: the whole collection as one zip, shared on the iPhone, downloaded on the Mac,
+// the last export date kept in the platform store) and Sign out (CAP-22: clears the stored session; the shell then
+// shows the sign-in screen).
 // Styles: styles/settings.css.
 import { Album, CONTRACTS_VERSION, type Scan } from '@capcollector/shared';
 
 import { AlbumListSchema, parseMeasures } from '../albums/model.js';
+import { exportBackup, MAX_CAPS_WITH_PHOTOS, ZIP_TYPE } from '../backup/export.js';
 import { defaultAlbum, pocketAlbums, readLastAlbum, writeLastAlbum } from '../albums/place.js';
 import { clockOf, type AppContext } from '../context.js';
 import { readUseAi, writeUseAi } from '../capture/ai-setting.js';
@@ -88,6 +91,7 @@ export const SettingsScreen: Screen = (ctx) => {
     h('small', { class: 'muted' }, t('settings.aiHint')),
     AlbumSettings(ctx),
     ScansSection(ctx),
+    BackupSection(ctx),
     About(ctx),
     ctx.session.signedIn() &&
       h(
@@ -303,6 +307,98 @@ function ScansSection(ctx: AppContext): HTMLElement {
     if (details.open && !loaded) load();
   });
   return details;
+}
+
+/** Store key of the last successful backup export (ISO date-time). */
+export const LAST_BACKUP_KEY = 'backup.lastExport';
+
+export interface BackupOptions {
+  /** Downloads a presigned photo; tests inject a fake. */
+  readonly fetch?: (url: string) => Promise<Response>;
+  /** Mac/web download of the zip; tests inject a fake. */
+  readonly download?: (file: File) => void;
+}
+
+function browserDownload(file: File): void {
+  if (typeof URL.createObjectURL !== 'function') return;
+  const url = URL.createObjectURL(file);
+  const a = h('a', { attrs: { href: url, download: file.name } });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** "Export backup" (CAP-80): progress "caps · photos n/N", then the share sheet (iPhone) or a download (Mac). */
+export function BackupSection(ctx: AppContext, options: BackupOptions = {}): HTMLElement {
+  const fetchImage = options.fetch ?? ((url: string) => fetch(url));
+  const download = options.download ?? browserDownload;
+  const last = h('p', { class: 'muted', attrs: { 'data-backup': 'last' } });
+  const status = h('p', { class: 'muted', attrs: { role: 'status', 'data-backup': 'status' } });
+  status.hidden = true;
+  const say = (text: string) => {
+    status.textContent = text;
+    status.hidden = false;
+  };
+  const showLast = (iso: string | null) => {
+    const date = iso === null ? null : new Date(iso);
+    last.textContent =
+      date === null || Number.isNaN(date.getTime())
+        ? t('settings.backup.never')
+        : t('settings.backup.last', { date: dateFormat.format(date) });
+  };
+  void ctx.platform.store.get(LAST_BACKUP_KEY).then(showLast);
+
+  const button = h(
+    'button',
+    {
+      class: 'button button--secondary',
+      attrs: { type: 'button', 'data-action': 'export-backup' },
+      on: { click: () => void run() },
+    },
+    t('settings.backup.export'),
+  );
+
+  async function run(): Promise<void> {
+    button.disabled = true;
+    say(t('settings.backup.loading'));
+    try {
+      const now = clockOf(ctx);
+      const result = await exportBackup({
+        api: ctx.api,
+        fetch: fetchImage,
+        now,
+        onProgress: (p) => say(t('settings.backup.progress', { caps: p.caps, photos: p.photos, total: p.totalPhotos })),
+      });
+      const file = new File([result.bytes as BlobPart], result.fileName, { type: ZIP_TYPE });
+      if (ctx.platform.kind === 'native')
+        await ctx.platform.share({ title: file.name, files: [file] }).catch(() => false);
+      else download(file);
+      await ctx.platform.store.set(LAST_BACKUP_KEY, now.toISOString());
+      showLast(now.toISOString());
+      const doc = result.document;
+      const parts = [t('settings.backup.done', { caps: doc.caps.length, photos: result.photos })];
+      if (doc.photosOmitted) parts.push(t('settings.backup.photosOmitted', { max: MAX_CAPS_WITH_PHOTOS }));
+      if (doc.missingImages) parts.push(t('settings.backup.missing', { count: doc.missingImages.length }));
+      say(parts.join(' '));
+    } catch {
+      say(t('settings.backup.failed'));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  return h(
+    'section',
+    { class: 'settings-section settings-backup' },
+    h('h2', { class: 'settings-title' }, t('settings.backup.title')),
+    h('p', { class: 'muted' }, t('settings.backup.hint')),
+    button,
+    status,
+    last,
+  );
 }
 
 /** App, API, web and contracts versions. */
