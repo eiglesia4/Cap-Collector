@@ -84,12 +84,16 @@ function controlledDeps(store: BatchStore = memoryBatchStore()) {
     newId: () => ulid(100 + id++),
   };
   /** Answer the analysis of item `index` of `runner`. */
-  const reply = (scanId: string, outcome: AnalyseResponse['outcome'] | Error = 'identified') => {
+  const reply = (
+    scanId: string,
+    outcome: AnalyseResponse['outcome'] | Error = 'identified',
+    extra: Partial<AnalyseResponse> = {},
+  ) => {
     const p = pending.get(scanId);
     if (!p) throw new Error(`no analysis pending for ${scanId}`);
     pending.delete(scanId);
     if (outcome instanceof Error) p.reject(outcome);
-    else p.resolve(answer(scanId, outcome, outcome === 'identified' ? { fields: { brand: 'Mahou' } } : {}));
+    else p.resolve(answer(scanId, outcome, outcome === 'identified' ? { fields: { brand: 'Mahou' } } : extra));
   };
   return { deps, analyse, reply, maxInFlight: () => maxInFlight, store };
 }
@@ -236,6 +240,49 @@ describe('batch runner', () => {
     await fresh.skip(0);
     await fresh.reviewSkipped();
     expect(states(fresh.batch())).toEqual(['analysing']);
+  });
+
+  it('[T-app-159] Review skipped re-analyses a skipped item whose near-duplicate was saved meanwhile (same scanId, no new upload); others come back as they were', async () => {
+    const { deps, analyse, reply } = controlledDeps();
+    const runner = createBatchRunner(
+      batchOf([item(0, H0), item(1, DISTINCT[0]!), item(2, NEAR_H0), item(3, DISTINCT[1]!)]),
+      deps,
+    );
+    runner.pump();
+    await settle();
+    // Item 2 is held by item 0 (near-duplicate); 0 and 1 are analysed and answered "identified".
+    reply(scanIdOf(runner.batch(), 0));
+    reply(scanIdOf(runner.batch(), 1));
+    await settle();
+    // Skip 0 (after its analysis) → 2 is no longer held; skip 1 (unrelated); 2 is analysed and saved.
+    await runner.skip(0);
+    await runner.skip(1);
+    await settle();
+    reply(scanIdOf(runner.batch(), 2));
+    reply(scanIdOf(runner.batch(), 3));
+    await settle();
+    await runner.resolve(2, 'saved', true);
+    await runner.resolve(3, 'discarded', false);
+    await runner.idle();
+    expect(runner.current()).toBeNull();
+    expect(analyse).toHaveBeenCalledTimes(4);
+    expect(deps.upload).toHaveBeenCalledTimes(4);
+
+    await runner.reviewSkipped();
+    await settle();
+    // Item 0: analysed again with its own scanId and its first upload; item 1 (nothing similar saved) is ready as it was.
+    const first = scanIdOf(runner.batch(), 0);
+    expect(analyse).toHaveBeenCalledTimes(5);
+    expect(analyse.mock.calls[4]?.[0]).toMatchObject({ scanId: first, dhash: H0 });
+    expect(deps.upload).toHaveBeenCalledTimes(4);
+    expect(states(runner.batch())).toEqual(['analysing', 'ready', 'resolved', 'resolved']);
+    expect(runner.batch().items[0]).not.toHaveProperty('response');
+    // The server finds the saved near-duplicate by dHash → Already in collection.
+    reply(first, 'duplicate', { match: { capId: ulid(7), hammingDistance: 3, by: 'dhash' } });
+    await settle();
+    expect(runner.routeOf(0)).toBe('/scan/duplicate');
+    expect(runner.current()).toBe(0);
+    expect(runner.routeOf(1)).toBe('/scan/review');
   });
 });
 
