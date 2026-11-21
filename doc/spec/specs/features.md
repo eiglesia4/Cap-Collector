@@ -17,7 +17,9 @@
 - Settings: album definitions (name, sheets, pocket size & pitch), AI on/off.
 
 ## Phase 2 — worth it
-- Batch mode: tray photo → segmented caps → each through the review flow with "4 of 11" progress.
+- Batch mode (ADR-009, SCREENS.md § Batch mode): tray photo → caps segmented on the device → user adjusts the circles →
+  each cap is a normal scan (dHash before AI, three outcomes) with "4 of 11" progress, prefetch of the next 2,
+  resume after closing the app, and a summary that leads to § Initial layout. Built 2026-11 for the first load.
 - Wishlist tab (+ warning in scan flow when a scanned cap is on the wishlist).
 - Trade list (`forTrade > 0`) exportable as a shareable page/PDF.
 - Stats tab: by country, brand, decade, additions per month, album occupancy.

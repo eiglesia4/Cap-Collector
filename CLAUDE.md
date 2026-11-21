@@ -14,7 +14,7 @@ Orden de precedencia (si dos documentos se contradicen, gana el de arriba):
 
 1. `shared/src/**` (zod + tipos TS) y `doc/spec/openapi.yaml` — los contratos app ↔ api (los publica el arquitecto en EP-01; hoy `shared/` está vacío y no hay OpenAPI).
 2. `doc/spec/specs/data-model.md` — tabla única de DynamoDB: PK/SK, GSIs, enums. **Nunca inventes claves.**
-3. `doc/spec/decisions/ADR-*.md` — decisiones de arquitectura (ADR-001 Capacitor · 002 serverless · 003 revisión con tres salidas · 004 dHash antes que IA · 005 álbum·hoja·bolsillo · 006 borrado lógico e historial · 007 intercambio con IA externa).
+3. `doc/spec/decisions/ADR-*.md` — decisiones de arquitectura (ADR-001 Capacitor · 002 serverless · 003 revisión con tres salidas · 004 dHash antes que IA · 005 álbum·hoja·bolsillo · 006 borrado lógico e historial · 007 intercambio con IA externa · 008 decisiones cerradas de V0 · 009 captura por lotes).
 4. `doc/spec/specs/{features,exchange,physical-link}.md` y `doc/spec/design/SCREENS.md` — funcionalidad, formato `capcollector.exchange`, álbum físico, pantallas y navegación.
 5. `doc/spec/CONVENTIONS.md` — vocabulario, identificadores, reglas de coste.
 6. `doc/spec/method.md` — cómo trabajan el arquitecto, los agentes de desarrollo y el integrador (este fichero es su resumen operativo).
