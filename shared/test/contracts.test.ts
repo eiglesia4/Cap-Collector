@@ -11,6 +11,8 @@ import {
   Album,
   AppleSignInRequest,
   CapPatch,
+  CONTRACTS_VERSION,
+  SheetView,
   Healthz,
   Problem,
   ROUTES,
@@ -226,7 +228,7 @@ describe('shared contracts v0.2 (CAP-26)', () => {
 
   it('[T-shared-006] routes manifest equals openapi.yaml: same path+method set, auth matches security markers, handler names unique', () => {
     const doc = api();
-    expect(doc.info.version).toBe('0.2.0');
+    expect(doc.info.version).toBe('0.3.0');
     const fromApi = new Set<string>();
     const publicOps = new Set<string>();
     for (const [path, ops] of Object.entries(doc.paths)) {
@@ -290,5 +292,25 @@ describe('shared contracts v0.2 (CAP-26)', () => {
     expect(
       Cap.safeParse({ ...(fixture('cap.json') as object), imageUrls: { top: 'https://s3.example/x' } }).success,
     ).toBe(true);
+  });
+});
+
+describe('shared contracts v0.3 (CAP-76)', () => {
+  it('[T-shared-008] v0.3 additions: optional SheetPocket.thumbUrl (URL), version 0.3.0, no new routes', () => {
+    expect(CONTRACTS_VERSION).toBe('0.3.0');
+    expect(routeByHandler('albums-get')).toBeUndefined();
+    const base = {
+      albumId: '01JBF70A1B2C3D4E5F6G7H8J9K',
+      letter: 'A',
+      sheet: 1,
+      cols: 6,
+      rows: 7,
+      pockets: [{ pocket: 1, capId: '01JBF70A1B2C3D4E5F6G7H8J9K', brand: 'Mahou', thumbKey: 'u1/x/top.webp' }],
+    };
+    expect(SheetView.safeParse(base).success).toBe(true); // v0.2 responses stay valid
+    const withUrl = { ...base, pockets: [{ ...base.pockets[0], thumbUrl: 'https://s3.example/x?sig=1' }] };
+    expect(SheetView.safeParse(withUrl).success).toBe(true);
+    const bad = { ...base, pockets: [{ ...base.pockets[0], thumbUrl: 'not a url' }] };
+    expect(SheetView.safeParse(bad).success).toBe(false);
   });
 });
