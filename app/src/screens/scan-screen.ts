@@ -6,13 +6,15 @@
 // the album sheet, CAP-52) pre-assigns the scan: `targetLocationCode` goes into the scan context and the analyse body,
 // and the review's Save places the new cap there (CapInput.location, CAP-50). CAP-83 (ADR-009, SCREENS.md § Batch
 // mode): a Single · Batch switch, remembered in the platform store; in Batch the tray photo (Shoot tray · Library, or
-// "Upload tray photo" on the Mac) is handed to Tray adjust in memory, and an unfinished batch is offered first
-// (Continue · Discard). Styles: styles/scan.css.
+// "Upload tray photo" on the Mac) is handed to Tray adjust in memory. While a batch is unfinished, the batch banner
+// (CAP-84: "Batch: 4 of 11 — Continue · Abandon") is shown, and Batch starts no new tray until it is finished or
+// abandoned. Styles: styles/scan.css.
 import { AnalyseResponse, formatLocationCode } from '@capcollector/shared';
 
 import { newIntoPath, pocketLocation } from '../albums/model.js';
 import { parseScanMode, SCAN_MODE_KEY, type ScanMode } from '../batch/context.js';
 import type { Batch } from '../batch/store.js';
+import { BatchBanner } from '../components/batch-banner.js';
 import { readUseAi } from '../capture/ai-setting.js';
 import { createCaptureFlow, manualEntryPath, type CaptureState } from '../capture/flow.js';
 import { newUlid } from '../capture/ulid.js';
@@ -141,24 +143,6 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     ];
   };
 
-  /** One unfinished batch at a time: continue it, or discard it to start another. */
-  const unfinished = (batch: Batch): HTMLElement =>
-    h(
-      'div',
-      { class: 'sheet scan-sheet', attrs: { role: 'dialog', 'data-sheet': 'unfinished-batch' } },
-      h('p', { class: 'sheet-message' }, t('scan.batchUnfinished', { count: batch.items.length })),
-      button('scan.batchContinue', 'continue-batch', () => ctx.navigate(pathFor('scanBatch'))),
-      button(
-        'scan.batchDiscard',
-        'discard-batch',
-        async () => {
-          await ctx.batch.store.discard();
-          await setMode('batch');
-        },
-        true,
-      ),
-    );
-
   const manual = (href: string) =>
     h(
       'a',
@@ -216,7 +200,10 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
         if (mode === 'batch') {
           parts.push(
             h('p', { class: 'muted scan-batch-hint', attrs: { 'data-hint': 'batch' } }, t('scan.batchHint')),
-            ...(pending === null ? trayButtons() : [unfinished(pending)]),
+            // One unfinished batch at a time: the banner above offers Continue · Abandon.
+            ...(pending === null
+              ? trayButtons()
+              : [h('p', { class: 'muted', attrs: { 'data-pending': '' } }, t('scan.batchPending'))]),
           );
           break;
         }
@@ -262,6 +249,7 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     'section',
     { class: 'screen scan' },
     ScreenHeader(t(web ? 'scan.uploadTitle' : 'scan.title'), cancel),
+    target === undefined && BatchBanner(ctx, () => void setMode(mode)),
     target !== undefined &&
       h('p', { class: 'scan-target', attrs: { 'data-target': target } }, t('scan.into', { code: target })),
     guide,

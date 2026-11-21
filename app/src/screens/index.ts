@@ -5,6 +5,7 @@ import { AlbumLayoutScreen } from './album-layout-screen.js';
 import { AlbumSheetScreen } from './album-sheet-screen.js';
 import { AlbumsScreen } from './albums-screen.js';
 import { BatchScreen } from './batch-screen.js';
+import { BatchSummaryScreen } from './batch-summary-screen.js';
 import { CapDetailScreen } from './cap-detail-screen.js';
 import { EditCapScreen, NewCapScreen, ScanReviewScreen } from './cap-form-screen.js';
 import { CollectionScreen } from './collection-screen.js';
@@ -32,6 +33,7 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   scanReview: ScanReviewScreen,
   scanBatch: BatchScreen,
   scanBatchAdjust: TrayAdjustScreen,
+  scanBatchSummary: BatchSummaryScreen,
   albums: AlbumsScreen,
   albumSheet: AlbumSheetScreen,
   albumPrint: PrintScreen,

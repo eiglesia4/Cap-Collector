@@ -3,7 +3,8 @@
 // strip, the 3-column grid with cursor-based infinite scroll, pull-to-refresh on iOS and the empty state. Filters,
 // loaded pages and scroll live in collection/state.ts so coming back from a cap's detail restores them.
 // An album + sheet code typed in the search (`A·3`, CAP-52) offers "Open sheet A·3" and Enter opens the sheet view.
-// `/?brand=Mahou` (CAP-79, from Stats and Detail) filters by brand, shown as a removable chip.
+// `/?brand=Mahou` (CAP-79, from Stats and Detail) filters by brand, shown as a removable chip. While a batch is
+// unfinished, the batch banner (CAP-84) offers Continue · Abandon.
 import type { Album, Cap, CapType } from '@capcollector/shared';
 
 import { albumSheetPath, AlbumListSchema, parseSheetCode, sheetCode, sheetTarget } from '../albums/model.js';
@@ -24,6 +25,7 @@ import {
 } from '../collection/query.js';
 import { collectionState } from '../collection/state.js';
 import { CapTile } from '../components/cap-tile.js';
+import { BatchBanner } from '../components/batch-banner.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
 import { countryName } from '../i18n/countries.js';
@@ -331,6 +333,7 @@ export const CollectionScreen: Screen = (ctx, route) => {
     'section',
     { class: 'screen collection' },
     ScreenHeader(t('collection.title'), h('span', { class: 'header-actions' }, sort, more)),
+    BatchBanner(ctx),
     count,
     search,
     sheetLink,

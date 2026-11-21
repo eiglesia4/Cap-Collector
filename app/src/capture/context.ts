@@ -26,6 +26,11 @@ export interface CaptureSession {
    * the pending request to mark `reviewed` once the review saves.
    */
   readonly exchange?: { readonly source: Source; readonly requestId?: string; readonly notes?: string };
+  /**
+   * Set when the scan is one item of a batch (CAP-84, ADR-009 §3): screens 3/4/5 show the batch strip, and Save /
+   * Update / Discard go to the next item instead of Detail. `placeAsYouGo` false → saved without a location.
+   */
+  readonly batch?: { readonly batchId: string; readonly index: number; readonly placeAsYouGo: boolean };
 }
 
 export interface CaptureStore {

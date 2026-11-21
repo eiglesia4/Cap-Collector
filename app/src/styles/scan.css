@@ -139,35 +139,113 @@
   gap: var(--space-3);
 }
 
-.batch-crops {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.batch-crop {
-  position: relative;
+.batch-current {
+  width: min(48vw, 200px);
   aspect-ratio: 1;
-}
-
-.batch-thumb {
-  width: 100%;
-  height: 100%;
+  margin: 0 auto;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.batch-number {
-  position: absolute;
-  top: 0;
-  left: 0;
-  min-width: 1.5em;
-  border-radius: 999px;
+/* Batch run (CAP-84): the strip over screens 3/4/5, the Scan / Collection banner and the summary. */
+.batch-strip {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: var(--color-line);
+}
+
+.batch-strip__count {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-strip__row {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.batch-dot {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--color-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-dot--resolved {
   background: var(--color-ink);
+  border-color: var(--color-ink);
   color: var(--color-ground);
-  font-size: 12px;
-  text-align: center;
+}
+
+.batch-dot--skipped {
+  opacity: 0.5;
+}
+
+.batch-dot--failed {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.batch-dot[aria-current] {
+  border-width: 2px;
+  border-color: var(--color-accent);
+}
+
+.batch-strip__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.batch-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: var(--color-line);
+}
+
+.batch-banner__text {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-counts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.batch-count {
+  display: flex;
+  justify-content: space-between;
+}
+
+.batch-count dt,
+.batch-count dd {
+  margin: 0;
+}
+
+.batch-count dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-already {
+  margin: 0;
+  font-size: 13px;
 }

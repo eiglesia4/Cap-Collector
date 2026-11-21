@@ -5,11 +5,14 @@
 // uploaded images stay orphaned in S3 for the lifecycle rule, no delete call. A scan started from an empty pocket
 // (`targetLocationCode`, CAP-52) also offers "Put this one in A·3·17" (CAP-53, architect scope addition 2026-11-09):
 // the matched cap is moved there with the same confirmation as Detail's "Where is it?" (a move when it already has a
-// location, a swap offer when the pocket is taken), then its Detail. Styles: styles/scan-duplicate.css.
+// location, a swap offer when the pocket is taken), then its Detail. A batch item (CAP-84): the batch strip on top, and
+// Update / Discard go to the batch's next item instead of Detail / Collection. Styles: styles/scan-duplicate.css.
 import { Cap, formatLocationCode, type CapType, type Closure, type Material } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
 import { pocketLocation } from '../albums/model.js';
+import { finishBatchItem } from '../batch/run.js';
+import { BatchStrip } from '../components/batch-strip.js';
 import { capTitle, capImage } from '../components/cap-tile.js';
 import { moveTo } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
@@ -78,8 +81,13 @@ export const ScanDuplicateScreen: Screen = (ctx) => {
       class: 'header-action',
       attrs: { href: pathFor('collection'), 'data-link': true, 'data-action': 'discard' },
       on: {
-        click: () => {
+        click: (e) => {
           revoke(preview);
+          if (found?.session.batch) {
+            e.preventDefault();
+            void finishBatchItem(ctx, found.session, 'discarded', false);
+            return;
+          }
           ctx.capture.clear();
         },
       },
@@ -111,6 +119,7 @@ export const ScanDuplicateScreen: Screen = (ctx) => {
     'section',
     { class: 'screen scan-duplicate' },
     header,
+    session.batch && BatchStrip(ctx, session.batch.index),
     h('p', { class: 'duplicate-reason', attrs: { 'data-by': match.by } }, reasonText(match)),
     h(
       'div',
@@ -266,13 +275,19 @@ function review(
     error.hidden = true;
     refresh();
     try {
-      await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, { method: 'PATCH', body: patch, schema: Cap });
+      const updated = await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, {
+        method: 'PATCH',
+        body: patch,
+        schema: Cap,
+      });
       // An external AI's answer (CAP-45): its pending request is now reviewed.
       await markReviewed(ctx.api, session);
-      ctx.capture.clear();
       release();
       invalidateCollection(ctx);
-      ctx.navigate(pathFor('capDetail', { id: cap.capId }));
+      if (!(await finishBatchItem(ctx, session, 'updated', updated.location === undefined))) {
+        ctx.capture.clear();
+        ctx.navigate(pathFor('capDetail', { id: cap.capId }));
+      }
       showToast(t('scanDuplicate.updated'));
     } catch {
       error.textContent = t('scanDuplicate.updateFailed');
