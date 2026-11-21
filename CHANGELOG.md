@@ -89,6 +89,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-84: batch mode 3/3 (ADR-009): each cap in a tray goes through AI review, Already in collection or Manual entry with an "n of N" strip. Save moves to the next cap. One ordinary scan per cap, the next 2 prefetched, and an intra-batch dHash guard of 12 (no extra AI call for in-tray duplicates). State is persisted, so closing the app resumes where you were (Continue · Abandon banner). The summary leads to Plan albums (T-app-150…158).
 - CAP-83: batch mode 2/3: Scan gets a Single · Batch switch (remembered per device; "Upload tray photo" on the web). The Tray adjust screen shows the detected caps as numbered, editable circles (move, resize, add, remove, 30 max). Start crops each one from the full-resolution photo into an on-device `BatchStore` (IndexedDB); the tray photo is never kept. `encodeWithin` is now shared by single and batch capture (T-app-140…149).
 - CAP-82: batch mode 1/3 (ADR-009): on-device tray segmentation in pure TS. `detectCaps` finds up to 30 caps in reading order (touching caps split, border caps flagged uncertain), and `cropCircle` turns each into a `CapPhoto` with the single-capture dHash contract. No UI yet (T-vision-001…012).
 - CAP-80: backup export from Settings: one zip with `backup.json` (`capcollector.backup` v1: all live caps without `imageUrls`, albums, `missingImages`, and `photosOmitted` above 2 000 caps) plus one WebP per photo; share on iPhone, download on the Mac; format in `exchange.md § Backup` (T-app-136…139).
