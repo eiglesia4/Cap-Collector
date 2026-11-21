@@ -1,6 +1,7 @@
 // Everything a screen may use, built once at startup (main.ts) and passed down — no globals (CAP-21).
 import type { ApiClient } from './api/client.js';
 import type { ApiUrlSetting } from './api-url.js';
+import type { BatchContext } from './batch/context.js';
 import type { CaptureStore } from './capture/context.js';
 import type { AppConfig } from './config.js';
 import type { Platform } from './platform/platform.js';
@@ -15,6 +16,8 @@ export interface AppContext {
   readonly apiUrl: ApiUrlSetting;
   /** Scan context of the capture modal (CAP-41), in memory only. */
   readonly capture: CaptureStore;
+  /** Batch capture (CAP-83, ADR-009): the tray photo in memory and the on-device batch queue. */
+  readonly batch: BatchContext;
   navigate(path: string): void;
   /** Development builds only (CAP-22): enter the app without a session, e.g. against `npm run api:local`. */
   skipSignIn(): void;

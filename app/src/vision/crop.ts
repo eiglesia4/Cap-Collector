@@ -1,7 +1,8 @@
 // One cap out of a tray photo (CAP-82; ADR-009 §1, §3; ADR-004 §1): the square around a detected circle, plus a 6 %
 // margin, taken from the **full-resolution** photo, scaled to ≤ 1024 px and turned into the same `CapPhoto` as a single
 // capture (images/resize.ts `crop: 'circle'`): dHash of the square inscribed in the circle, before the mask and before
-// encoding; then the circular mask (transparent outside) and WebP at 0.85, stepping down only above the upload limit.
+// encoding; then the circular mask (transparent outside) and WebP through resize.ts `encodeWithin` (0.85, stepping
+// down only above the upload limit).
 // So a batch crop and a single capture of the same cap hash alike (same dHash contract).
 //
 // The square is kept inside the photo: for a cap at the edge it slides inwards (the circle is then off-centre; such
@@ -10,13 +11,10 @@
 //   - `{ raster, codec }`: RGBA pixels already in memory, resampled here by area averaging (tests, workers).
 import { areaAverageGray, dhash } from '../images/dhash.js';
 import {
+  encodeWithin,
   fitWithin,
-  ImageTooLargeError,
   inscribedSquare,
   maskCircle,
-  MAX_BYTES,
-  WEBP,
-  WEBP_QUALITY,
   WebpUnsupportedError,
   type CapPhoto,
   type Crop,
@@ -28,8 +26,6 @@ import type { DetectedCircle } from './segment.js';
 
 /** Margin around the circle, as a share of its radius (CAP-82). */
 export const CROP_MARGIN = 0.06;
-/** Same steps as resize.ts: 0.85, then lower only while the WebP is above the upload limit. */
-const QUALITIES = [WEBP_QUALITY, 0.7, 0.55];
 
 export type CropInput =
   | { readonly image: DecodedImage; readonly codec: RasterCodec }
@@ -83,10 +79,7 @@ export async function cropCircle(input: CropInput, circle: DetectedCircle, scale
   if (drawn === null) throw new WebpUnsupportedError('this browser has no 2D canvas');
   const hash = dhash(inscribedSquare(drawn));
   const masked = maskCircle(drawn);
-  for (const quality of QUALITIES) {
-    const blob = await input.codec.encodeRaster(masked, quality);
-    if (blob === null || blob.type !== WEBP) throw new WebpUnsupportedError('this browser cannot encode WebP');
-    if (blob.size <= MAX_BYTES) return { blob, width, height, dhash: hash };
-  }
-  throw new ImageTooLargeError(`WebP above ${MAX_BYTES} bytes`);
+  // The same quality steps as a single capture (resize.ts, CAP-83 refactor).
+  const blob = await encodeWithin((quality) => input.codec.encodeRaster(masked, quality));
+  return { blob, width, height, dhash: hash };
 }

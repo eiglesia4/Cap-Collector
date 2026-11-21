@@ -14,6 +14,8 @@ export type RouteName =
   | 'newCap'
   | 'scanDuplicate'
   | 'scanReview'
+  | 'scanBatch'
+  | 'scanBatchAdjust'
   | 'albums'
   | 'albumSheet'
   | 'albumPrint'
@@ -44,6 +46,9 @@ export const ROUTES: readonly RouteDef[] = [
   // Capture outcomes (CAP-41 routes there; the screens are CAP-42 "Already in collection" and CAP-43 "AI review").
   { name: 'scanDuplicate', pattern: '/scan/duplicate', tab: 'scan', modal: true },
   { name: 'scanReview', pattern: '/scan/review', tab: 'scan', modal: true },
+  // Batch mode (CAP-83, ADR-009): Tray adjust, then the batch (CAP-84 replaces its interim list).
+  { name: 'scanBatchAdjust', pattern: '/scan/batch/adjust', tab: 'scan', modal: true },
+  { name: 'scanBatch', pattern: '/scan/batch', tab: 'scan', modal: true },
   { name: 'albums', pattern: '/albums', tab: 'collection' },
   // Album sheet view (CAP-52, SCREENS.md #7).
   { name: 'albumSheet', pattern: '/albums/:albumId/sheets/:sheet', tab: 'collection' },

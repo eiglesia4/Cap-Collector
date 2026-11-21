@@ -4,6 +4,7 @@ import type { RouteName } from '../router/routes.js';
 import { AlbumLayoutScreen } from './album-layout-screen.js';
 import { AlbumSheetScreen } from './album-sheet-screen.js';
 import { AlbumsScreen } from './albums-screen.js';
+import { BatchScreen } from './batch-screen.js';
 import { CapDetailScreen } from './cap-detail-screen.js';
 import { EditCapScreen, NewCapScreen, ScanReviewScreen } from './cap-form-screen.js';
 import { CollectionScreen } from './collection-screen.js';
@@ -16,6 +17,7 @@ import { ScanScreen } from './scan-screen.js';
 import { SettingsScreen } from './settings-screen.js';
 import { SignInScreen } from './sign-in-screen.js';
 import { StatsScreen } from './stats-screen.js';
+import { TrayAdjustScreen } from './tray-adjust-screen.js';
 
 export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   collection: CollectionScreen,
@@ -28,6 +30,8 @@ export const SCREENS: Readonly<Record<RouteName, Screen>> = {
   newCap: NewCapScreen,
   scanDuplicate: ScanDuplicateScreen,
   scanReview: ScanReviewScreen,
+  scanBatch: BatchScreen,
+  scanBatchAdjust: TrayAdjustScreen,
   albums: AlbumsScreen,
   albumSheet: AlbumSheetScreen,
   albumPrint: PrintScreen,

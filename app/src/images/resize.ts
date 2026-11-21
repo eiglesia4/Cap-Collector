@@ -141,8 +141,11 @@ export function inscribedSquare(raster: Raster): Raster {
   return { data, width: side, height: side };
 }
 
-/** Encode at 0.85, stepping quality down only while the WebP is above the upload limit. */
-async function encodeWithin(encode: (quality: number) => Promise<Blob | null>): Promise<Blob> {
+/**
+ * Encode at 0.85, stepping quality down only while the WebP is above the upload limit. Shared by the single capture
+ * and the batch crops (vision/crop.ts, CAP-83) so both encode alike.
+ */
+export async function encodeWithin(encode: (quality: number) => Promise<Blob | null>): Promise<Blob> {
   for (const quality of [WEBP_QUALITY, ...FALLBACK_QUALITIES]) {
     const blob = await encode(quality);
     if (blob === null || blob.type !== WEBP) throw new WebpUnsupportedError('this browser cannot encode WebP');
