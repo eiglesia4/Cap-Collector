@@ -29,6 +29,8 @@ const deployment = { installation: 'naeva', stage: 'dev' };
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
 const PLAIN_MODEL = 'anthropic.claude-haiku-test-v1:0';
 const PROFILE_MODEL = `eu.${PLAIN_MODEL}`;
+/** The model committed for naeva/dev since CAP-73 (ADR-008 §7: tuning the model is a config change). */
+const HAIKU_5_5_PROFILE = 'eu.anthropic.claude-haiku-5-5';
 
 const configWith = (modelId: string): InstallationConfig => ({
   config_version: 'test',
@@ -187,10 +189,34 @@ describe('scans infra (CAP-40)', () => {
       );
     }
 
-    // The committed naeva.dev target: an EU inference profile of a Haiku-class model, threshold 10 (ADR-004).
+    // The committed naeva.dev target: the EU inference profile of Claude Haiku 5.5 (CAP-73), threshold 10 (ADR-004).
     const committed = loadInstallationConfig(deployment).ai;
     expect(committed.dhashThreshold).toBe(10);
-    expect(committed.modelId).toMatch(/^eu\.anthropic\.claude-.*haiku/);
+    expect(committed.modelId).toBe(HAIKU_5_5_PROFILE);
+  });
+
+  it('[T-infra-046] Claude Haiku 5.5 profile: grant on the EU profile + the foundation model in any region; alarm on the profile id', () => {
+    // CAP-73: the committed naeva.dev model id, run through the same grant and alarm as any other configured model.
+    expect(isInferenceProfile(HAIKU_5_5_PROFILE)).toBe(true);
+    expect(foundationModelId(HAIKU_5_5_PROFILE)).toBe('anthropic.claude-haiku-5-5');
+
+    const { api } = synth(HAIKU_5_5_PROFILE);
+    const statements = bedrockStatements(api);
+    expect([...statements.keys()].map((role) => role.replace(/ServiceRole.*$/, ''))).toEqual(['ScansAnalyse']);
+    const [statement] = [...statements.values()][0] ?? [];
+    expect(statement?.Action).toBe('bedrock:InvokeModel');
+    const resources = JSON.stringify(statement?.Resource);
+    expect(resources).toContain(':bedrock:test-region-1:');
+    expect(resources).toContain(':inference-profile/eu.anthropic.claude-haiku-5-5"');
+    expect(resources).toContain(':bedrock:*::foundation-model/anthropic.claude-haiku-5-5"');
+    // Nothing left of the previous model.
+    expect(resources).not.toContain('haiku-4-5');
+
+    api.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'cap-naeva-dev-bedrock-invocations',
+      Dimensions: [{ Name: 'ModelId', Value: HAIKU_5_5_PROFILE }],
+    });
+    expect(functions(api).get('ScansAnalyse')?.env).toMatchObject({ [AI_ENV.bedrockModelId]: HAIKU_5_5_PROFILE });
   });
 
   it('[T-infra-031] cost guard: daily Bedrock invocations alarm → alerts topic; e-mail subscribed only when set', () => {
