@@ -64,6 +64,22 @@ reviewed | expired`) so the screen can list what is still out. Expire after 30 d
 A multi-cap request zips one folder per cap plus `requests.json` (array). The answer may come
 back as one JSON array or one file per cap; each item is matched by `requestId`.
 
+## Backup (`capcollector.backup` v1)
+Defined in CAP-80 (2026-11-21). Settings → "Export backup" writes a copy of the user's data that the user keeps. It is independent of AWS Backup.
+```
+capcollector-backup-<YYYY-MM-DD>.zip
+├── backup.json
+└── images/<capId>-top.webp · images/<capId>-underside.webp   (stored, not recompressed)
+```
+`backup.json`:
+- `format`: `"capcollector.backup"`; `version`: integer (1). Importers accept every version ever emitted, like exchange.
+- `exportedAt` (ISO instant), `contractsVersion` (e.g. `"0.3.0"`).
+- `caps`: every live cap as `GET /caps` returns it, **without `imageUrls`** (presigned, short-lived). `images.*.key` is kept, and the file name maps to it. Tombstones are not included.
+- `albums`: as `GET /albums` returns them.
+- `missingImages?`: `[{capId, side}]` for photos that failed to download twice. The export continues.
+- `photosOmitted?`: `true` when photos were left out on purpose (collections above 2 000 caps). Absent otherwise.
+Import is a later story: ids, history and the merge policy are decided there.
+
 ## Also covered by this area
 - Whole-collection export (JSON + CSV + images zip) and import (merge by `capId`, dry-run diff
   first) live on the same screen under "Backup". Import never deletes; it only adds or proposes updates.
