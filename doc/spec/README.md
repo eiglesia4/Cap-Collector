@@ -26,15 +26,15 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 | `specs/data-model.md` | **Agreed 2026-10-31** (CAP-12), v0.2 additions 2026-11-02 | V0–V1 |
 | `design/SCREENS.md` | Proposed 2026-10-18 | V0 |
 | `decisions/ADR-000…008` | ADR-001…008 Accepted | V0 |
-| `openapi.yaml` | v0.2.0 (CAP-26, repo-only) | V1 |
+| `openapi.yaml` | v0.3.0 (CAP-76, repo-only) | V1–V3 |
 
 ## Contracts (owned by the architect, `OWNERSHIP.md`)
 
-Published in CAP-12 as **contracts v0.1**, bumped to **v0.2** in CAP-26 (`CONTRACTS_VERSION` in `shared/src/index.ts`):
+Published in CAP-12 as **contracts v0.1**, bumped to **v0.2** in CAP-26 and **v0.3** in CAP-76 (`CONTRACTS_VERSION` in `shared/src/index.ts`; v0.3 adds the `brand` filter on `GET /caps` and `SheetPocket.thumbUrl`, both backward-compatible; a single-album `GET` was dropped — `GET /albums` is enough):
 
 - `shared/src/schemas/*.ts` — zod schemas + inferred types: enums, Location (+ code parser), Cap / CapInput / CapPatch / CapHistory, Scan / AnalyseRequest / AnalyseResponse, Album / SheetView / NextFree, Exchange v1 (`parseExchangeUpload`, `normaliseResponseFields`).
 - `shared/src/keys.ts` — the only place DynamoDB keys are built (PK/SK, GSI1 location, GSI2 brand, LOCK markers, REFRESH# tokens, TTL).
 - `shared/src/routes.ts` — the single route manifest (method, path, auth, handler); infra and api import it.
 - `shared/src/schemas/http.ts` — Problem, Healthz, Session, AppleSignInRequest, RefreshRequest, UploadRequest/Response.
-- `doc/spec/openapi.yaml` v0.2.0 — the HTTP API; bodies reference the zod schemas, which are authoritative.
+- `doc/spec/openapi.yaml` v0.3.0 — the HTTP API; bodies reference the zod schemas, which are authoritative.
 - `specs/data-model.md` — Agreed.

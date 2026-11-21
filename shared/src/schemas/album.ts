@@ -55,6 +55,9 @@ export const SheetPocket = z.object({
   brand: z.string(),
   variant: z.string().optional(),
   thumbKey: z.string(),
+  /** Presigned GET URL of the top image (v0.3, CAP-76), so the sheet grid can show thumbnails without other calls.
+   *  Absent when the cap has no image; short-lived like every presigned URL (refetch the sheet to renew). */
+  thumbUrl: z.string().url().optional(),
 });
 
 export const SheetView = z.object({

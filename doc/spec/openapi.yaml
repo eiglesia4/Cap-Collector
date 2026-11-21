@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CapCollector API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Contract between `app/` and `api/` (CAP-12 v0.1 → CAP-26 v0.2). Owned by the architect; changes are new versions.
     Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name
@@ -9,6 +9,7 @@ info:
     All routes except `/auth/*` and `/healthz` (marked `security: []`) require `Authorization: Bearer <session JWT>`
     (Sign in with Apple + PKCE, ADR-008). The route list, with handler names, is `shared/src/routes.ts` (T-shared-006).
     Errors are `Problem` (RFC 9457); 500 carries the request id in `detail` and in the `x-request-id` header.
+    v0.3 (CAP-76): `brand` filter on `GET /caps`, `SheetPocket.thumbUrl` (both backward-compatible; no new routes).
     v0.2 (CAP-26): `security: []` markers, `/auth/apple` and `/auth/refresh` bodies, `/uploads` body without `capId`,
     `Cap.imageUrls`, `Location.albumId`, `CapPatch` semantics (no defaults, `null` clears), sort rules, examples.
 servers:
@@ -95,6 +96,7 @@ paths:
         - { name: status, in: query, schema: { $ref: '#/components/schemas/CapStatus' } }
         - { name: country, in: query, schema: { type: string, pattern: '^[A-Z]{2}$' } }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/CapType' } }
+        - { name: brand, in: query, schema: { type: string }, description: 'v0.3: exact brand match, normalised like the brand index (case- and accent-insensitive, GSI2 `BRAND#<normalised>`); combines with the other filters' }
         - { name: tag, in: query, schema: { type: string } }
         - { name: forTrade, in: query, schema: { type: boolean }, description: only caps with forTrade > 0 }
         - { name: sort, in: query, schema: { type: string, enum: [brand, newest, country, year], default: brand }, description: 'brand A–Z · newest = createdAt desc · country A–Z then brand · year = oldest first, caps without year last' }
