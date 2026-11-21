@@ -490,6 +490,14 @@ body {
   text-align: center;
 }
 
+/* "All <brand> caps" under the title (CAP-79). */
+.detail-brand-link {
+  align-self: center;
+  margin-top: calc(-1 * var(--space-3));
+  color: var(--color-accent);
+  font-size: 14px;
+}
+
 .detail-subtitle {
   margin: calc(-1 * var(--space-3)) 0 0;
   text-align: center;

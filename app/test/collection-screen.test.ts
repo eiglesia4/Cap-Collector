@@ -52,6 +52,31 @@ afterEach(() => {
 });
 
 describe('collection screen', () => {
+  it('[T-app-134] /?brand=Mahou sends GET /caps?brand=Mahou and shows a removable chip; removing it clears the filter', async () => {
+    const { api, paths } = capsApi((params) =>
+      wirePage(params.get('brand') === 'Mahou' ? [wireCap(1, { brand: 'Mahou' })] : [wireCap(1), wireCap(2)]),
+    );
+    const ctx: AppContext = { ...(await shellContext({ api })), navigate: vi.fn(), skipSignIn: vi.fn() };
+    const route = matchRoute('/', '?brand=Mahou');
+    if (!route) throw new Error('no route');
+    const el = CollectionScreen(ctx, route);
+    document.body.replaceChildren(el);
+    await vi.waitFor(() => expect(grid(el)).toHaveLength(1));
+
+    expect(gridParams(paths).map((p) => p.get('brand'))).toEqual(['Mahou']);
+    const chip = el.querySelector<HTMLButtonElement>('[data-chip="brand"]');
+    expect(chip?.textContent).toBe(t('collection.chipBrand', { brand: 'Mahou' }));
+    expect(chip?.getAttribute('aria-pressed')).toBe('true');
+    expect(chip?.getAttribute('aria-label')).toBe(t('collection.chipBrandRemove', { brand: 'Mahou' }));
+    expect(el.querySelector('[data-chip="all"]')?.getAttribute('aria-pressed')).toBe('false');
+
+    chip?.click();
+    await vi.waitFor(() => expect(grid(el)).toHaveLength(2));
+    expect(gridParams(paths).at(-1)?.has('brand')).toBe(false);
+    expect(el.querySelector('[data-chip="brand"]')).toBeNull();
+    expect(el.querySelector('[data-chip="all"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('[T-app-031] renders a CapPage as round tiles: brand · variant, country · year, "!" badge, image or brand-hued placeholder', async () => {
     const page = wirePage(
       [

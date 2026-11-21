@@ -121,6 +121,30 @@ afterEach(() => {
 });
 
 describe('album sheet', () => {
+  it('[T-app-133] a pocket with thumbUrl (contracts v0.3) shows that photo, lazily; without one, or when it fails to load, the brand-hued placeholder', async () => {
+    const withThumbs = {
+      ...sheet3,
+      pockets: sheet3.pockets.map((p) => (p.pocket === 1 ? { ...p, thumbUrl: 'https://img.test/1.webp' } : p)),
+    };
+    const { ctx } = await context((path) =>
+      path === '/albums' ? [albumA] : path === `/albums/${ALBUM_ID}/sheets/3` ? withThumbs : undefined,
+    );
+    const el = AlbumSheetScreen(ctx, route(`/albums/${ALBUM_ID}/sheets/3`));
+    document.body.replaceChildren(el);
+    await settle();
+
+    const img = $<HTMLImageElement>(el, '[data-pocket="1"] img.pocket-thumb');
+    expect(img.getAttribute('src')).toBe('https://img.test/1.webp');
+    expect(img.getAttribute('loading')).toBe('lazy');
+    // No thumbUrl and never opened on Detail: the placeholder with the pocket number.
+    expect(el.querySelector('[data-pocket="17"] img')).toBeNull();
+    expect($(el, '[data-pocket="17"] .cap-thumb--placeholder').textContent).toBe('17');
+    // An expired / broken URL falls back to the placeholder.
+    img.dispatchEvent(new Event('error'));
+    expect(el.querySelector('[data-pocket="1"] img')).toBeNull();
+    expect($(el, '[data-pocket="1"] .cap-thumb--placeholder').textContent).toBe('1');
+  });
+
   it('[T-app-087] the grid renders cols × rows pockets numbered row-major, occupied ones in their cells (pocketToCell)', async () => {
     const { ctx, calls } = await context((path) =>
       path === '/albums' ? [albumA, boxB] : path === `/albums/${ALBUM_ID}/sheets/3` ? sheet3 : undefined,

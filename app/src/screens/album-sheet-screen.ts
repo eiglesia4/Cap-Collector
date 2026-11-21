@@ -82,7 +82,8 @@ function placeholder(cell: SheetCell & { cap: NonNullable<SheetCell['cap']> }): 
 }
 
 function thumb(ctx: AppContext, cell: SheetCell & { cap: NonNullable<SheetCell['cap']> }): HTMLElement {
-  const url = knownThumb(ctx, cell.cap.capId);
+  // v0.3 (CAP-79): the sheet carries a presigned `thumbUrl`; before that, a cap seen earlier in this session.
+  const url = cell.cap.thumbUrl ?? knownThumb(ctx, cell.cap.capId);
   if (url === undefined) return placeholder(cell);
   const img = h('img', { class: 'pocket-thumb', attrs: { src: url, alt: '', loading: 'lazy', decoding: 'async' } });
   // The presigned URL lasts ≈5 min: once expired, the placeholder.
