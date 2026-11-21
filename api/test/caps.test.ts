@@ -381,4 +381,45 @@ describe('caps API', () => {
     expect((await patch(cap.capId, { images: null })).statusCode).toBe(422);
     expect((await patch(cap.capId, { brand: null })).statusCode).toBe(422);
   });
+
+  it('[T-api-090] ?brand= matches the normalised brand (mahou, Mahóu, MAHOU), excludes tombstones and other users, combines with country, pages with a cursor; unknown brand → empty page', async () => {
+    const mk = async (body: Record<string, unknown>) => record(await create(body));
+    const a = await mk({ brand: 'mahou', variant: 'A', country: 'ES' });
+    const b = await mk({ brand: 'Mahóu', variant: 'B', country: 'ES' });
+    const c = await mk({ brand: 'MAHOU', variant: 'C', country: 'PT' });
+    await mk({ brand: 'Mahou Cinco Estrellas', country: 'ES' }); // a different normalised brand
+    await mk({ brand: 'Estrella Galicia', country: 'ES' });
+    const gone = await mk({ brand: 'Mahou', variant: 'Z', country: 'ES' });
+    await del(gone.capId);
+    // Another user's Mahou shares the GSI2 partition `BRAND#mahou` but never shows here.
+    const other = bare({ brand: 'Mahou' });
+    delete other.location;
+    await repos.caps.put('apple-sub-2', { cap: other, history: makeHistory(other.capId, 'created') });
+
+    const ids = async (q: Record<string, string>) => json<{ items: Cap[] }>(await list(q)).items.map((x) => x.capId);
+    expect(await ids({ brand: 'Mahou' })).toEqual([a.capId, b.capId, c.capId]);
+    expect(await ids({ brand: '  máhou ' })).toEqual([a.capId, b.capId, c.capId]);
+    expect(await ids({ brand: 'Mahou', country: 'ES' })).toEqual([a.capId, b.capId]);
+    expect(await ids({ brand: 'Mahou', includeDeleted: 'true' })).toEqual([a.capId, b.capId, c.capId, gone.capId]);
+
+    const p1 = json<{ items: Cap[]; cursor?: string; total: number }>(await list({ brand: 'MAHOU', limit: '2' }));
+    expect(p1.items.map((x) => x.capId)).toEqual([a.capId, b.capId]);
+    expect(p1.total).toBe(3);
+    const p2 = json<{ items: Cap[]; cursor?: string }>(await list({ brand: 'MAHOU', limit: '2', cursor: p1.cursor! }));
+    expect(p2.items.map((x) => x.capId)).toEqual([c.capId]);
+    expect(p2.cursor).toBeUndefined();
+
+    const none = await list({ brand: 'Heineken' });
+    expect(none.statusCode).toBe(200);
+    expect(json<{ items: Cap[]; total: number }>(none)).toEqual({ items: [], total: 0 });
+  });
+
+  it('[T-api-091] ?brand= empty, blank or longer than 80 characters → 422 on query.brand', async () => {
+    for (const brand of ['', '   ', 'x'.repeat(81)]) {
+      const res = await list({ brand });
+      expect(res.statusCode).toBe(422);
+      expect(json<{ errors: { path: string }[] }>(res).errors.map((e) => e.path)).toEqual(['query.brand']);
+    }
+    expect((await list({ brand: ` ${'x'.repeat(80)} ` })).statusCode).toBe(200);
+  });
 });

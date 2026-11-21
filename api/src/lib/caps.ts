@@ -173,6 +173,8 @@ export const CapListQuery = z.object({
   status: CapStatusSchema.optional(),
   country: CountryCode.optional(),
   type: CapType.optional(),
+  /** v0.3 (CAP-76/78): exact brand, normalised like GSI2 (`normaliseBrand`: case- and accent-insensitive). */
+  brand: z.string().trim().min(1).max(80).optional(),
   tag: z.string().trim().min(1).max(30).optional(),
   forTrade: Bool.optional(),
   sort: ListSort.default('brand'),
@@ -212,6 +214,7 @@ function matchesFilters(cap: Cap, f: CapListQuery): boolean {
   if (f.status && cap.status !== f.status) return false;
   if (f.country && cap.country !== f.country) return false;
   if (f.type && cap.type !== f.type) return false;
+  if (f.brand !== undefined && normaliseBrand(cap.brand) !== normaliseBrand(f.brand)) return false;
   if (f.tag && !cap.tags.some((t) => normaliseBrand(t) === normaliseBrand(f.tag!))) return false;
   if (f.forTrade !== undefined && cap.forTrade > 0 !== f.forTrade) return false;
   if (f.q && !matchesQuery(cap, f.q)) return false;
@@ -279,6 +282,13 @@ function decodeListCursor(cursor: string, sort: ListSort): SortKey {
   return r.data.k;
 }
 
+/**
+ * GET /caps. SPEC-GAP CAP-78: the story suggests querying GSI2 for `brand`, but GSI2's partition `BRAND#<normalised>`
+ * is not scoped to the user, its projection lacks the fields the other filters need (country, type, tags, …), and
+ * tombstones leave it (so `includeDeleted` could not be served from it). The list already reads the user's caps in
+ * one pass (CAP-18), so `brand` is applied there with the same `normaliseBrand` as GSI2: identical matches, no extra
+ * reads, no other user's rows.
+ */
 export async function listCaps(repos: Repositories, uid: string, query: CapListQuery): Promise<CapPage> {
   const all = await repos.caps.listAll(uid, { includeDeleted: query.includeDeleted });
   const cmp = COMPARATORS[query.sort];

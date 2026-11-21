@@ -10,6 +10,7 @@ import { handler as nextFreeH } from '../src/handlers/albums-next-free.js';
 import { handler as patchH } from '../src/handlers/albums-patch.js';
 import { handler as sheetH } from '../src/handlers/albums-sheet.js';
 import { newId } from '../src/lib/ids.js';
+import { GET_URL_TTL_SECONDS, withThumbUrls } from '../src/lib/images.js';
 import { setRepositories } from '../src/lib/repo/index.js';
 import { capItem } from '../src/lib/repo/items.js';
 import { type InMemoryCapRepository, createMemoryRepositories } from '../src/lib/repo/memory.js';
@@ -175,9 +176,17 @@ describe('sheet view and next free', () => {
     const view = SheetView.parse(json(res));
     expect(view).toMatchObject({ albumId: a.albumId, letter: 'A', sheet: 1, cols: 6, rows: 7 });
     expect(view.cols * view.rows).toBe(42);
+    const thumbUrl = expect.any(String) as unknown;
     expect(view.pockets).toEqual([
-      { pocket: 3, capId: first.capId, brand: 'Mahou', variant: 'Clásica', thumbKey: first.images.top.key },
-      { pocket: 17, capId: later.capId, brand: 'Alhambra', variant: 'Clásica', thumbKey: later.images.top.key },
+      { pocket: 3, capId: first.capId, brand: 'Mahou', variant: 'Clásica', thumbKey: first.images.top.key, thumbUrl },
+      {
+        pocket: 17,
+        capId: later.capId,
+        brand: 'Alhambra',
+        variant: 'Clásica',
+        thumbKey: later.images.top.key,
+        thumbUrl,
+      },
     ]);
     expect(SheetView.parse(json(await sheet(a.albumId, 3))).pockets).toEqual([]);
 
@@ -187,6 +196,25 @@ describe('sheet view and next free', () => {
     const box = Album.parse(json(await create({ letter: 'T', name: 'Trade box', kind: 'box' })));
     expect((await sheet(box.albumId, 1)).statusCode).toBe(404);
     expect((await nextFree(box.albumId)).statusCode).toBe(404);
+  });
+
+  it('[T-api-089] sheet view: each pocket carries thumbUrl, a presigned 15-min GET of its thumbKey; a pocket without a key gets none', async () => {
+    const a = await mkAlbum();
+    const cap = await place(a, 1, 3, 'Mahou');
+    const view = SheetView.parse(json(await sheet(a.albumId, 1)));
+    const [p] = view.pockets;
+    expect(p!.thumbKey).toBe(cap.images.top.key);
+    const url = new URL(p!.thumbUrl!);
+    expect(url.pathname).toContain(cap.images.top.key);
+    expect(url.searchParams.get('X-Amz-Expires')).toBe(String(GET_URL_TTL_SECONDS));
+    expect(url.searchParams.get('X-Amz-Signature')).toBeTruthy();
+
+    const bare = { albumId: a.albumId, letter: 'A', sheet: 1, cols: 6, rows: 7 };
+    const out = await withThumbUrls({
+      ...bare,
+      pockets: [{ pocket: 1, capId: cap.capId, brand: 'Mahou', thumbKey: '' }],
+    });
+    expect(out.pockets[0]).not.toHaveProperty('thumbUrl');
   });
 
   it('[T-api-069] next-free: empty album → A·1·1; first gap in row-major order; full sheet → next sheet, stopping there; full album → nulls', async () => {

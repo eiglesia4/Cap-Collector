@@ -3,7 +3,7 @@
 // prefix. Reads are presigned GETs the API adds as `Cap.imageUrls` to every cap it returns (contracts v0.2, CAP-30).
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { type Cap, type ImageUrls, UploadRequest } from '@capcollector/shared';
+import { type Cap, type ImageUrls, type SheetView, UploadRequest } from '@capcollector/shared';
 import { z } from 'zod';
 
 import { type Config, getConfig } from './config.js';
@@ -87,10 +87,14 @@ export async function presignUpload(
   return { key, url, expiresAt: new Date(now + PUT_URL_TTL_SECONDS * 1000).toISOString() };
 }
 
+/** One presigned GET for an image key (15 min). Every read URL the API hands out goes through here (CAP-30, CAP-78). */
+export function presignGet(s3: S3Client, bucket: string, key: string): Promise<string> {
+  return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: GET_URL_TTL_SECONDS });
+}
+
 /** Presigned GETs for a cap's images: one per side present, none for a missing side (shared `ImageUrls`). */
 export async function imageUrls(s3: S3Client, bucket: string, images: Cap['images']): Promise<ImageUrls> {
-  const sign = (key: string) =>
-    getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: GET_URL_TTL_SECONDS });
+  const sign = (key: string) => presignGet(s3, bucket, key);
   const top = await sign(images.top.key);
   return images.underside ? { top, underside: await sign(images.underside.key) } : { top };
 }
@@ -114,4 +118,18 @@ export function resetS3(): void {
  */
 export async function withImageUrls(cap: Cap): Promise<Cap> {
   return { ...cap, imageUrls: await imageUrls(getS3(), getConfig().imagesBucket, cap.images) };
+}
+
+/**
+ * The sheet view as GET /albums/{albumId}/sheets/{sheet} returns it (v0.3, CAP-76/78): each pocket with a `thumbKey`
+ * gets `thumbUrl`, a presigned GET of that key — one signing call per pocket, no extra DynamoDB read. A pocket
+ * without a key gets no `thumbUrl` (shared `SheetPocket.thumbUrl` is optional).
+ */
+export async function withThumbUrls(view: SheetView): Promise<SheetView> {
+  const s3c = getS3();
+  const bucket = getConfig().imagesBucket;
+  const pockets = await Promise.all(
+    view.pockets.map(async (p) => (p.thumbKey ? { ...p, thumbUrl: await presignGet(s3c, bucket, p.thumbKey) } : p)),
+  );
+  return { ...view, pockets };
 }
