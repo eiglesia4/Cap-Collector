@@ -1,6 +1,7 @@
 // Collection query (CAP-23, SCREENS.md #1): what the search field, the filter chips and the sort sheet select, and its
 // mapping 1:1 onto the `GET /caps` query parameters (openapi.yaml § /caps). One value per dimension — the API takes a
-// single `type` and a single `country` — and chips of different dimensions combine with AND.
+// single `type` and a single `country` — and chips of different dimensions combine with AND. CAP-79 (contracts v0.3):
+// `brand` (exact brand, normalised by the API), linked from Stats and Detail as `/?brand=Mahou`.
 import { CapType, CountryCode, type Cap } from '@capcollector/shared';
 
 export const SORTS = ['brand', 'newest', 'country', 'year'] as const;
@@ -18,16 +19,29 @@ export interface CollectionQuery {
   readonly q: string;
   readonly type: CapType | null;
   readonly country: string | null;
+  /** Exact brand (v0.3 `GET /caps?brand=`), set from a link; shown as a removable chip. */
+  readonly brand: string | null;
   readonly needsReview: boolean;
   readonly sort: Sort;
 }
 
-export const DEFAULT_QUERY: CollectionQuery = { q: '', type: null, country: null, needsReview: false, sort: 'brand' };
+export const DEFAULT_QUERY: CollectionQuery = {
+  q: '',
+  type: null,
+  country: null,
+  brand: null,
+  needsReview: false,
+  sort: 'brand',
+};
 
-/** A Collection filter that can be linked to (CAP-58: Stats bars): `/?country=ES`, `/?type=beer`, `/?status=needsReview`. */
+/**
+ * A Collection filter that can be linked to (CAP-58: Stats bars): `/?country=ES`, `/?type=beer`, `/?status=needsReview`;
+ * `/?brand=Mahou` (CAP-79: Stats brand bars, Detail).
+ */
 export interface CollectionFilter {
   readonly type?: CapType;
   readonly country?: string;
+  readonly brand?: string;
   readonly needsReview?: boolean;
 }
 
@@ -35,6 +49,7 @@ export function collectionFilterPath(filter: CollectionFilter): string {
   const params = new URLSearchParams();
   if (filter.type !== undefined) params.set('type', filter.type);
   if (filter.country !== undefined) params.set('country', filter.country);
+  if (filter.brand !== undefined) params.set('brand', filter.brand);
   if (filter.needsReview) params.set('status', 'needsReview');
   const qs = params.toString();
   return qs === '' ? '/' : `/?${qs}`;
@@ -47,19 +62,23 @@ export function collectionFilterPath(filter: CollectionFilter): string {
 export function queryFromRoute(params: Readonly<Record<string, string>>): CollectionQuery | null {
   const type = CapType.safeParse(params.type);
   const country = CountryCode.safeParse(params.country);
+  const brand = params.brand?.trim() ?? '';
   const needsReview = params.status === 'needsReview';
-  if (!type.success && !country.success && !needsReview) return null;
+  if (!type.success && !country.success && brand === '' && !needsReview) return null;
   return {
     ...DEFAULT_QUERY,
     type: type.success ? type.data : null,
     country: country.success ? country.data : null,
+    brand: brand === '' ? null : brand,
     needsReview,
   };
 }
 
 /** True when a search or chip narrows the list (the "All" chip is then not selected). */
 export function isFiltered(query: CollectionQuery): boolean {
-  return query.q.trim() !== '' || query.type !== null || query.country !== null || query.needsReview;
+  return (
+    query.q.trim() !== '' || query.type !== null || query.country !== null || query.brand !== null || query.needsReview
+  );
 }
 
 /** `/caps?…` for one page of `query`. Defaults (sort=brand, no cursor) are still sent explicitly for sort. */
@@ -69,6 +88,7 @@ export function capsPath(query: CollectionQuery, page: { cursor?: string | null;
   if (q !== '') params.set('q', q);
   if (query.type !== null) params.set('type', query.type);
   if (query.country !== null) params.set('country', query.country);
+  if (query.brand !== null) params.set('brand', query.brand);
   if (query.needsReview) params.set('status', 'needsReview');
   params.set('sort', query.sort);
   params.set('limit', String(page.limit ?? PAGE_SIZE));

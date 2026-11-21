@@ -1,7 +1,8 @@
 // Stats tab (CAP-58; features.md § Phase 2 "Stats tab"; SCREENS.md inventory, "phase 2 / simple lists"): totals and
 // CSS bar lists by country (top 15 + others), type, year (decades when spread out), status and caps added per month
 // over the last 12 months, computed on the client from every live cap (stats/aggregate.ts). A country, type or
-// "needs review" bar links to Collection with that filter (`/?country=ES`). Cached in memory; Refresh (and pull down
+// "needs review" bar links to Collection with that filter (`/?country=ES`). CAP-79: by brand (top 15 + others), each
+// bar linking to `/?brand=`. Cached in memory; Refresh (and pull down
 // on the iPhone) fetches again. Styles: styles/stats.css.
 import type { CapType } from '@capcollector/shared';
 
@@ -107,6 +108,12 @@ export function StatsView(stats: Stats): HTMLElement[] {
       bars: stats.byCountry,
       label: (key) => common(key) ?? countryName(key),
       filter: (key) => (common(key) === null ? { country: key } : undefined),
+    }),
+    BarList({
+      title: t('stats.byBrand'),
+      bars: stats.byBrand,
+      label: (key) => common(key) ?? key,
+      filter: (key) => (common(key) === null ? { brand: key } : undefined),
     }),
     BarList({
       title: t('stats.byType'),

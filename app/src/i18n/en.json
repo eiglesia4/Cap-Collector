@@ -511,5 +511,9 @@
   "layout.resume": "Resume",
   "layout.done": "Placed {placed} caps.",
   "layout.print": "Print discs + sheet index · {letter}",
-  "layout.openSheet": "Open {letter} · sheet {sheet}"
+  "layout.openSheet": "Open {letter} · sheet {sheet}",
+  "collection.chipBrand": "{brand} ✕",
+  "collection.chipBrandRemove": "Remove the brand filter {brand}",
+  "capDetail.brandLink": "All {brand} caps",
+  "stats.byBrand": "By brand"
 }

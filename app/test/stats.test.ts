@@ -8,8 +8,8 @@ import { renderApp, type AppHandle } from '../src/app';
 import { collectionFilterPath, DEFAULT_QUERY, queryFromRoute } from '../src/collection/query';
 import { countryName } from '../src/i18n/countries';
 import { t } from '../src/i18n/i18n';
-import { collectionStats, MAX_YEAR_BARS, OTHERS, TOP_COUNTRIES, UNKNOWN } from '../src/stats/aggregate';
-import { wireCap, wirePage } from './support/caps';
+import { collectionStats, MAX_YEAR_BARS, OTHERS, TOP_BRANDS, TOP_COUNTRIES, UNKNOWN } from '../src/stats/aggregate';
+import { ulid, wireCap, wirePage } from './support/caps';
 import { fakeApi, shellContext } from './support/fakes';
 
 const NOW = new Date('2026-11-10T12:00:00.000Z');
@@ -147,6 +147,70 @@ describe('stats screen', () => {
   let handle: AppHandle | undefined;
   afterEach(() => handle?.destroy());
 
+  it('[T-app-135] brand bars: top 15 + others, spellings grouped, each linking to /?brand=; Detail links its brand the same way', async () => {
+    // 17 brands; Mahou spelt three ways (grouped, named by its most frequent spelling), Chimay twice.
+    const caps = [
+      wireCap(1, { brand: 'Mahou' }),
+      wireCap(2, { brand: 'MAHOU' }),
+      wireCap(3, { brand: 'Mahou' }),
+      wireCap(4, { brand: 'Mahóu' }),
+      wireCap(5, { brand: 'Chimay' }),
+      wireCap(6, { brand: 'Chimay' }),
+      ...Array.from({ length: 15 }, (_, i) => wireCap(10 + i, { brand: `Brand ${String.fromCharCode(65 + i)}` })),
+    ];
+    const stats = collectionStats(
+      caps.map((c) => Cap.parse(c)),
+      new Date('2026-11-21T00:00:00Z'),
+    );
+    expect(stats.byBrand).toHaveLength(TOP_BRANDS + 1);
+    expect(stats.byBrand.slice(0, 3)).toEqual([
+      { key: 'Mahou', count: 4 },
+      { key: 'Chimay', count: 2 },
+      { key: 'Brand A', count: 1 },
+    ]);
+    // 17 groups: the last two single-cap brands (N, O) are summed.
+    expect(stats.byBrand.at(-1)).toEqual({ key: OTHERS, count: 2 });
+    expect(stats.totals.brands).toBe(17);
+
+    const request = vi.fn(async <T>(path: string, opts: RequestOptions<T>): Promise<T> => {
+      let answer: unknown = wirePage(caps);
+      if (path.includes('brand=Mahou')) answer = wirePage(caps.slice(0, 4));
+      if (path === `/caps/${ulid(5)}`) answer = caps[4];
+      if (path.endsWith('/history')) answer = [];
+      const parsed = opts.schema.safeParse(answer);
+      if (!parsed.success) throw parsed.error;
+      return parsed.data;
+    });
+    const ctx = await shellContext({ api: fakeApi({ request: request as ApiClient['request'] }) });
+    const root = document.createElement('div');
+    document.body.replaceChildren(root);
+    window.history.replaceState(null, '', '/stats');
+    handle = renderApp(root, ctx);
+    await vi.waitFor(() => expect(root.querySelector('.stats-totals')).not.toBeNull());
+
+    const mahou = root.querySelector<HTMLAnchorElement>('a.stats-bar--link[data-key="Mahou"]');
+    expect(mahou?.getAttribute('href')).toBe('/?brand=Mahou');
+    expect(mahou?.querySelector('.stats-bar__count')?.textContent).toBe('4');
+    expect(root.querySelector('a[data-key="others"]')).toBeNull();
+    expect(collectionFilterPath({ brand: 'Estrella Galicia' })).toBe('/?brand=Estrella+Galicia');
+    expect(queryFromRoute({ brand: ' Mahou ' })).toEqual({ ...DEFAULT_QUERY, brand: 'Mahou' });
+    expect(queryFromRoute({ brand: '  ' })).toBeNull();
+
+    // Tapping the bar lists that brand's caps.
+    mahou?.click();
+    await vi.waitFor(() => expect(root.querySelectorAll('.cap-grid .cap-tile')).toHaveLength(4));
+    expect(request.mock.calls.some(([p]) => String(p).includes('brand=Mahou'))).toBe(true);
+
+    // Detail: "All Chimay caps" opens Collection with ?brand=.
+    handle.destroy();
+    window.history.replaceState(null, '', `/cap/${ulid(5)}`);
+    handle = renderApp(root, ctx);
+    await vi.waitFor(() => expect(root.querySelector('[data-action="brand"]')).not.toBeNull());
+    const link = root.querySelector<HTMLAnchorElement>('[data-action="brand"]');
+    expect(link?.textContent).toBe(t('capDetail.brandLink', { brand: 'Chimay' }));
+    expect(link?.getAttribute('href')).toBe('/?brand=Chimay');
+  });
+
   it('[T-app-118] renders totals and bars, a country bar opens the filtered Collection, Refresh fetches again', async () => {
     let pages = 0;
     const caps = [
@@ -192,6 +256,7 @@ describe('stats screen', () => {
     expect(root.querySelector('a[data-key="2026-11"]')).toBeNull();
     expect([...root.querySelectorAll('.stats-section__title')].map((e) => e.textContent)).toEqual([
       t('stats.byCountry'),
+      t('stats.byBrand'),
       t('stats.byType'),
       t('stats.byYear'),
       t('stats.byStatus'),
