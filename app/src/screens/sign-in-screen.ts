@@ -1,5 +1,5 @@
 // Sign-in screen (CAP-22, ADR-008 §4, SCREENS.md § Visual system): one "Sign in with Apple" button styled per
-// Apple's HIG (black, Apple logo, full width), with error states for a refused Apple ID (403), an unreachable
+// Apple's HIG (black, Apple logo, full width), under the brand mark (CAP-74), with error states for a refused Apple ID (403), an unreachable
 // network and a build without Apple configuration. On success the session store changes and the shell routes to
 // Collection — or the cap link that was waiting for it (CAP-54) — (app.ts); a cancelled sheet re-enables the button and
 // drops that pending link. CAP-64: the attempt is prepared on mount (Apple's SDK loaded and `init`ed, PKCE ready) and
@@ -7,6 +7,7 @@
 // synchronously. A failed preparation (SDK blocked, offline, not configured) shows why, with Retry. Apple's
 // `popup_blocked_by_browser` has its own message; other Apple codes are shown in small print.
 import { prepareSignIn, signIn, type PreparedSignIn, type SignInFailure } from '../auth/sign-in.js';
+import { BrandMark } from '../components/brand-mark.js';
 import type { Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { h } from '../ui/dom.js';
@@ -136,7 +137,7 @@ export const SignInScreen: Screen = (ctx) => {
     h(
       'div',
       { class: 'sign-in__brand' },
-      h('span', { class: 'sign-in__mark', attrs: { 'aria-hidden': 'true' } }),
+      BrandMark({ class: 'sign-in__mark' }),
       h('h1', { class: 'screen-title' }, t('app.name')),
       h('p', { class: 'muted' }, t('signIn.tagline')),
     ),

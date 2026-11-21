@@ -253,6 +253,22 @@ describe('sign-in screen and guard', () => {
     expect(root.querySelector('button[name="sign-out"]')).toBeNull();
   });
 
+  it('[T-app-125] the sign-in screen shows the copper-cap brand mark (21 crimps), not the old ring and dot', async () => {
+    const ctx = await shellContext({ signedIn: false });
+    mount('/', ctx);
+    const mark = root.querySelector<SVGSVGElement>('.sign-in__brand svg.sign-in__mark');
+    expect(mark?.dataset.brandMark).toBe('cap');
+    expect(mark?.getAttribute('aria-hidden')).toBe('true');
+    expect(mark?.getAttribute('viewBox')).toBe('0 0 1024 1024');
+    // mark-on-light: shadow + cap outline, each a closed path of 21 crimps (one quadratic pair per crimp).
+    const paths = [...(mark?.querySelectorAll('path') ?? [])];
+    expect(paths).toHaveLength(2);
+    for (const p of paths) expect(p.getAttribute('d')?.match(/Q/g)).toHaveLength(42);
+    // Ink centre on the light ground.
+    expect(mark?.querySelector('circle[r="150"]')?.getAttribute('fill')).toBe('#1B1A17');
+    expect(root.querySelector('span.sign-in__mark')).toBeNull();
+  });
+
   it('[T-app-024] the development skip exists only in development builds', async () => {
     const prodConfig = { apiUrl: 'https://api.test', version: '1', dev: false, apple: null, webUrl: null };
     const ctx = await shellContext({ config: prodConfig, signedIn: false });
