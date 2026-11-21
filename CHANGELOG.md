@@ -89,6 +89,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-80: backup export from Settings: one zip with `backup.json` (`capcollector.backup` v1: all live caps without `imageUrls`, albums, `missingImages`, and `photosOmitted` above 2 000 caps) plus one WebP per photo; share on iPhone, download on the Mac; format in `exchange.md § Backup` (T-app-136…139).
 - CAP-79: contracts v0.3 in the app: sheet pockets show photos from `thumbUrl` (falling back to the placeholder), Collection understands `?brand=` with a removable chip, Detail links to all caps of the brand, and Stats has "By brand" bars (T-app-133…135).
 - CAP-58: Stats tab computed on the client (totals; bars by country, type, year or decade, status, added per month; country/type/needs-review bars open a filtered Collection) and Settings (default album, pocket/pitch per album, scans & AI cost, About).
 
