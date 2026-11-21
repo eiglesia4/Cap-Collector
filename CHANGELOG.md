@@ -53,6 +53,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-77: `albums-sheet` gets `images-get` (`s3:GetObject` on image objects only) so the sheet view can presign pocket thumbnails (T-infra-027, T-infra-047). Deploy with CAP-78.
 - CAP-78: the sheet view returns a presigned `SheetPocket.thumbUrl` (single 15-min `presignGet()`), and `GET /caps?brand=` filters by normalised brand together with the other filters (T-api-089…091). Deploy with the CAP-77 grant.
 - CAP-75: initial layout: plan every unplaced cap into the chosen albums (type → country → brand, a new sheet per type and a new row per country), preview by sheet, apply in order (resumable), then print discs and the sheet index for the planned sheets (T-app-127…132).
 - CAP-76: contracts v0.3.0: `GET /caps?brand=` (normalised brand, GSI2) and optional `SheetPocket.thumbUrl` (T-shared-008).
@@ -88,6 +89,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-79: contracts v0.3 in the app: sheet pockets show photos from `thumbUrl` (falling back to the placeholder), Collection understands `?brand=` with a removable chip, Detail links to all caps of the brand, and Stats has "By brand" bars (T-app-133…135).
 - CAP-58: Stats tab computed on the client (totals; bars by country, type, year or decade, status, added per month; country/type/needs-review bars open a filtered Collection) and Settings (default album, pocket/pitch per album, scans & AI cost, About).
 
 #### Changed
