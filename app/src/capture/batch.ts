@@ -14,6 +14,10 @@
 //   → `failed`, with Retry on that item; the batch goes on.
 // - Every change is written to the BatchStore, so a restart resumes at the first unresolved item; `ready` items keep
 //   their scan and answer and are never analysed again. An item interrupted while `analysing` is analysed again.
+// - "Review skipped" (CAP-85): an item skipped after its analysis comes back `ready` with its answer, unless a cap of
+//   this batch saved meanwhile (`saved` / `manual`) is within the guard distance of it — the skipped item does not
+//   hold the guard, so a near-duplicate may have been saved after it. Then it is analysed again (same scanId, same
+//   upload) and the server answers Already in collection from the dHash, without an AI call.
 import type { AnalyseRequest, AnalyseResponse, ImageRef } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
@@ -72,8 +76,9 @@ export function createBatchRunner(initial: Batch, deps: BatchRunDeps): BatchRunn
   const inFlight = new Map<number, Promise<void>>();
   let writes: Promise<void> = Promise.resolve();
 
-  function update(index: number, change: Partial<BatchItem>): void {
-    batch = { ...batch, items: batch.items.map((item) => (item.index === index ? { ...item, ...change } : item)) };
+  function update(index: number, change: Partial<BatchItem> | ((item: BatchItem) => BatchItem)): void {
+    const apply = typeof change === 'function' ? change : (item: BatchItem) => ({ ...item, ...change });
+    batch = { ...batch, items: batch.items.map((item) => (item.index === index ? apply(item) : item)) };
     const snapshot = batch;
     writes = writes.then(() => deps.store.save(snapshot)).catch(() => undefined);
     for (const listener of listeners) listener(batch);
@@ -184,12 +189,22 @@ export function createBatchRunner(initial: Batch, deps: BatchRunDeps): BatchRunn
       await writes;
     },
     async reviewSkipped() {
-      // An item skipped after its analysis keeps its scan and answer: it is ready again, not re-analysed.
+      // An item skipped after its analysis keeps its scan and answer: it is ready again, not re-analysed — unless a
+      // near-duplicate was saved since (CAP-85): then its answer is stale and it is analysed again.
+      const saved = batch.items.filter(
+        (o) => o.state === 'resolved' && (o.resolution === 'saved' || o.resolution === 'manual'),
+      );
       for (const it of batch.items) {
         if (it.state !== 'skipped') continue;
         const analysed =
           it.scanId !== undefined && it.ref !== undefined && (it.response !== undefined || it.unavailable);
-        update(it.index, { state: analysed ? 'ready' : 'waiting' });
+        const stale = analysed && saved.some((o) => hammingDistance(o.dhash, it.dhash) <= BATCH_DHASH_GUARD);
+        if (stale) {
+          // Keep scanId and ref (no second upload); drop the old answer.
+          update(it.index, ({ response: _old, unavailable: _was, ...rest }) => ({ ...rest, state: 'waiting' }));
+        } else {
+          update(it.index, { state: analysed ? 'ready' : 'waiting' });
+        }
       }
       pump();
       await writes;
