@@ -16,6 +16,7 @@ export type RouteName =
   | 'scanReview'
   | 'scanBatch'
   | 'scanBatchAdjust'
+  | 'scanBatchSummary'
   | 'albums'
   | 'albumSheet'
   | 'albumPrint'
@@ -49,6 +50,8 @@ export const ROUTES: readonly RouteDef[] = [
   // Batch mode (CAP-83, ADR-009): Tray adjust, then the batch (CAP-84 replaces its interim list).
   { name: 'scanBatchAdjust', pattern: '/scan/batch/adjust', tab: 'scan', modal: true },
   { name: 'scanBatch', pattern: '/scan/batch', tab: 'scan', modal: true },
+  // Batch summary (CAP-84).
+  { name: 'scanBatchSummary', pattern: '/scan/batch/summary', tab: 'scan', modal: true },
   { name: 'albums', pattern: '/albums', tab: 'collection' },
   // Album sheet view (CAP-52, SCREENS.md #7).
   { name: 'albumSheet', pattern: '/albums/:albumId/sheets/:sheet', tab: 'collection' },

@@ -1,8 +1,18 @@
 // The batch queue on the device (CAP-83; ADR-009 §5; SCREENS.md § Batch mode): one unfinished batch at a time, its
 // crops (WebP blobs + dHash) and the per-cap state, kept locally until the batch ends so closing the app and coming
 // back continues it. The tray photo itself is never stored (ADR-009 §2). Behind a small interface: IndexedDB in the
-// app (works in WKWebView and in browsers, and stores Blobs), in memory in tests.
-export type BatchItemState = 'waiting';
+// app (works in WKWebView and in browsers, and stores Blobs), in memory in tests. CAP-84 extends the item with the
+// batch run's state.
+import type { AnalyseResponse, ImageRef } from '@capcollector/shared';
+
+/**
+ * waiting → analysing → ready (an outcome to review) → resolved | skipped; failed (upload or analyse error, Retry).
+ * CAP-84 (architect review of CAP-83): the per-item scan id, upload and answer are stored so a resume reuses them.
+ */
+export type BatchItemState = 'waiting' | 'analysing' | 'ready' | 'resolved' | 'skipped' | 'failed';
+
+/** How a reviewed item ended: AI review saved, Already updated or discarded, saved from Manual entry. */
+export type BatchResolution = 'saved' | 'updated' | 'discarded' | 'manual';
 
 export interface BatchItem {
   /** 0-based position in reading order. */
@@ -13,6 +23,17 @@ export interface BatchItem {
   readonly width: number;
   readonly height: number;
   readonly state: BatchItemState;
+  /** ULID of this item's scan (one `POST /scans/analyse` per cap), set when it is first analysed. */
+  readonly scanId?: string;
+  /** The uploaded top photo. */
+  readonly ref?: ImageRef;
+  /** `/scans/analyse` answer (state `ready` and after). */
+  readonly response?: AnalyseResponse;
+  /** The AI was unavailable (503): the item goes to Manual entry. */
+  readonly unavailable?: true;
+  readonly resolution?: BatchResolution;
+  /** The saved / updated cap has no location (for Plan albums). */
+  readonly unplaced?: true;
 }
 
 export interface Batch {

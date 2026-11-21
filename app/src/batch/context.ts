@@ -1,5 +1,7 @@
 // Batch capture state shared by the Scan tab and the batch screens (CAP-83; ADR-009): the tray photo, handed from
-// Scan to Tray adjust in memory only (never stored or uploaded, ADR-009 §2), and the on-device batch queue.
+// Scan to Tray adjust in memory only (never stored or uploaded, ADR-009 §2), the on-device batch queue, and the
+// running batch (CAP-84), kept in memory across the review screens and rebuilt from the store after a restart.
+import type { BatchRunner } from '../capture/batch.js';
 import type { BatchStore } from './store.js';
 
 /** The tray photo between the shot and Start, in memory. */
@@ -12,6 +14,8 @@ export interface TrayHolder {
 export interface BatchContext {
   readonly tray: TrayHolder;
   readonly store: BatchStore;
+  /** The batch being run (CAP-84); null until `/scan/batch` opens it, again after Abandon or the summary. */
+  runner: BatchRunner | null;
 }
 
 export function createTrayHolder(): TrayHolder {
@@ -28,7 +32,7 @@ export function createTrayHolder(): TrayHolder {
 }
 
 export function createBatchContext(store: BatchStore): BatchContext {
-  return { tray: createTrayHolder(), store };
+  return { tray: createTrayHolder(), store, runner: null };
 }
 
 /** Store key of the Scan tab's Single · Batch switch (remembered per device). */

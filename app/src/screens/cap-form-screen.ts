@@ -16,6 +16,9 @@
 // is sent as `CapInput.location` (CAP-50) so the new cap lands in that pocket; a 409 means it is taken meanwhile.
 // Otherwise a new cap's Save proposes the next free pocket of the default album first (CAP-53, "Put it in A·3·17?"
 // Yes / Choose… / Not now; components/place-sheet.ts); backing out of the proposal does not save.
+// A batch item (CAP-84, ADR-009 §3): the batch strip on top; Save goes to the batch's next item instead of Detail, and
+// without "Propose next free pocket" (the batch's toggle) the cap is saved without a location and no proposal; Cancel
+// discards this item and moves on.
 import {
   AnalyseResponse,
   Cap,
@@ -34,6 +37,8 @@ import {
 
 import { HttpError, ProblemError } from '../api/errors.js';
 import { pocketLocation } from '../albums/model.js';
+import { finishBatchItem } from '../batch/run.js';
+import { BatchStrip } from '../components/batch-strip.js';
 import { isOccupied, wireLocation } from '../albums/place.js';
 import { brandSuggestions } from '../cap/brand.js';
 import {
@@ -691,7 +696,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       } else {
         // CAP-53 (physical-link.md § Keeping them in sync): no pre-assigned pocket → propose the album's next free one.
         let placeIn = location;
-        if (!placeIn) {
+        // A batch saved without "Propose next free pocket": no location, no proposal (§ Initial layout later).
+        const unplacedBatch = scan?.batch !== undefined && !scan.batch.placeAsYouGo;
+        if (!placeIn && !unplacedBatch) {
           const proposal = await proposeLocation(ctx, el);
           if (proposal === null) return;
           placeIn = proposal.location ?? null;
@@ -708,10 +715,13 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       // An external AI's answer (CAP-45): its pending request is now reviewed.
       if (scan?.exchange) await markReviewed(ctx.api, scan);
       await options.onSaved?.(saved);
-      if (scan) ctx.capture.clear();
       invalidateCollection(ctx);
       releasePreviews();
-      ctx.navigate(pathFor('capDetail', { id: saved.capId }));
+      const resolution = mode === 'ai-prefilled' || extra?.variantOf !== undefined ? 'saved' : 'manual';
+      if (!(await finishBatchItem(ctx, scan, resolution, saved.location === undefined))) {
+        if (scan) ctx.capture.clear();
+        ctx.navigate(pathFor('capDetail', { id: saved.capId }));
+      }
       showToast(t('form.saved'));
     } catch (error) {
       // A 409 is the pocket taken meanwhile (CAP-50): its `errors[]` names a cap id, not a form field.
@@ -869,6 +879,24 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       attrs: { href: leaveTo, 'data-link': true, 'data-action': 'cancel' },
       on: {
         click: (e) => {
+          if (scan?.batch) {
+            // A batch item: Cancel discards it (after confirming unsaved changes) and opens the next one.
+            e.preventDefault();
+            void (async () => {
+              const sure =
+                !dirty() ||
+                (await ConfirmSheet(el, {
+                  message: t('form.discardConfirm'),
+                  confirm: t('form.discard'),
+                  cancel: t('form.keepEditing'),
+                  danger: true,
+                }));
+              if (!sure) return;
+              releasePreviews();
+              await finishBatchItem(ctx, scan, 'discarded', false);
+            })();
+            return;
+          }
           if (!dirty()) return releasePreviews();
           e.preventDefault();
           void confirmLeave();
@@ -973,6 +1001,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         ),
       ),
     ),
+    scan?.batch && BatchStrip(ctx, scan.batch.index),
     form,
   );
   renderPhotos();

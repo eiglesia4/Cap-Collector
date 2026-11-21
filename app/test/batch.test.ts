@@ -170,7 +170,7 @@ describe('scan: Single · Batch', () => {
     expect(phone.batch.tray.current()).toBeNull();
   });
 
-  it('[T-app-146] with an unfinished batch, Batch asks first: continue it, or discard it and start another', async () => {
+  it('[T-app-146] with an unfinished batch, Scan shows the batch banner and starts no new tray: Continue, or Abandon (confirmed) and start another', async () => {
     const ctx = await context('native', memoryStore({ [SCAN_MODE_KEY]: 'batch' }));
     const existing: Batch = {
       batchId: BATCH_ID,
@@ -182,23 +182,34 @@ describe('scan: Single · Batch', () => {
         dhash: '0123456789abcdef',
         width: 200,
         height: 200,
-        state: 'waiting' as const,
+        state: index === 0 ? ('resolved' as const) : ('waiting' as const),
       })),
     };
     await ctx.batch.store.save(existing);
     const view = ScanView(ctx);
     document.body.replaceChildren(view);
     await settle();
-    const prompt = view.querySelector('[data-sheet="unfinished-batch"]');
-    expect(prompt?.textContent).toContain(t('scan.batchUnfinished', { count: 3 }));
+    const banner = view.querySelector<HTMLElement>('[data-batch-banner]');
+    expect(banner?.hidden).toBe(false);
+    expect(banner?.textContent).toContain(t('batch.banner', { at: 2, total: 3 }));
+    expect(view.querySelector('[data-pending]')?.textContent).toBe(t('scan.batchPending'));
     expect(view.querySelector('[data-action="shoot-tray"]')).toBeNull();
     view.querySelector<HTMLButtonElement>('[data-action="continue-batch"]')?.click();
     expect(ctx.navigate).toHaveBeenCalledWith('/scan/batch');
 
+    // Abandon asks first; keeping the batch changes nothing.
     view.querySelector<HTMLButtonElement>('[data-action="discard-batch"]')?.click();
     await settle();
+    expect(view.querySelector('.sheet .sheet-message')?.textContent).toBe(t('batch.abandonConfirm'));
+    view.querySelector<HTMLButtonElement>('.sheet .button--secondary')?.click();
+    await settle();
+    expect(await ctx.batch.store.current()).not.toBeNull();
+    view.querySelector<HTMLButtonElement>('[data-action="discard-batch"]')?.click();
+    await settle();
+    view.querySelector<HTMLButtonElement>('.sheet .button--danger')?.click();
+    await settle();
     expect(await ctx.batch.store.current()).toBeNull();
-    expect(view.querySelector('[data-sheet="unfinished-batch"]')).toBeNull();
+    expect(view.querySelector<HTMLElement>('[data-batch-banner]')?.hidden).toBe(true);
     expect(view.querySelector('[data-action="shoot-tray"]')).not.toBeNull();
   });
 });
@@ -343,16 +354,8 @@ describe('tray adjust', () => {
     expect(close).toHaveBeenCalled();
     expect(ctx.navigate).toHaveBeenCalledWith('/scan/batch');
 
-    // The interim batch screen lists the crops and discards the batch.
-    const list = BatchScreen(ctx, matchRoute('/scan/batch')!);
-    document.body.replaceChildren(list);
-    await settle();
-    expect(list.querySelector('h1')?.textContent).toBe(t('batch.titleCount', { count: 3 }));
-    expect([...list.querySelectorAll('.batch-number')].map((n) => n.textContent)).toEqual(['1', '2', '3']);
-    list.querySelector<HTMLButtonElement>('[data-action="discard-batch"]')?.click();
-    await settle();
-    expect(await ctx.batch.store.current()).toBeNull();
-    expect(ctx.navigate).toHaveBeenLastCalledWith('/scan');
+    // CAP-84 runs it from /scan/batch (test/batch-run.test.ts); without a batch that screen says so.
+    await ctx.batch.store.discard();
     const empty = BatchScreen(ctx, matchRoute('/scan/batch')!);
     await settle();
     expect(empty.textContent).toContain(t('batch.none'));
