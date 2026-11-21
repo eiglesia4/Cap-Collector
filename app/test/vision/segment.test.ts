@@ -39,7 +39,10 @@ function expectMatches(circles: readonly DetectedCircle[], expected: readonly Di
   }
 }
 
-describe('detectCaps', () => {
+/** The full-size trays take seconds under v8 coverage on CI (T-vision-011 keeps its own 3 s ceiling). */
+const HEAVY = { timeout: 30_000 };
+
+describe('detectCaps', HEAVY, () => {
   it('[T-vision-001] 20 separated dark caps on a light tray → 20 circles, centre within 0.1 r, radius within 10 %', () => {
     const expected = discs(DARK);
     const result = detectCaps(tray({ width: W, height: H, background: LIGHT, discs: expected, noise: 8, seed: 1 }));
@@ -124,14 +127,15 @@ describe('detectCaps', () => {
   });
 
   it('[T-vision-007] an empty tray (noise, gradient, shadow) → no circles', () => {
-    const plain = detectCaps(tray({ width: W, height: H, background: LIGHT, noise: 12, seed: 7 }));
+    // 800 × 600 is enough: nothing to find, and it keeps the test cheap under coverage.
+    const plain = detectCaps(tray({ width: 800, height: 600, background: LIGHT, noise: 12, seed: 7 }));
     expect(plain).toEqual({ circles: [], medianRadius: 0, scale: 1, truncated: false });
     const shaded = detectCaps(
       tray({
-        width: W,
-        height: H,
+        width: 800,
+        height: 600,
         background: { from: [235, 230, 220], to: [185, 180, 170] },
-        shadow: { cx: 800, cy: 600, radius: 600, strength: 0.15 },
+        shadow: { cx: 400, cy: 300, radius: 300, strength: 0.15 },
         noise: 12,
       }),
     );
@@ -182,7 +186,7 @@ describe('detectCaps', () => {
   });
 });
 
-describe('cropCircle', () => {
+describe('cropCircle', HEAVY, () => {
   /** A cap with structure (two-colour ring, gradient) so its dHash means something. */
   const CAP: Disc = { cx: 0, cy: 0, r: 0, color: [180, 60, 40], ring: [240, 220, 120], gradient: true };
 
@@ -195,23 +199,24 @@ describe('cropCircle', () => {
   }
 
   it('[T-vision-010] crops a CapPhoto ≤ 1024 px from the full-resolution photo whose dHash matches the single-capture path (± 2 bits)', async () => {
-    // Full resolution 2400 × 1800 (r = 150); detection on the 1200 × 900 copy (scale 2).
-    const centres = grid(3, 4, 520, { x: 400, y: 380 });
+    // Full resolution 1200 × 900 (4 caps, r = 120); detection on the 600 × 450 copy (scale 2). Small on purpose: the
+    // per-channel resampling is pure JS and slow under coverage.
+    const centres = grid(2, 2, 440, { x: 330, y: 230 });
     const full = tray({
-      width: 2400,
-      height: 1800,
+      width: 1200,
+      height: 900,
       background: LIGHT,
-      discs: centres.map((c) => ({ ...CAP, ...c, r: 150 })),
+      discs: centres.map((c) => ({ ...CAP, ...c, r: 120 })),
       noise: 6,
     });
-    const small = resampleRaster(full, { sx: 0, sy: 0, sw: 2400, sh: 1800 }, 1200, 900);
-    const detection = detectCaps(small, { sourceWidth: 2400 });
+    const small = resampleRaster(full, { sx: 0, sy: 0, sw: 1200, sh: 900 }, 600, 450);
+    const detection = detectCaps(small, { sourceWidth: 1200 });
     expect(detection.scale).toBe(2);
-    expect(detection.circles).toHaveLength(12);
+    expect(detection.circles).toHaveLength(4);
 
     const encodeRaster = encoder();
     const codec: RasterCodec = {
-      decode: vi.fn(async () => ({ source: document.createElement('canvas'), width: 2400, height: 1800 })),
+      decode: vi.fn(async () => ({ source: document.createElement('canvas'), width: 1200, height: 900 })),
       encode: vi.fn(),
       raster: vi.fn(async (_image, crop, w, h) => resampleRaster(full, crop, w, h)),
       encodeRaster,
@@ -227,11 +232,11 @@ describe('cropCircle', () => {
       const truth = centres[i]!;
       const single: RasterCodec = {
         ...codec,
-        decode: vi.fn(async () => ({ source: document.createElement('canvas'), width: 318, height: 318 })),
+        decode: vi.fn(async () => ({ source: document.createElement('canvas'), width: 254, height: 254 })),
         raster: vi.fn(async (_img, crop, w, h) =>
           resampleRaster(
             full,
-            { sx: truth.cx - 159 + crop.sx, sy: truth.cy - 159 + crop.sy, sw: crop.sw, sh: crop.sh },
+            { sx: truth.cx - 127 + crop.sx, sy: truth.cy - 127 + crop.sy, sw: crop.sw, sh: crop.sh },
             w,
             h,
           ),
