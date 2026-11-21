@@ -8,7 +8,7 @@ Five questions were left open after the October design sessions and had to be se
 
 ## Decisions
 1. **Variants are a link, not a family record.** `Cap.variantOf: capId` points at the cap this one is an edition of. A "family" is derived (the cap with no `variantOf` plus everything pointing at it). A family record can be introduced later by migration if family-level fields ever appear.
-2. **Batch mode (tray photo → N caps) is V4.** Single-cap scan must be right first; segmentation is the riskiest vision work in the app.
+2. **Batch mode (tray photo → N caps) is V4.** Single-cap scan must be right first; segmentation is the riskiest vision work in the app. (Decided for V4 in ADR-009, 2026-11-21.)
 3. **The Mac/web build ships in V1, read-mostly.** Same bundle on S3; camera-dependent features hide on desktop; the Exchange drop zone and bulk editing live there.
 4. **Auth = Sign in with Apple + PKCE.** The API keeps a single-user allow-list by Apple `sub`; session JWT + long-lived refresh token; no Cognito.
 5. **Domain: decided later (EP-09).** Until then the web build and the API use the CloudFront/S3 and API Gateway default URLs; `openapi.yaml` carries a placeholder server variable. Deep links use the `collectors://` scheme on the phone; the HTTPS mirror waits for the domain.
