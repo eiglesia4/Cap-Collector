@@ -7,6 +7,8 @@ import { createApiClient } from './api/client.js';
 import { createApiUrlSetting } from './api-url.js';
 import { renderApp } from './app.js';
 import { restoreSession } from './auth/sign-in.js';
+import { createBatchContext } from './batch/context.js';
+import { indexedDbBatchStore } from './batch/store.js';
 import { createCaptureStore } from './capture/context.js';
 import { loadConfig } from './config.js';
 import { selectPlatform } from './platform/select-platform.js';
@@ -19,7 +21,8 @@ async function start(root: HTMLElement): Promise<void> {
   const apiUrl = createApiUrlSetting(config, platform.store);
   await Promise.all([session.load(), apiUrl.load()]);
   const api = createApiClient({ baseUrl: apiUrl.current, session });
-  renderApp(root, { config, platform, session, api, apiUrl, capture: createCaptureStore() });
+  const batch = createBatchContext(indexedDbBatchStore());
+  renderApp(root, { config, platform, session, api, apiUrl, capture: createCaptureStore(), batch });
   await restoreSession({ session, api });
 }
 

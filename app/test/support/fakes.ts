@@ -6,6 +6,8 @@ import { createApiClient, type ApiClient } from '../../src/api/client';
 import { createApiUrlSetting } from '../../src/api-url';
 import type { Session } from '../../src/api/schema';
 import type { ShellContext } from '../../src/app';
+import { createBatchContext } from '../../src/batch/context';
+import { memoryBatchStore } from '../../src/batch/store';
 import { createCaptureStore } from '../../src/capture/context';
 import type { AppConfig } from '../../src/config';
 import type { KeyValueStore, Platform } from '../../src/platform/platform';
@@ -75,7 +77,15 @@ export async function shellContext(
   if (overrides.signedIn ?? true) await session.save(TEST_SESSION);
   const apiUrl = createApiUrlSetting(config, platform.store);
   const api = overrides.api ?? createApiClient({ baseUrl: apiUrl.current, session, fetch: vi.fn() });
-  return { config, platform, session, api, apiUrl, capture: createCaptureStore() };
+  return {
+    config,
+    platform,
+    session,
+    api,
+    apiUrl,
+    capture: createCaptureStore(),
+    batch: createBatchContext(memoryBatchStore()),
+  };
 }
 
 export function json(status: number, body: unknown, contentType = 'application/json'): Response {

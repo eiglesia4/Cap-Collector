@@ -4,10 +4,15 @@
 // outcome's screen; a 503 shows the "AI unavailable" sheet. Opening the tab starts a clean capture: whatever scan
 // context was left by Cancel / Retake from a review screen is cleared here. `/scan?pocket=A·3·17` (an empty pocket of
 // the album sheet, CAP-52) pre-assigns the scan: `targetLocationCode` goes into the scan context and the analyse body,
-// and the review's Save places the new cap there (CapInput.location, CAP-50). Styles: styles/scan.css.
+// and the review's Save places the new cap there (CapInput.location, CAP-50). CAP-83 (ADR-009, SCREENS.md § Batch
+// mode): a Single · Batch switch, remembered in the platform store; in Batch the tray photo (Shoot tray · Library, or
+// "Upload tray photo" on the Mac) is handed to Tray adjust in memory, and an unfinished batch is offered first
+// (Continue · Discard). Styles: styles/scan.css.
 import { AnalyseResponse, formatLocationCode } from '@capcollector/shared';
 
 import { newIntoPath, pocketLocation } from '../albums/model.js';
+import { parseScanMode, SCAN_MODE_KEY, type ScanMode } from '../batch/context.js';
+import type { Batch } from '../batch/store.js';
 import { readUseAi } from '../capture/ai-setting.js';
 import { createCaptureFlow, manualEntryPath, type CaptureState } from '../capture/flow.js';
 import { newUlid } from '../capture/ulid.js';
@@ -53,6 +58,31 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   });
 
   let preview: string | null = null;
+  // Batch mode (CAP-83): not offered for a scan pre-assigned to a pocket.
+  let mode: ScanMode = 'single';
+  let pending: Batch | null = null;
+  const switcher = h('div', { class: 'scan-mode', attrs: { role: 'group', 'aria-label': t('scan.mode') } });
+  const setMode = async (next: ScanMode) => {
+    mode = next;
+    pending = next === 'batch' ? await ctx.batch.store.current() : null;
+    render(flow.state());
+  };
+  const modeButton = (value: ScanMode, key: MessageKey) =>
+    h(
+      'button',
+      {
+        class: 'scan-mode__option',
+        attrs: { type: 'button', 'data-mode': value },
+        on: {
+          click: () => {
+            void ctx.platform.store.set(SCAN_MODE_KEY, value);
+            void setMode(value);
+          },
+        },
+      },
+      t(key),
+    );
+  switcher.append(modeButton('single', 'scan.modeSingle'), modeButton('batch', 'scan.modeBatch'));
   const guide = h('div', { class: 'scan-guide', attrs: { role: 'img', 'aria-label': t('scan.guide') } });
   const body = h('div', { class: 'scan-body' });
   const cancel = h(
@@ -95,6 +125,39 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
       button('scan.library', 'library', run('library'), true),
     ];
   };
+
+  /** Batch: the tray photo goes to Tray adjust (in memory only, ADR-009 §2). */
+  const trayButtons = (): HTMLElement[] => {
+    const run = (source: 'camera' | 'library') => async () => {
+      const file = await take(source);
+      if (file === null) return;
+      ctx.batch.tray.set(file);
+      ctx.navigate(pathFor('scanBatchAdjust'));
+    };
+    if (web) return [button('scan.uploadTray', 'upload-tray', run('library'))];
+    return [
+      button('scan.shootTray', 'shoot-tray', run('camera')),
+      button('scan.library', 'library-tray', run('library'), true),
+    ];
+  };
+
+  /** One unfinished batch at a time: continue it, or discard it to start another. */
+  const unfinished = (batch: Batch): HTMLElement =>
+    h(
+      'div',
+      { class: 'sheet scan-sheet', attrs: { role: 'dialog', 'data-sheet': 'unfinished-batch' } },
+      h('p', { class: 'sheet-message' }, t('scan.batchUnfinished', { count: batch.items.length })),
+      button('scan.batchContinue', 'continue-batch', () => ctx.navigate(pathFor('scanBatch'))),
+      button(
+        'scan.batchDiscard',
+        'discard-batch',
+        async () => {
+          await ctx.batch.store.discard();
+          await setMode('batch');
+        },
+        true,
+      ),
+    );
 
   const manual = (href: string) =>
     h(
@@ -149,6 +212,14 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     const parts: Node[] = [];
     switch (state.step) {
       case 'idle':
+        if (target === undefined) parts.push(switcher);
+        if (mode === 'batch') {
+          parts.push(
+            h('p', { class: 'muted scan-batch-hint', attrs: { 'data-hint': 'batch' } }, t('scan.batchHint')),
+            ...(pending === null ? trayButtons() : [unfinished(pending)]),
+          );
+          break;
+        }
         parts.push(
           h('p', { class: 'muted' }, t(web ? 'scan.uploadHint' : 'scan.hint')),
           ...pickButtons('top'),
@@ -180,7 +251,11 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
         break;
     }
     body.replaceChildren(...parts);
+    for (const option of switcher.querySelectorAll<HTMLElement>('[data-mode]')) {
+      option.setAttribute('aria-pressed', String(option.dataset.mode === mode));
+    }
     el.dataset.step = state.step;
+    el.dataset.mode = mode;
   }
 
   const el = h(
@@ -194,6 +269,12 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   );
   flow.subscribe(render);
   render(flow.state());
+  if (target === undefined) {
+    void ctx.platform.store.get(SCAN_MODE_KEY).then((stored) => {
+      const remembered = parseScanMode(stored);
+      if (remembered !== mode) void setMode(remembered);
+    });
+  }
   return el;
 }
 

@@ -35,3 +35,139 @@
   display: grid;
   gap: var(--space-3);
 }
+
+/* Batch mode (CAP-83, SCREENS.md § Batch mode): the Single · Batch switch, Tray adjust (photo + SVG circles, the
+   selected one with its handle, uncertain ones dashed) and the interim batch list. */
+.scan-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.scan-mode__option {
+  min-height: var(--touch);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.scan-mode__option[aria-pressed='true'] {
+  background: var(--color-ink);
+  color: var(--color-ground);
+}
+
+.scan-batch-hint {
+  text-align: center;
+}
+
+.tray-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.tray-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--color-ink);
+}
+
+.tray-photo,
+.tray-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tray-photo {
+  object-fit: contain;
+}
+
+.tray-overlay {
+  touch-action: none;
+}
+
+.tray-circle circle {
+  fill: rgb(184 101 27 / 12%);
+  stroke: var(--color-accent);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
+.tray-circle[data-selected] circle {
+  fill: rgb(184 101 27 / 28%);
+  stroke: var(--color-ground);
+}
+
+.tray-circle text {
+  fill: var(--color-ground);
+  font-family: var(--font-display);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.tray-handle {
+  fill: var(--color-ground);
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: nwse-resize;
+}
+
+.tray-editor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tray-size {
+  flex: 1;
+  accent-color: var(--color-accent);
+}
+
+.batch-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.batch-crops {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch-crop {
+  position: relative;
+  aspect-ratio: 1;
+}
+
+.batch-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.batch-number {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 1.5em;
+  border-radius: 999px;
+  background: var(--color-ink);
+  color: var(--color-ground);
+  font-size: 12px;
+  text-align: center;
+}
