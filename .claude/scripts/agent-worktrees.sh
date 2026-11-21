@@ -25,7 +25,17 @@ set_agent() {
 git fetch --prune origin
 mkdir -p "$wt_base"
 
+# .project_name is local (gitignored, Edu 2026-11-21; Warp and claude-agent read it): `CAP` unless already set.
+PROJECT_NAME_DEFAULT="CAP"
+ensure_project_name() {
+  local dir="$1" src="$root/.project_name"
+  [[ -f "$dir/.project_name" ]] && return 0
+  if [[ -f "$src" ]]; then cp "$src" "$dir/.project_name"; else printf '%s\n' "$PROJECT_NAME_DEFAULT" > "$dir/.project_name"; fi
+  echo "      $(basename "$dir")/.project_name: $(cat "$dir/.project_name")"
+}
+
 # 0. The main checkout belongs to the integrator.
+ensure_project_name "$root"
 if [[ ! -f "$root/.envrc.local" ]]; then cp "$root/.envrc.local.example" "$root/.envrc.local"; chmod 600 "$root/.envrc.local"; fi
 set_agent "$root/.envrc.local" integrator
 
@@ -64,6 +74,7 @@ for agent in "${AGENTS[@]}"; do
     chmod 600 "$dir/.envrc.local"
   fi
   set_agent "$dir/.envrc.local" "$agent"
+  ensure_project_name "$dir"
   if command -v direnv >/dev/null; then (cd "$dir" && direnv allow . >/dev/null); fi
   if [[ ! -d "$dir/node_modules" ]]; then (cd "$dir" && npm ci --silent) && echo "      npm ci done"; fi
 done
