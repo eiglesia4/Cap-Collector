@@ -17,6 +17,7 @@ export type RouteName =
   | 'albums'
   | 'albumSheet'
   | 'albumPrint'
+  | 'albumLayout'
   | 'exchange'
   | 'settings'
   | 'signIn';
@@ -48,6 +49,8 @@ export const ROUTES: readonly RouteDef[] = [
   { name: 'albumSheet', pattern: '/albums/:albumId/sheets/:sheet', tab: 'collection' },
   // Print inserts (CAP-54, SCREENS.md #8).
   { name: 'albumPrint', pattern: '/albums/:albumId/print', tab: 'collection' },
+  // Initial layout of the unplaced caps (CAP-75, physical-link.md § Initial layout).
+  { name: 'albumLayout', pattern: '/albums/layout', tab: 'collection' },
   { name: 'exchange', pattern: '/exchange', tab: 'collection' },
   { name: 'settings', pattern: '/settings', tab: 'collection' },
   // CAP-22: the only route reachable signed out; full screen, no tabs.

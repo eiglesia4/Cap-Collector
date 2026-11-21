@@ -3,10 +3,11 @@
 // pitch it asks for them first (suggested 33 / 36 mm, saved with `PATCH /albums/{id}`). Then: scope (this sheet ·
 // since last print · whole album), what to print (discs · sheet index · both), the count preview, **Generate** — the
 // PDF built on the client (print/inserts.ts) goes to the share sheet on the iPhone, a download on the Mac — and
-// "Mark as printed" (the per-album timestamp of "since last print").
+// "Mark as printed" (the per-album timestamp of "since last print"). `?sheets=1,2` (CAP-75, after an initial layout)
+// adds the "these sheets" scope, selected by default.
 import { Album, type Cap } from '@capcollector/shared';
 
-import { AlbumListSchema, albumSheetPath, parseMeasures, sheetCount } from '../albums/model.js';
+import { AlbumListSchema, albumSheetPath, parseMeasures, parseSheetList, sheetCount } from '../albums/model.js';
 import { fetchAllCaps } from '../collection/all-caps.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
@@ -19,6 +20,8 @@ export interface PrintOptions {
   /** Mac/web download of the PDF; tests inject a fake. */
   readonly download?: (file: File) => void;
   readonly now?: () => Date;
+  /** The planned sheets of an initial layout (CAP-75): the "these sheets" scope, selected by default. */
+  readonly sheets?: readonly number[];
 }
 
 function browserDownload(file: File): void {
@@ -129,15 +132,16 @@ export function PrintView(
       return;
     }
     const sheets = sheetCount(album);
-    let scope: PrintScope = 'sheet';
+    const planned = (options.sheets ?? []).filter((n) => n <= sheets);
+    let scope: PrintScope = planned.length > 0 ? 'sheets' : 'sheet';
     let what: PrintWhat = 'both';
     let sheet = Math.min(Math.max(1, startSheet), sheets);
     let since = lastPrint;
     const inAlbum = albumCaps(caps, album);
 
     const selection = () => {
-      const discs = scopeCaps(inAlbum, scope, { sheet, since });
-      const index = indexSheets(inAlbum, discs, scope, sheet);
+      const discs = scopeCaps(inAlbum, scope, { sheet, since, sheets: planned });
+      const index = indexSheets(inAlbum, discs, scope, sheet, planned);
       return { discs, index };
     };
 
@@ -197,7 +201,7 @@ export function PrintView(
         const bytes = await buildInsertsPdf({ album, discs, sheets: index, what, printedOn });
         const name = t('print.fileName', {
           letter: album.letter,
-          scope: scope === 'sheet' ? String(sheet) : scope,
+          scope: scope === 'sheet' ? String(sheet) : scope === 'sheets' ? planned.join('-') : scope,
         });
         const file = new File([bytes as BlobPart], name, { type: 'application/pdf' });
         if (ctx.platform.kind === 'native') await ctx.platform.share({ title: name, files: [file] }).catch(() => false);
@@ -263,6 +267,8 @@ export function PrintView(
         'fieldset',
         { class: 'print-options' },
         h('legend', {}, t('print.scope')),
+        planned.length > 0 &&
+          radio('scope', 'sheets', scope, t('print.scope.sheets', { sheets: planned.join(', ') }), (v) => (scope = v)),
         h(
           'div',
           { class: 'print-scope-sheet' },
@@ -310,5 +316,6 @@ export function PrintView(
 
 export const PrintScreen: Screen = (ctx, route) => {
   const sheet = Number(route.query.sheet ?? 1);
-  return PrintView(ctx, route.params.albumId ?? '', Number.isInteger(sheet) && sheet >= 1 ? sheet : 1);
+  const sheets = parseSheetList(route.query.sheets);
+  return PrintView(ctx, route.params.albumId ?? '', Number.isInteger(sheet) && sheet >= 1 ? sheet : 1, { sheets });
 };

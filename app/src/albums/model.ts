@@ -228,6 +228,23 @@ export function albumPrintPath(albumId: string, sheet?: number): string {
   return sheet === undefined ? base : `${base}?${new URLSearchParams({ sheet: String(sheet) }).toString()}`;
 }
 
+/** Print inserts for the sheets an initial layout filled (CAP-75): the "these sheets" scope, opened on the first. */
+export function albumPlanPrintPath(albumId: string, sheets: readonly number[]): string {
+  const query = new URLSearchParams({ sheets: sheets.join(',') });
+  if (sheets[0] !== undefined) query.set('sheet', String(sheets[0]));
+  return `/albums/${encodeURIComponent(albumId)}/print?${query.toString()}`;
+}
+
+/** `?sheets=1,2,5` → positive integers, ascending, without repeats; [] when absent or unreadable. */
+export function parseSheetList(value: string | undefined): number[] {
+  if (value === undefined) return [];
+  const numbers = value
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1);
+  return [...new Set(numbers)].sort((a, b) => a - b);
+}
+
 /** The Scan tab pre-assigned to a pocket (SCREENS.md § Navigation: "tap empty pocket → Scan pre-assigned"). */
 export function scanIntoPath(code: string): string {
   return `/scan?${new URLSearchParams({ pocket: code }).toString()}`;
