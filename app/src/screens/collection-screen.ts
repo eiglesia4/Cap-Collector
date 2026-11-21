@@ -3,6 +3,7 @@
 // strip, the 3-column grid with cursor-based infinite scroll, pull-to-refresh on iOS and the empty state. Filters,
 // loaded pages and scroll live in collection/state.ts so coming back from a cap's detail restores them.
 // An album + sheet code typed in the search (`A·3`, CAP-52) offers "Open sheet A·3" and Enter opens the sheet view.
+// `/?brand=Mahou` (CAP-79, from Stats and Detail) filters by brand, shown as a removable chip.
 import type { Album, Cap, CapType } from '@capcollector/shared';
 
 import { albumSheetPath, AlbumListSchema, parseSheetCode, sheetCode, sheetTarget } from '../albums/model.js';
@@ -65,7 +66,7 @@ function fetchPage(ctx: AppContext, query: CollectionQuery) {
 
 export const CollectionScreen: Screen = (ctx, route) => {
   const store = collectionState(ctx);
-  // A linked filter (`/?country=ES`, from a Stats bar, CAP-58) replaces the kept query and reloads.
+  // A linked filter (`/?country=ES`, from a Stats bar, CAP-58; `/?brand=`, CAP-79) replaces the kept query and reloads.
   const linked = queryFromRoute(route.query);
   if (linked !== null && JSON.stringify(linked) !== JSON.stringify(store.query)) {
     store.query = linked;
@@ -196,9 +197,18 @@ export const CollectionScreen: Screen = (ctx, route) => {
   };
   const renderChips = () => {
     const q = store.query;
-    const all = q.type === null && q.country === null && !q.needsReview;
+    const all = q.type === null && q.country === null && q.brand === null && !q.needsReview;
+    const brandChips: HTMLElement[] = [];
+    if (q.brand !== null) {
+      const el = chip('brand', t('collection.chipBrand', { brand: q.brand }), true, () => update({ brand: null }));
+      el.setAttribute('aria-label', t('collection.chipBrandRemove', { brand: q.brand }));
+      brandChips.push(el);
+    }
     chips.replaceChildren(
-      chip('all', t('collection.chipAll'), all, () => update({ type: null, country: null, needsReview: false })),
+      chip('all', t('collection.chipAll'), all, () =>
+        update({ type: null, country: null, brand: null, needsReview: false }),
+      ),
+      ...brandChips,
       ...TYPE_CHIPS.map((type) =>
         chip(`type:${type}`, t(TYPE_LABEL[type]), q.type === type, () =>
           update({ type: q.type === type ? null : type }),

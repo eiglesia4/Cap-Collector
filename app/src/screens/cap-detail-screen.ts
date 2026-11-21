@@ -3,7 +3,7 @@
 // the underside as a swappable thumbnail, title and producer · country · year, chips, stat tiles, fields card,
 // "Where is it?", the "Same brand" carousel and the history list. Data: `GET /caps/{capId}`, `/history` and
 // `GET /caps?q=<brand>` (openapi.yaml); delete is a tombstone (`DELETE`, ADR-006) followed by an undo-less "Deleted"
-// toast in V1 (restore is V2).
+// toast in V1 (restore is V2). Under the title, "All <brand> caps" opens Collection filtered by brand (CAP-79).
 import { Cap, formatLocationCode, Location, type CapHistory } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
@@ -12,7 +12,7 @@ import { sameBrand } from '../cap/brand.js';
 import { CapHistoryListSchema, NoContentSchema } from '../cap/schemas.js';
 import { linkOrigin, shareRequest } from '../cap/share.js';
 import { CapPageSchema } from '../collection/cap-page.js';
-import { capsPath, DEFAULT_QUERY } from '../collection/query.js';
+import { capsPath, collectionFilterPath, DEFAULT_QUERY } from '../collection/query.js';
 import { forgetCap, invalidateCollection } from '../collection/state.js';
 import { capImage, capTitle, CapTile } from '../components/cap-tile.js';
 import { ConfirmSheet } from '../components/confirm-sheet.js';
@@ -135,6 +135,15 @@ export const CapDetailScreen: Screen = (ctx, route) => {
         { class: 'detail-content' },
         photos(cap),
         h('h1', { class: 'screen-title detail-title' }, capTitle(cap)),
+        // CAP-79: "all caps of this brand" (Collection `?brand=`, contracts v0.3).
+        h(
+          'a',
+          {
+            class: 'detail-brand-link',
+            attrs: { href: collectionFilterPath({ brand: cap.brand }), 'data-link': true, 'data-action': 'brand' },
+          },
+          t('capDetail.brandLink', { brand: cap.brand }),
+        ),
         subtitle(cap),
         chips(cap),
         stats(cap),

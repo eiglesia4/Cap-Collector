@@ -15,7 +15,14 @@ describe('collection query', () => {
     expect(capsPath(DEFAULT_QUERY)).toBe(`/caps?sort=brand&limit=${String(PAGE_SIZE)}`);
     expect(isFiltered(DEFAULT_QUERY)).toBe(false);
 
-    const q = { q: '  Mahou ', type: 'beer' as const, country: 'ES', needsReview: true, sort: 'year' as const };
+    const q = {
+      q: '  Mahou ',
+      type: 'beer' as const,
+      country: 'ES',
+      brand: null,
+      needsReview: true,
+      sort: 'year' as const,
+    };
     expect(params(capsPath(q, { cursor: 'abc', limit: 3 }))).toEqual({
       q: 'Mahou',
       type: 'beer',
