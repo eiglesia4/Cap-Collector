@@ -9,6 +9,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-87: `@jsquash/webp` 1.5.0 (libwebp compiled to wasm, Apache-2.0 / BSD) in the app workspace. It is the WebP encoder fallback for Safari and the iPhone app (ADR-010 §1), lazy-loaded by CAP-88.
 - CAP-63: `POST /scans/analyse` runs the ADR-004 brand + variant re-check from `known.brand`/`known.variant` when `useAi` is false (external-AI answers get the server-side step 3; adapter never called).
 - CAP-45: Exchange screen — `request.zip` built on the client (single and batch), Share/Download, Copy prompt/JSON, pending list with status chips, upload answer (format/version check, requestId match or attach to a cap, dHash warning, ignored fields), continue to review with `source: external:<provider>`.
 - CAP-43: AI review screen — form in `ai-prefilled` mode with unsure fields (confidence < 0.7) highlighted, Save with `source: bedrock:<aiModel>`, Ask again with `known` edits, Add underside, Re-identify from Detail with per-field Accept.
@@ -46,6 +47,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-90: "⋯" and sort menus close on an outside tap or Escape, and only one is open at a time. Cancel on Scan is always visible and goes back to the album sheet for a pocket scan, otherwise to the Collection (ADR-010 §3; T-app-160…164).
 - CAP-73: naeva/dev `ai.modelId` is now `eu.anthropic.claude-haiku-5-5`; the Bedrock grant (inference profile + any-region foundation model) and the invocations alarm follow from it; `infra/README.md` § Bedrock model (T-infra-030, T-infra-046).
 - CAP-72: the Bedrock vision adapter is ready for Claude Haiku 5.5: EU price entry, thinking disabled and no `temperature` for 5.5 (per-model capability map), and only `text` blocks parsed (T-api-086…088). The model switch itself is CAP-73.
 
