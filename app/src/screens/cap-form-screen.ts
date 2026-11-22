@@ -22,6 +22,9 @@
 // Photos go through the crop check first (CAP-92, ADR-010 §2: components/crop-check.ts as a sheet over the form, so the
 // typed values stay): the slot pickers and "Add underside photo" both get the detector-placed circle and Use photo;
 // the cropped WebP is what is uploaded. No blind centre crop and no "square" option any more.
+// CAP-93 (ADR-004, architect decision in the CAP-92 review): a photo picked in the form carries its dHash (computed by
+// `cropCircle` exactly like a scan's), sent as `dhash` / `dhashUnderside` with the new cap or, in edit, in the PATCH
+// of the side it replaces — while that photo is still the one attached — so hand-entered caps are found by later scans.
 import {
   AnalyseResponse,
   Cap,
@@ -88,7 +91,7 @@ import type { AppContext, Screen } from '../context.js';
 import { searchCountries } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
-import type { CapPhoto, ResizedImage } from '../images/resize.js';
+import type { CapPhoto } from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
 import { exchangePath, pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
@@ -132,6 +135,19 @@ function imagesFromScan(scan: CaptureSession): FormImages {
   return out;
 }
 
+/** The dHash of each side whose photo was picked in the form, by the uploaded key it belongs to (CAP-93). */
+export type PickedHashes = Partial<Record<Side, { readonly key: string; readonly dhash: string }>>;
+
+/** `dhash` / `dhashUnderside` of the picked photos that are still the attached ones (CAP-93; ADR-004 bookkeeping). */
+export function pickedFields(picked: PickedHashes, images: FormImages): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (picked.top && images.top?.key === picked.top.key) out.dhash = picked.top.dhash;
+  if (picked.underside && images.underside?.key === picked.underside.key) {
+    out.dhashUnderside = picked.underside.dhash;
+  }
+  return out;
+}
+
 /** dHashes and AI model of the scan, for the sides whose scanned photo is still attached (ADR-004 bookkeeping). */
 export function scanFields(scan: CaptureSession, images: FormImages): Record<string, string> {
   const out: Record<string, string> = {};
@@ -147,8 +163,8 @@ type SlotState = 'idle' | 'uploading' | 'failed';
 
 interface Slot {
   state: SlotState;
-  /** Resized image waiting to be (re)uploaded after a failure. */
-  pending: Parameters<typeof uploadImage>[2] | null;
+  /** Cropped photo waiting to be (re)uploaded after a failure. */
+  pending: CapPhoto | null;
   /** Object URL previewing a picked image. */
   preview: string | null;
   error: string | null;
@@ -208,6 +224,8 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     top: { state: 'idle', pending: null, preview: null, error: null },
     underside: { state: 'idle', pending: null, preview: null, error: null },
   };
+  /** Hashes of the photos picked in this form (CAP-93). */
+  const picked: PickedHashes = {};
   // A capture's photos are still in memory: preview them from their blobs.
   if (scan?.top?.ref) slots.top.preview = objectUrl(scan.top.photo.blob);
   if (scan?.underside?.ref) slots.underside.preview = objectUrl(scan.underside.photo.blob);
@@ -572,7 +590,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   }
 
   /** Pick or shoot, then the crop check (CAP-92); null when the user backs out of either. */
-  async function checkedPhoto(side: Side, source: 'camera' | 'library'): Promise<ResizedImage | null> {
+  async function checkedPhoto(side: Side, source: 'camera' | 'library'): Promise<CapPhoto | null> {
     const file = await takeFile(source);
     if (file === null) return null;
     return CropCheckSheet(el, { ...options.check, file, side, retake: () => takeFile(source) });
@@ -580,7 +598,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
 
   async function pick(side: Side, source: 'camera' | 'library'): Promise<void> {
     const slot = slots[side];
-    let photo: ResizedImage | null;
+    let photo: CapPhoto | null;
     try {
       photo = await checkedPhoto(side, source);
     } catch {
@@ -604,7 +622,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     slot.error = null;
     renderPhotos();
     try {
-      images[side] = await uploadImage(ctx.api, side, slot.pending, options.put);
+      const ref = await uploadImage(ctx.api, side, slot.pending, options.put);
+      images[side] = ref;
+      picked[side] = { key: ref.key, dhash: slot.pending.dhash };
       slot.pending = null;
       slot.state = 'idle';
       if (side === 'top') delete serverErrors.top;
@@ -665,7 +685,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     try {
       let saved: Cap;
       if (mode === 'edit' && cap) {
-        const patch = patchBody(cap, result.input);
+        const changes = patchBody(cap, result.input);
+        // A replaced photo patches its side's hash with it (CAP-93); untouched photos send none.
+        const patch = changes === null ? null : { ...changes, ...pickedFields(picked, images) };
         if (patch === null) {
           releasePreviews();
           return ctx.navigate(pathFor('capDetail', { id: cap.capId }));
@@ -692,6 +714,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         const body = {
           ...result.input,
           ...(scan ? scanFields(scan, images) : {}),
+          ...pickedFields(picked, images),
           ...(mode === 'ai-prefilled' && scan ? reviewProvenance(scan) : {}),
           ...extra,
           ...(placeIn ? { location: wireLocation(placeIn) } : {}),
