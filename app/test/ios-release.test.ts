@@ -176,4 +176,44 @@ describe('iOS release readiness', () => {
     // The launch storyboard shows that image.
     expect(readFileSync(join(APP, 'Base.lproj', 'LaunchScreen.storyboard'), 'utf8')).toMatch(/image="Splash"/);
   });
+
+  it('[T-app-184] Xcode names: target, product, module and shared scheme are CapCollector; the paths Capacitor hardcodes stay App', async () => {
+    const { default: config } = await import('../capacitor.config');
+    expect(config.ios?.scheme).toBe('CapCollector');
+    expect(config.appId).toBe('com.naevatec.collectors');
+
+    const pbx = readFileSync(join(IOS, 'App.xcodeproj', 'project.pbxproj'), 'utf8');
+    // One native target, named CapCollector, building CapCollector.app; no target called App any more.
+    expect(pbx).toMatch(/isa = PBXNativeTarget;[\s\S]*?name = CapCollector;[\s\S]*?productName = CapCollector;/);
+    expect(pbx).not.toMatch(/^\t+name = App;$/m);
+    expect(pbx).toContain('path = CapCollector.app;');
+    expect(pbx.match(/PRODUCT_NAME = CapCollector;/g)).toHaveLength(2);
+    // Unchanged: bundle id, entitlements, Info.plist and the App/ group.
+    expect(pbx.match(/PRODUCT_BUNDLE_IDENTIFIER = com\.naevatec\.collectors;/g)).toHaveLength(2);
+    expect(pbx.match(/CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/g)).toHaveLength(2);
+    expect(pbx.match(/INFOPLIST_FILE = App\/Info\.plist;/g)).toHaveLength(2);
+    expect(pbx).toContain('path = App;');
+
+    const scheme = readFileSync(
+      join(IOS, 'App.xcodeproj', 'xcshareddata', 'xcschemes', 'CapCollector.xcscheme'),
+      'utf8',
+    );
+    const doc = new DOMParser().parseFromString(scheme, 'application/xml');
+    const refs = [...doc.querySelectorAll('BuildableReference')];
+    expect(refs.length).toBeGreaterThanOrEqual(2);
+    for (const ref of refs) {
+      expect(ref.getAttribute('BlueprintName')).toBe('CapCollector');
+      expect(ref.getAttribute('BuildableName')).toBe('CapCollector.app');
+      expect(ref.getAttribute('ReferencedContainer')).toBe('container:App.xcodeproj');
+      expect(pbx).toContain(`${ref.getAttribute('BlueprintIdentifier') ?? '?'} /* CapCollector */ = {`);
+    }
+    expect(doc.querySelector('LaunchAction')?.getAttribute('buildConfiguration')).toBe('Debug');
+    expect(doc.querySelector('ArchiveAction')?.getAttribute('buildConfiguration')).toBe('Release');
+
+    // Home-screen name and bundle name; the storyboard's view controller lives in the CapCollector module.
+    const info = plist(join(APP, 'Info.plist'));
+    expect(info.CFBundleDisplayName).toBe('CapCollector');
+    expect(info.CFBundleName).toBe('$(PRODUCT_NAME)');
+    expect(readFileSync(join(APP, 'Base.lproj', 'Main.storyboard'), 'utf8')).toContain('customModule="CapCollector"');
+  });
 });
