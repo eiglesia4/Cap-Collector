@@ -47,6 +47,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-93: photos picked in the form send their dHash: `POST /caps` for a new cap, and the `PATCH` for each replaced side when editing. A cap entered by hand is now found by a later scan's duplicate check ("Already in collection", no AI call). A replaced scan photo takes its new hash (ADR-004; T-app-181…183).
 - CAP-92: photos picked in the form (Manual entry, edit, the review's "Add underside photo") go through the crop check, shown as a sheet that keeps the form values. The "Crop photos to a square" toggle is gone. Exchange answer photos keep the centred crop, since they were already cropped when the request was built (ADR-010 §2; T-app-178…180).
 - CAP-89: every single capture (camera, library, upload, top and underside, pocket scans) now goes through a crop check. `detectCaps` places one circle (the most central confident one, else the largest, else a centred 40 % circle), which the user can move and resize, then Use photo crops it at full resolution with `cropCircle`, the same path as batch. The circle editor is shared with Tray adjust (ADR-010 §2; T-app-171…177).
 - CAP-88: when the canvas can't encode WebP (Safari, the iPhone app), captures are encoded with libwebp wasm (`@jsquash/webp/encode`, lazy-loaded, about 120 KB gzip). The fallback is remembered per session, and "can't save WebP" appears only when both fail. Covers every capture path (ADR-010 §1; T-app-165…170).
