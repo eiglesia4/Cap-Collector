@@ -403,7 +403,7 @@
   "form.photoFailed": "Couldn’t get the photo.",
   "form.photoUnreadable": "This file isn’t an image we can read.",
   "form.photoTooLarge": "This photo is too large even after resizing.",
-  "form.webpUnsupported": "This browser can’t save WebP images. Use Safari 16 or later, or a current Chrome or Firefox.",
+  "form.webpUnsupported": "This photo couldn’t be converted to WebP on this device. Try again, or use a current Chrome or Firefox.",
   "form.saveFlagged": "Save and flag needs review",
   "form.needsReview": "Needs review",
   "form.saved": "Saved",

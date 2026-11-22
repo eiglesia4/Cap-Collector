@@ -2,10 +2,14 @@
 // optionally crop it to a centred square (off by default), scale the long edge down to
 // 1024 px and encode WebP at quality 0.85 on a canvas. A browser that cannot encode WebP gets an error, never a JPEG
 // named `.webp` (story CAP-25 § How). The decoder/encoder sit behind `ImageCodec` so tests run without a real canvas.
+// WebKit's canvas hands back a PNG for WebP (ADR-010 §1, CAP-88): the browser codec then encodes the same pixels with
+// libwebp wasm (images/webp-wasm.ts, lazy), and remembers for the session that the canvas can't, so later encodes go
+// straight to wasm. `WebpUnsupportedError` is left for "neither the canvas nor wasm produced WebP".
 // V2 capture (CAP-36): `crop: 'circle'` — centred square, circular mask (transparent outside, WebP keeps the alpha) and
 // the dHash of the square inscribed in that circle, taken before the mask and before encoding (ADR-004 §1; architect
 // revision 2026-11-08: no background and no mask edge in the hash, so every one of the 64 bits carries the cap).
 import { dhash, type Pixels } from './dhash.js';
+import { encodeWebpWasm } from './webp-wasm.js';
 
 /** Long edge of every stored image (ADR-006, shared `ImageRef` max). */
 export const MAX_EDGE = 1024;
@@ -18,7 +22,7 @@ const FALLBACK_QUALITIES = [0.7, 0.55];
 
 export const WEBP = 'image/webp';
 
-/** The browser encoded something other than WebP (canvas falls back to PNG silently). */
+/** Neither the canvas nor the wasm fallback produced WebP (or there is no 2D canvas at all). */
 export class WebpUnsupportedError extends Error {
   override readonly name = 'WebpUnsupportedError';
 }
@@ -148,7 +152,9 @@ export function inscribedSquare(raster: Raster): Raster {
 export async function encodeWithin(encode: (quality: number) => Promise<Blob | null>): Promise<Blob> {
   for (const quality of [WEBP_QUALITY, ...FALLBACK_QUALITIES]) {
     const blob = await encode(quality);
-    if (blob === null || blob.type !== WEBP) throw new WebpUnsupportedError('this browser cannot encode WebP');
+    if (blob === null || blob.type !== WEBP) {
+      throw new WebpUnsupportedError('neither the canvas nor the WebP wasm encoder produced a WebP image');
+    }
     if (blob.size <= MAX_BYTES) return blob;
   }
   throw new ImageTooLargeError(`WebP above ${MAX_BYTES} bytes`);
@@ -196,9 +202,20 @@ export interface BrowserCodecDeps {
   /** `createImageBitmap` when the browser has it (all current ones); otherwise an <img> decodes the file. */
   readonly createImageBitmap?: ((blob: Blob, options?: ImageBitmapOptions) => Promise<ImageBitmap>) | undefined;
   readonly URL?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
+  /** WebP encoder used when the canvas can't encode WebP (ADR-010 §1); tests inject a stub. */
+  readonly encodeWasm?: (raster: Raster, quality: number) => Promise<Blob>;
+  /** What this session learnt about the canvas; shared by every browser codec unless a test passes its own. */
+  readonly support?: WebpSupport;
 }
 
-/** Canvas-based codec of the running browser / WKWebView (Safari ≥ 16 encodes WebP, with alpha). */
+/** Per-session memory: once the canvas has returned something other than WebP it is not asked again. */
+export interface WebpSupport {
+  canvasFails: boolean;
+}
+
+const SESSION_SUPPORT: WebpSupport = { canvasFails: false };
+
+/** Canvas-based codec of the running browser / WKWebView; WebP through libwebp wasm where the canvas can't (WebKit). */
 export function browserCodec(deps: BrowserCodecDeps = {}): RasterCodec {
   const doc = deps.document ?? document;
   const bitmap =
@@ -208,6 +225,22 @@ export function browserCodec(deps: BrowserCodecDeps = {}): RasterCodec {
         ? createImageBitmap
         : undefined;
   const urls = deps.URL ?? URL;
+  const wasm = deps.encodeWasm ?? encodeWebpWasm;
+  const support = deps.support ?? SESSION_SUPPORT;
+
+  /** The canvas's WebP when it makes one (remembering when it doesn't); otherwise the pixels through wasm. */
+  async function webp(canvas: HTMLCanvasElement, pixels: () => Raster, quality: number): Promise<Blob | null> {
+    if (!support.canvasFails) {
+      const blob = await toWebp(canvas, quality);
+      if (blob !== null && blob.type === WEBP) return blob;
+      support.canvasFails = true;
+    }
+    try {
+      return await wasm(pixels(), quality);
+    } catch {
+      return null;
+    }
+  }
 
   async function decodeWithImg(file: Blob): Promise<DecodedImage> {
     const url = urls.createObjectURL(file);
@@ -238,7 +271,12 @@ export function browserCodec(deps: BrowserCodecDeps = {}): RasterCodec {
     },
     encode(image, crop, width, height, quality) {
       const drawn = draw(image, crop, width, height);
-      return drawn === null ? Promise.resolve(null) : toWebp(drawn.canvas, quality);
+      if (drawn === null) return Promise.resolve(null);
+      return webp(
+        drawn.canvas,
+        () => ({ data: drawn.g.getImageData(0, 0, width, height).data, width, height }),
+        quality,
+      );
     },
     raster(image, crop, width, height) {
       const drawn = draw(image, crop, width, height);
@@ -246,16 +284,18 @@ export function browserCodec(deps: BrowserCodecDeps = {}): RasterCodec {
       const { data } = drawn.g.getImageData(0, 0, width, height);
       return Promise.resolve({ data, width, height });
     },
-    encodeRaster(raster, quality) {
+    async encodeRaster(raster, quality) {
+      // The pixels are already here: once the canvas is known not to make WebP, skip drawing them.
+      if (support.canvasFails) return webp(doc.createElement('canvas'), () => raster, quality);
       const canvas = doc.createElement('canvas');
       canvas.width = raster.width;
       canvas.height = raster.height;
       const g = canvas.getContext('2d');
-      if (g === null) return Promise.resolve(null);
+      if (g === null) return null;
       const pixels = g.createImageData(raster.width, raster.height);
       pixels.data.set(raster.data);
       g.putImageData(pixels, 0, 0);
-      return toWebp(canvas, quality);
+      return webp(canvas, () => raster, quality);
     },
   };
 
