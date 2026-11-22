@@ -26,6 +26,7 @@ import {
   MAX_BYTES,
   resizeToWebp,
   WebpUnsupportedError,
+  type CapPhoto,
   type ImageCodec,
 } from '../src/images/resize';
 import { uploadImage, UploadFailedError } from '../src/images/upload';
@@ -38,9 +39,16 @@ import {
   type CapFormOptions,
 } from '../src/screens/cap-form-screen';
 import { ulid, wireCap, wirePage } from './support/caps';
-import { fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
+import { fakeApi, fakeCropCheck, fakePlatform, flush, shellContext } from './support/fakes';
 
 const TOP = { key: 'u1/01JBF70A1B2C3D4E5F6G7H8J9K/top.webp', width: 1024, height: 768 };
+/** What the fake crop check hands back on Use photo (CAP-92). */
+const CHECKED: CapPhoto = {
+  blob: new Blob([new Uint8Array(1000)], { type: 'image/webp' }),
+  width: 1024,
+  height: 768,
+  dhash: 'f0f0f03030f0f0f0',
+};
 
 function capOf(wire: Record<string, unknown>): Cap {
   return Cap.parse(wire);
@@ -96,7 +104,7 @@ async function mount(
   const el = CapForm(ctx, {
     mode: options.mode ?? 'empty',
     ...(options.cap ? { cap: options.cap } : {}),
-    codec: options.codec ?? fakeCodec(2048, 1536).codec,
+    check: options.check ?? fakeCropCheck(() => CHECKED),
     put,
   });
   document.body.replaceChildren(el);
@@ -130,9 +138,12 @@ async function settle(times = 6): Promise<void> {
   for (let i = 0; i < times; i++) await flush();
 }
 
+/** Pick a top photo and take the crop check's Use photo (CAP-92). */
 async function addTopPhoto(m: Mounted): Promise<void> {
   vi.mocked(m.platform.pickFiles).mockResolvedValueOnce([new File(['x'], 'a.jpg', { type: 'image/jpeg' })]);
   q<HTMLButtonElement>(m.el, '[data-pick="top:library"]').click();
+  await settle();
+  q<HTMLButtonElement>(m.el, '[data-action="use-photo"]').click();
   await settle();
 }
 
@@ -247,9 +258,16 @@ describe('cap form — images', () => {
     const huge = fakeCodec(100, 100, { sizes: [MAX_BYTES + 1, MAX_BYTES + 1, MAX_BYTES + 1] });
     await expect(resizeToWebp(new Blob(['x']), { codec: huge.codec })).rejects.toBeInstanceOf(ImageTooLargeError);
 
-    const m = await mount(() => UPLOAD_OK(), { codec: fakeCodec(100, 100, { type: 'image/png' }).codec });
+    // In the form the crop check says why and stays open (CAP-92).
+    const check = fakeCropCheck(() => CHECKED);
+    check.crop.mockRejectedValue(new WebpUnsupportedError('no webp'));
+    const m = await mount(() => UPLOAD_OK(), { check });
     await addTopPhoto(m);
-    expect(q(m.el, '[data-side="top"]').textContent).toContain(t('form.webpUnsupported'));
+    expect(q(m.el, '.crop-sheet [role="alert"]').textContent).toBe(t('form.webpUnsupported'));
+    check.crop.mockRejectedValue(new ImageTooLargeError('big'));
+    q<HTMLButtonElement>(m.el, '[data-action="use-photo"]').click();
+    await settle();
+    expect(q(m.el, '.crop-sheet [role="alert"]').textContent).toBe(t('form.photoTooLarge'));
     expect(m.calls).toHaveLength(0);
   });
 

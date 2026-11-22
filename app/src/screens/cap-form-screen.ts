@@ -19,6 +19,9 @@
 // A batch item (CAP-84, ADR-009 §3): the batch strip on top; Save goes to the batch's next item instead of Detail, and
 // without "Propose next free pocket" (the batch's toggle) the cap is saved without a location and no proposal; Cancel
 // discards this item and moves on.
+// Photos go through the crop check first (CAP-92, ADR-010 §2: components/crop-check.ts as a sheet over the form, so the
+// typed values stay): the slot pickers and "Add underside photo" both get the detector-placed circle and Use photo;
+// the cropped WebP is what is uploaded. No blind centre crop and no "square" option any more.
 import {
   AnalyseResponse,
   Cap,
@@ -78,19 +81,14 @@ import { invalidateCollection } from '../collection/state.js';
 import { markReviewed } from '../exchange/continue.js';
 import { capImage } from '../components/cap-tile.js';
 import { ConfirmSheet } from '../components/confirm-sheet.js';
+import { CropCheckSheet, type CropCheckDeps } from '../components/crop-check.js';
 import { proposeLocation } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
 import { searchCountries } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
-import {
-  ImageTooLargeError,
-  resizeToWebp,
-  WebpUnsupportedError,
-  type CapPhoto,
-  type ImageCodec,
-} from '../images/resize.js';
+import type { CapPhoto, ResizedImage } from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
 import { exchangePath, pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
@@ -106,8 +104,9 @@ export interface CapFormOptions {
   readonly mode: FormMode;
   /** The cap being edited (mode `edit`). */
   readonly cap?: Cap;
-  /** Image codec and PUT function; tests inject fakes (default: canvas and fetch). */
-  readonly codec?: ImageCodec;
+  /** Codec / detector / cropper of the crop check (CAP-92); tests inject fakes (default: canvas and detectCaps). */
+  readonly check?: CropCheckDeps;
+  /** PUT function of the upload; tests inject a fake (default: fetch). */
   readonly put?: PutFn;
   /** Manual entry of a capture (mode `empty`): its photos, suggestions and hashes (CAP-41). */
   readonly scan?: CaptureSession;
@@ -115,8 +114,6 @@ export interface CapFormOptions {
   readonly prefill?: FormValues;
   /** Merged into `POST /caps` (CAP-42: `variantOf`, `source`, `textOnCap` of the scan). */
   readonly extra?: Readonly<Record<string, unknown>>;
-  /** Circular crop + dHash for "Add underside photo" (CAP-43); tests inject a fake (happy-dom has no canvas). */
-  readonly prepare?: (file: Blob) => Promise<CapPhoto>;
   /** Re-identify (CAP-43, mode `edit`): the AI's suggestions, each applied only when accepted, and their author. */
   readonly ai?: { readonly suggestions: readonly Suggestion[]; readonly source: string };
   /** Starting notes (CAP-45: an external answer's notes and ignored fields; modes `ai-prefilled` / `empty`). */
@@ -146,7 +143,7 @@ export function scanFields(scan: CaptureSession, images: FormImages): Record<str
   return out;
 }
 
-type SlotState = 'idle' | 'processing' | 'uploading' | 'failed';
+type SlotState = 'idle' | 'uploading' | 'failed';
 
 interface Slot {
   state: SlotState;
@@ -218,7 +215,6 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   let submitted = false;
   let saving = false;
   let serverErrors: FormErrors = {};
-  let square = false;
 
   const errorSlots = new Map<FieldName, HTMLElement>();
   const errorSlot = (name: FieldName) => {
@@ -240,7 +236,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     slots.top.pending !== null ||
     slots.underside.pending !== null;
 
-  const busy = () => saving || Object.values(slots).some((s) => s.state === 'processing' || s.state === 'uploading');
+  const busy = () => saving || Object.values(slots).some((s) => s.state === 'uploading');
 
   /** Show the errors of touched fields (all of them after a save attempt); server errors until the next edit. */
   function showErrors(): FormErrors {
@@ -533,7 +529,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
               { class: 'photo-preview photo-preview--empty', attrs: { 'aria-hidden': 'true' } },
               t('form.photoAdd'),
             );
-    const working = slot.state === 'processing' || slot.state === 'uploading';
+    const working = slot.state === 'uploading';
     const pickButton = (source: 'camera' | 'library', key: MessageKey) =>
       h(
         'button',
@@ -568,40 +564,35 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     );
   }
 
+  /** The camera or the photo library (web: always a file picker); null when the user backs out. */
+  async function takeFile(source: 'camera' | 'library'): Promise<File | null> {
+    return source === 'camera'
+      ? ctx.platform.camera()
+      : ((await ctx.platform.pickFiles({ accept: 'image/*' }))[0] ?? null);
+  }
+
+  /** Pick or shoot, then the crop check (CAP-92); null when the user backs out of either. */
+  async function checkedPhoto(side: Side, source: 'camera' | 'library'): Promise<ResizedImage | null> {
+    const file = await takeFile(source);
+    if (file === null) return null;
+    return CropCheckSheet(el, { ...options.check, file, side, retake: () => takeFile(source) });
+  }
+
   async function pick(side: Side, source: 'camera' | 'library'): Promise<void> {
-    let file: File | null;
-    try {
-      file =
-        source === 'camera'
-          ? await ctx.platform.camera()
-          : ((await ctx.platform.pickFiles({ accept: 'image/*' }))[0] ?? null);
-    } catch {
-      file = null;
-      slots[side].error = t('form.photoFailed');
-      renderPhotos();
-    }
-    if (file === null) return;
     const slot = slots[side];
-    slot.state = 'processing';
-    slot.error = null;
-    renderPhotos();
+    let photo: ResizedImage | null;
     try {
-      const resizeOptions = options.codec ? { square, codec: options.codec } : { square };
-      const resized = await resizeToWebp(file, resizeOptions);
-      revoke(slot.preview);
-      slot.preview = objectUrl(resized.blob);
-      slot.pending = resized;
-    } catch (error) {
-      slot.state = 'idle';
-      slot.error =
-        error instanceof WebpUnsupportedError
-          ? t('form.webpUnsupported')
-          : error instanceof ImageTooLargeError
-            ? t('form.photoTooLarge')
-            : t('form.photoUnreadable');
+      photo = await checkedPhoto(side, source);
+    } catch {
+      slot.error = t('form.photoFailed');
       renderPhotos();
       return;
     }
+    if (photo === null) return;
+    slot.error = null;
+    revoke(slot.preview);
+    slot.preview = objectUrl(photo.blob);
+    slot.pending = photo;
     await upload(side);
   }
 
@@ -623,11 +614,6 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     }
     renderPhotos();
   }
-
-  const squareToggle = h('input', { attrs: { type: 'checkbox', id: 'cap-square' } });
-  squareToggle.addEventListener('change', () => {
-    square = squareToggle.checked;
-  });
 
   // ── Buttons and save ──
   const saveButton = h(
@@ -804,24 +790,28 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     }
   }
 
-  /** Underside photo for this scan: camera (or picker) → circular crop + dHash → upload → Ask again with both. */
+  /** Underside photo for this scan: camera (or picker) → crop check (CAP-92) → upload → Ask again with both. */
   async function addUnderside(): Promise<void> {
     if (!scan || asking) return;
-    let file: File | null;
+    let photo: CapPhoto | null;
     try {
-      file =
-        ctx.platform.kind === 'native'
-          ? await ctx.platform.camera()
-          : ((await ctx.platform.pickFiles({ accept: 'image/*' }))[0] ?? null);
+      const file = await takeFile(ctx.platform.kind === 'native' ? 'camera' : 'library');
+      photo =
+        file === null
+          ? null
+          : await CropCheckSheet(el, {
+              ...options.check,
+              file,
+              side: 'underside',
+              retake: () => takeFile(ctx.platform.kind === 'native' ? 'camera' : 'library'),
+            });
     } catch {
       return sayAi('form.photoFailed');
     }
-    if (file === null) return;
+    if (photo === null) return;
     asking = true;
     updateAiButtons();
-    sayAi('scan.preparing');
     try {
-      const photo = await (options.prepare ?? ((f: Blob) => resizeToWebp(f, { crop: 'circle' })))(file);
       sayAi('scan.uploading');
       const ref = await uploadImage(ctx.api, 'underside', photo, options.put);
       scan.underside = { photo, ref };
@@ -933,12 +923,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     mode === 'empty' &&
       exportLink &&
       h('section', { class: 'form-section ai-actions' }, h('div', { class: 'ai-buttons' }, exportLink)),
-    h(
-      'section',
-      { class: 'form-section' },
-      photoBox,
-      h('label', { class: 'check' }, squareToggle, t('form.cropSquare')),
-    ),
+    h('section', { class: 'form-section' }, photoBox),
     h(
       'section',
       { class: 'form-section' },

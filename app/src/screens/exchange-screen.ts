@@ -127,6 +127,12 @@ export function ExchangeView(
 ): HTMLElement {
   const newId = options.newId ?? (() => newUlid());
   const now = options.now ?? (() => new Date());
+  // SPEC-GAP CAP-92: the story asks for the crop check on "photos picked for an exchange request", but the only photos
+  // this screen prepares are the ones inside the uploaded *answer* (exchange.md § Flow 3–4): the request's own photos,
+  // already cropped by the app, re-hashed to check they match the request (`photoMismatch`, ADR-004 tolerance). The
+  // detector does not reliably find a cap that fills the frame, and any re-placed circle moves the dHash, so a check
+  // here would raise false "photo doesn't match" warnings. Conservative: keep the centred crop (like images/stored.ts)
+  // until the architect decides.
   const prepare = options.prepare ?? ((file: Blob) => resizeToWebp(file, { crop: 'circle' }));
   const copy = options.copy ?? clipboardCopy;
   const download = options.download ?? browserDownload;
