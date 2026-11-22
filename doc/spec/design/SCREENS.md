@@ -21,7 +21,11 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 ## Navigation logic
 - Bottom tab bar: **Collection · Scan · Wishlist · Stats** (Albums, Exchange and Settings behind "⋯" on Collection).
 - Capture flow (2 → 3/4/5 → 6) runs as a full-screen modal over the tabs.
-  Retake / Cancel → Scan; Discard → Collection; Save → new cap's Detail.
+  Retake / Cancel on 3/4/5 → Scan; Cancel on Scan → where the user came from (Collection, or the album sheet for a
+  pocket scan; ADR-010 §3); Discard → Collection; Save → new cap's Detail.
+- Single capture (ADR-010 §2): after the shot, pick or upload, a **crop check** shows the photo with one circle placed
+  by the detector (drag / resize as in Tray adjust) → **Use photo** → underside? (same check) → analyse.
+- "⋯" and sort menus close on a tap outside them or on Escape.
 - Edit from Detail reuses the review form (mode `edit`).
 - Album sheet: tap pocket → Detail; tap empty pocket → Scan pre-assigned to that pocket.
 - Exchange: reached from Collection ⋯, from Review/Manual ("Export for external AI") and from

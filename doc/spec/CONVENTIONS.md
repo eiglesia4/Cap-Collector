@@ -34,7 +34,8 @@
 - Infra: AWS CDK (TypeScript). Two stacks: `CollectorsData` (S3, DynamoDB) and `CollectorsApi` (Lambda, API Gateway, auth).
 - API: Lambda (Node 20/22, TypeScript). One handler per route, shared `lib/`.
 - Single-table DynamoDB. Key schema documented in `docs/specs/data-model.md`; never invent keys ad hoc.
-- Images: WebP, max 1024 px long edge, uploaded via presigned S3 URLs. dHash computed client-side.
+- Images: WebP, max 1024 px long edge, uploaded via presigned S3 URLs. dHash computed client-side. Encoded by the canvas where it can,
+  else by libwebp wasm on the device (WebKit; ADR-010).
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `infra:`).
 
 ## AWS tagging (mandatory)
