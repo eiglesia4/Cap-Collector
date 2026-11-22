@@ -122,7 +122,9 @@ describe('native Sign in with Apple', () => {
     expect(plugin).toContain('case .canceled: return "cancelled"');
     expect(ios('App/MainViewController.swift')).toContain('bridge?.registerPluginInstance(AppleSignInPlugin())');
     expect(ios('App/SceneDelegate.swift')).toContain('rootViewController = MainViewController()');
-    expect(ios('App/Base.lproj/Main.storyboard')).toContain('customClass="MainViewController" customModule="App"');
+    expect(ios('App/Base.lproj/Main.storyboard')).toContain(
+      'customClass="MainViewController" customModule="CapCollector"',
+    );
     const pbx = ios('App.xcodeproj/project.pbxproj');
     for (const file of ['AppleSignInPlugin.swift', 'MainViewController.swift']) {
       expect(pbx).toContain(`/* ${file} in Sources */ = {isa = PBXBuildFile;`);

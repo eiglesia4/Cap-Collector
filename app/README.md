@@ -25,13 +25,21 @@ After editing an SVG, re-render and commit the PNGs (needs `rsvg-convert`: `brew
 npx tsx app/design/render.ts
 ```
 
+## Xcode names
+
+Capacitor hardcodes the project file `ios/App/App.xcodeproj`, the target folder `ios/App/App/` and `CapApp-SPM`, so
+those keep the name `App` (renaming them breaks `cap sync` / `cap open`). The native target, the product
+(`CapCollector.app`, Swift module `CapCollector`) and the shared scheme
+(`App.xcodeproj/xcshareddata/xcschemes/CapCollector.xcscheme`, also `ios.scheme` in `capacitor.config.ts`) are
+`CapCollector` (CAP-94). The home-screen name is `CFBundleDisplayName` in `Info.plist`.
+
 ## Versions
 
 - **Marketing version** (`MARKETING_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`, shown as the App Store
   version) = the release tag being shipped: `v0.5.0-v2` → `0.5.0`, `v0.8.0-v3` → `0.8.0`, `v1.0.0-v4` → `1.0.0`.
 - **Build number** (`CURRENT_PROJECT_VERSION`) goes up by one for every archive uploaded, and starts again at `1` when
   the marketing version changes. App Store Connect refuses a build number it has already seen for that version.
-- Change both in Xcode (target _App_ → General → Identity) or in `project.pbxproj` (Debug and Release); commit the
+- Change both in Xcode (target _CapCollector_ → General → Identity) or in `project.pbxproj` (Debug and Release); commit the
   change with the release. Deriving them from `package.json` would need integrator scripts and is not done.
 
 ## Release (TestFlight)
@@ -47,7 +55,7 @@ What Edu does by hand; no agent archives or uploads.
    cd app && npx cap sync ios
    ```
 3. `npx cap open ios` (or open `app/ios/App/App.xcodeproj` in Xcode). Check the version and build number (§ Versions).
-4. Scheme _App_, destination **Any iOS Device (arm64)**, then **Product → Archive**.
+4. Scheme _CapCollector_, destination **Any iOS Device (arm64)**, then **Product → Archive**.
 5. Organizer → **Distribute App → TestFlight & App Store** (or _TestFlight Internal Only_) → Upload.
 6. In App Store Connect, once processed: export compliance is already answered (`ITSAppUsesNonExemptEncryption =
 false`: the app only uses HTTPS), add the build to the internal testing group, and install it from TestFlight on
