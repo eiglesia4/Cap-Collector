@@ -1,6 +1,8 @@
 // A stored cap's photos on the client (CAP-43 re-identify, CAP-45 exchange bundle): the GET of an image's presigned URL
 // (`Cap.imageUrls`, CAP-26) and the dHash of a side, the stored one or — for a cap saved without one (manual photos,
 // CAP-25) — computed from the stored photo with the same circular crop + dHash as a scan (CAP-36).
+// The blind centred crop is right here and only here (CAP-92): a stored photo was already cropped, by the crop check,
+// when it was saved, so its centred square is the cap; new photos never take this path (ADR-010 §2).
 import type { Cap } from '@capcollector/shared';
 
 import { HttpError } from '../api/errors.js';

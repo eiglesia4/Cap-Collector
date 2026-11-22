@@ -17,7 +17,7 @@ import { matchRoute, pathFor } from '../src/router/routes';
 import { ScanReviewScreen } from '../src/screens/cap-form-screen';
 import { ReidentifyView } from '../src/screens/reidentify-screen';
 import { ulid, wireCap } from './support/caps';
-import { fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
+import { fakeApi, fakeCropCheck, fakePlatform, flush, shellContext } from './support/fakes';
 
 const SCAN_ID = ulid(43);
 const CAP_ID = ulid(7);
@@ -247,21 +247,27 @@ describe('AI review (CAP-43)', () => {
     expect(ctx.navigate).toHaveBeenCalledWith('/scan/duplicate');
     expect(ctx.capture.current()?.response?.outcome).toBe('duplicate');
 
-    // Add underside (missing): camera → circular crop + dHash → upload → Ask again with both images.
+    // Add underside (missing): camera → crop check → upload → Ask again with both images.
     const second = await setup((path, method, body) =>
       path === '/scans/analyse' ? identified() : uploads(path, method, body),
     );
     vi.mocked(second.platform.camera).mockResolvedValueOnce(new File(['u'], 'under.jpg'));
     second.ctx.capture.start(session());
-    const prepare = vi.fn(async () => photo(UNDER_HASH));
+    // CAP-92: the underside goes through the crop check (a sheet over the form) first.
+    const check = fakeCropCheck(() => photo(UNDER_HASH));
     const put = vi.fn(async () => new Response(null, { status: 200 }));
     const { CapForm } = await import('../src/screens/cap-form-screen');
     const scan = second.ctx.capture.current() as CaptureSession;
-    const form = CapForm(second.ctx, { mode: 'ai-prefilled', scan, prepare, put });
+    const form = CapForm(second.ctx, { mode: 'ai-prefilled', scan, check, put });
     document.body.replaceChildren(form);
     q(form, '[data-action="add-underside"]')?.click();
     await settle(12);
-    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(q(form, '.crop-sheet [data-crop-check="underside"]')).not.toBeNull();
+    expect(second.calls).toEqual([]);
+    q(form, '[data-action="use-photo"]')?.click();
+    await settle(12);
+    expect(check.crop).toHaveBeenCalledTimes(1);
+    expect(form.querySelector('.crop-sheet')).toBeNull();
     expect(second.calls.map((c) => c.path)).toEqual(['/uploads', '/scans/analyse']);
     expect(second.calls[1]?.body).toMatchObject({
       dhashUnderside: UNDER_HASH,

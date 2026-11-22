@@ -4,9 +4,19 @@
 // centred circle of 40 % of the short edge. The user can move or resize it (circle-editor.ts, single mode) and taps
 // **Use photo**: the cap is cropped from the full-resolution photo exactly like a batch crop (`cropCircle`: dHash of
 // the inscribed square, circular mask, WebP), so single and batch dHashes stay comparable (ADR-004, ADR-009).
+// CAP-92: `CropCheckSheet` shows the same check as a sheet over a screen (the cap form's photo slots and its "Add
+// underside photo"), so the form keeps its values; Retake reopens the picker.
 import type { Side } from '../images/upload.js';
 import { t } from '../i18n/i18n.js';
-import { browserCodec, fitWithin, type CapPhoto, type DecodedImage, type RasterCodec } from '../images/resize.js';
+import {
+  browserCodec,
+  fitWithin,
+  ImageTooLargeError,
+  WebpUnsupportedError,
+  type CapPhoto,
+  type DecodedImage,
+  type RasterCodec,
+} from '../images/resize.js';
 import { h } from '../ui/dom.js';
 import { cropCircle } from '../vision/crop.js';
 import { detectCaps, type DetectedCircle, type Detection } from '../vision/segment.js';
@@ -101,8 +111,14 @@ export function CropCheck(options: CropCheckOptions): HTMLElement {
     retake,
   );
 
-  const fail = () => {
-    status.textContent = t(failed);
+  const fail = (error?: unknown) => {
+    status.textContent = t(
+      error instanceof WebpUnsupportedError
+        ? 'form.webpUnsupported'
+        : error instanceof ImageTooLargeError
+          ? 'form.photoTooLarge'
+          : failed,
+    );
     status.setAttribute('role', 'alert');
     status.classList.add('status--error');
   };
@@ -117,10 +133,10 @@ export function CropCheck(options: CropCheckOptions): HTMLElement {
       const photo = await crop({ image, codec }, circle, scale);
       image.close?.();
       await options.onUse(photo);
-    } catch {
+    } catch (error) {
       busy = false;
       use.disabled = false;
-      fail();
+      fail(error);
     }
   }
 
@@ -155,4 +171,48 @@ export function CropCheck(options: CropCheckOptions): HTMLElement {
 
   void load();
   return el;
+}
+
+export interface CropCheckSheetOptions extends CropCheckDeps {
+  readonly file: Blob;
+  readonly side: Side;
+  /** Retake: pick or shoot again; null (picker closed) closes the sheet. */
+  retake(): Promise<Blob | null>;
+}
+
+/**
+ * The crop check as a sheet over `host` (CAP-92): resolves with the cropped photo on Use photo, or null when the user
+ * backs out (a tap on the backdrop, or a Retake whose picker comes back empty).
+ */
+export function CropCheckSheet(host: HTMLElement, options: CropCheckSheetOptions): Promise<CapPhoto | null> {
+  const { retake, file, side, ...deps } = options;
+  return new Promise((resolve) => {
+    const close = (photo: CapPhoto | null) => {
+      backdrop.remove();
+      resolve(photo);
+    };
+    const sheet = h('div', { class: 'sheet crop-sheet', attrs: { role: 'dialog', 'aria-modal': 'true' } });
+    const show = (current: Blob) =>
+      sheet.replaceChildren(
+        CropCheck({
+          ...deps,
+          file: current,
+          side,
+          onUse: (photo) => close(photo),
+          onRetake: () => {
+            void retake().then(
+              (next) => (next === null ? close(null) : show(next)),
+              () => close(null),
+            );
+          },
+        }),
+      );
+    const backdrop = h(
+      'div',
+      { class: 'sheet-backdrop', on: { click: (e) => e.target === backdrop && close(null) } },
+      sheet,
+    );
+    show(file);
+    host.append(backdrop);
+  });
 }

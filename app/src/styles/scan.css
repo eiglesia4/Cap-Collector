@@ -70,6 +70,12 @@
   gap: var(--space-3);
 }
 
+/* The crop check as a sheet over the cap form (CAP-92): tall photos scroll inside the sheet. */
+.crop-sheet {
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
 /* Crop check of the single capture (CAP-89): the tray stage and editor with one circle. */
 .crop-check,
 .crop-check__stage {

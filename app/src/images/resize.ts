@@ -89,7 +89,11 @@ export interface ResizeOptions {
 }
 
 export interface CircleResizeOptions {
-  /** Centred square with a circular mask, and the dHash of the result (CAP-36). */
+  /**
+   * Centred square with a circular mask, and the dHash of the result (CAP-36). Since CAP-92 only for photos that are
+   * already cropped (images/stored.ts, and the exchange answer's photos, which are the request's own): anything the
+   * user brings in goes through the crop check (components/crop-check.ts, ADR-010 §2).
+   */
   readonly crop: 'circle';
   readonly codec?: RasterCodec;
 }
