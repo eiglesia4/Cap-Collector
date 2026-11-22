@@ -47,6 +47,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-94: the iOS target, scheme (shared `CapCollector.xcscheme`, `ios.scheme` in `capacitor.config.ts`), product and Swift module are now named `CapCollector`. `App.xcodeproj`, the `App/` folder, the bundle id, entitlements and `Info.plist` paths stay as they are, because Capacitor hardcodes them. See `app/README.md` § Xcode names (T-app-184).
 - CAP-93: photos picked in the form send their dHash: `POST /caps` for a new cap, and the `PATCH` for each replaced side when editing. A cap entered by hand is now found by a later scan's duplicate check ("Already in collection", no AI call). A replaced scan photo takes its new hash (ADR-004; T-app-181…183).
 - CAP-92: photos picked in the form (Manual entry, edit, the review's "Add underside photo") go through the crop check, shown as a sheet that keeps the form values. The "Crop photos to a square" toggle is gone. Exchange answer photos keep the centred crop, since they were already cropped when the request was built (ADR-010 §2; T-app-178…180).
 - CAP-89: every single capture (camera, library, upload, top and underside, pocket scans) now goes through a crop check. `detectCaps` places one circle (the most central confident one, else the largest, else a centred 40 % circle), which the user can move and resize, then Use photo crops it at full resolution with `cropCircle`, the same path as batch. The circle editor is shared with Tray adjust (ADR-010 §2; T-app-171…177).
