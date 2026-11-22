@@ -1,7 +1,7 @@
 // Capture flow tests (CAP-41; SCREENS.md #2 and § Navigation; ADR-003 three outcomes; ADR-004; openapi
 // § /scans/analyse with its 503): the flow state machine, the analyse request body, the Scan screen on web and
-// iPhone, cancel clearing the scan context, and manual entry pre-filled from a capture. Photos go through a fake
-// `prepare` (happy-dom has no canvas); the API is a fake `request`.
+// iPhone, cancel clearing the scan context, and manual entry pre-filled from a capture. Photos go through a fake crop
+// check (codec, detector, cropper; happy-dom has no canvas); the API is a fake `request`.
 import { AnalyseRequest, Ulid, type AnalyseResponse, type ImageRef } from '@capcollector/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +26,7 @@ import { NewCapScreen, scanFields } from '../src/screens/cap-form-screen';
 import { ScanDuplicateScreen } from '../src/screens/scan-duplicate-screen';
 import { ScanView } from '../src/screens/scan-screen';
 import { ulid, wireCap } from './support/caps';
-import { fakeApi, fakePlatform, flush, memoryStore, shellContext } from './support/fakes';
+import { fakeApi, fakeCropCheck, fakePlatform, flush, memoryStore, shellContext } from './support/fakes';
 
 const SCAN_ID = ulid(41);
 const CAP_ID = ulid(7);
@@ -61,7 +61,6 @@ function flowWith(answers: (AnalyseResponse | Error)[], over: Partial<CaptureDep
   const queue = [...answers];
   const deps = {
     store,
-    prepare: vi.fn(async (file: Blob) => photo(file.size === 2 ? UNDER_HASH : TOP_HASH)),
     upload: vi.fn(async (side: 'top' | 'underside') => ref(side)),
     analyse: vi.fn(async () => {
       const next = queue.shift() ?? response('identified');
@@ -78,8 +77,8 @@ function flowWith(answers: (AnalyseResponse | Error)[], over: Partial<CaptureDep
   return { flow, deps, store, states };
 }
 
-const TOP_FILE = new Blob(['t']);
-const UNDER_FILE = new Blob(['uu']);
+const TOP_PHOTO = photo(TOP_HASH);
+const UNDER_PHOTO = photo(UNDER_HASH);
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -87,7 +86,7 @@ afterEach(() => {
 });
 
 describe('capture flow', () => {
-  it('[T-app-068] routes the three outcomes and the 503; retries only what failed; a bad photo means retake', async () => {
+  it('[T-app-068] routes the three outcomes and the 503; retries only what failed', async () => {
     expect(routeFor(response('duplicate', { match: { capId: CAP_ID, hammingDistance: 3, by: 'dhash' } }))).toBe(
       '/scan/duplicate',
     );
@@ -101,10 +100,10 @@ describe('capture flow', () => {
       [response('unidentified', { suggestions: ['Mahou'] }), `/new?scanId=${SCAN_ID}`],
     ] as const) {
       const { flow, store, states } = flowWith([answer]);
-      await flow.shoot(TOP_FILE);
+      await flow.shoot(TOP_PHOTO);
       expect(flow.state()).toEqual({ step: 'underside' });
       await flow.skipUnderside();
-      expect(states).toEqual(['preparing', 'underside', 'uploading', 'analysing', 'done']);
+      expect(states).toEqual(['underside', 'uploading', 'analysing', 'done']);
       expect(flow.state()).toEqual({ step: 'done', path });
       // The analyse answer stays in the scan context for the review screens.
       expect(store.current()?.response).toEqual(answer);
@@ -113,8 +112,8 @@ describe('capture flow', () => {
     // 503 (problem or bare status) → "AI unavailable"; Retry analyses again without uploading again.
     for (const error of [unavailable(), new HttpError(503)]) {
       const { flow, deps } = flowWith([error, response('identified')]);
-      await flow.shoot(TOP_FILE);
-      await flow.addUnderside(UNDER_FILE);
+      await flow.shoot(TOP_PHOTO);
+      await flow.addUnderside(UNDER_PHOTO);
       expect(flow.state()).toEqual({ step: 'aiUnavailable' });
       await flow.retry();
       expect(flow.state()).toEqual({ step: 'done', path: '/scan/review' });
@@ -124,7 +123,7 @@ describe('capture flow', () => {
 
     // Any other analyse error is retryable as such.
     const other = flowWith([new HttpError(500)]);
-    await other.flow.shoot(TOP_FILE);
+    await other.flow.shoot(TOP_PHOTO);
     await other.flow.skipUnderside();
     expect(other.flow.state()).toEqual({ step: 'failed', kind: 'analyse' });
 
@@ -135,37 +134,17 @@ describe('capture flow', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue(ref('underside'));
     const flaky = flowWith([response('unidentified')], { upload });
-    await flaky.flow.shoot(TOP_FILE);
-    await flaky.flow.addUnderside(UNDER_FILE);
+    await flaky.flow.shoot(TOP_PHOTO);
+    await flaky.flow.addUnderside(UNDER_PHOTO);
     expect(flaky.flow.state()).toEqual({ step: 'failed', kind: 'upload' });
     await flaky.flow.retry();
     expect(upload.mock.calls.map(([side]) => side)).toEqual(['top', 'underside', 'underside']);
     expect(flaky.flow.state()).toEqual({ step: 'done', path: `/new?scanId=${SCAN_ID}` });
-
-    // Unusable photos: top → Retake starts over; underside → back to the underside question.
-    const prepare = vi.fn(async () => {
-      throw new ImageDecodeError('bad');
-    });
-    const bad = flowWith([], { prepare });
-    await bad.flow.shoot(TOP_FILE);
-    expect(bad.flow.state()).toEqual({ step: 'failed', kind: 'photo', side: 'top' });
-    await bad.flow.retry();
-    expect(bad.flow.state()).toEqual({ step: 'idle' });
-    expect(bad.store.current()).toBeNull();
-
-    const badUnder = flowWith([]);
-    await badUnder.flow.shoot(TOP_FILE);
-    vi.mocked(badUnder.deps.prepare).mockRejectedValueOnce(new ImageDecodeError('bad'));
-    await badUnder.flow.addUnderside(UNDER_FILE);
-    expect(badUnder.flow.state()).toEqual({ step: 'failed', kind: 'photo', side: 'underside' });
-    await badUnder.flow.retry();
-    expect(badUnder.flow.state()).toEqual({ step: 'underside' });
-    expect(badUnder.store.current()?.top?.photo.dhash).toBe(TOP_HASH);
   });
 
   it('[T-app-069] builds the analyse body from the scan context: useAi from settings, no capId on a fresh scan', async () => {
     const off = flowWith([response('unidentified')], { useAi: vi.fn(async () => false) });
-    await off.flow.shoot(TOP_FILE);
+    await off.flow.shoot(TOP_PHOTO);
     await off.flow.skipUnderside();
     const [first] = vi.mocked(off.deps.analyse).mock.calls[0] as unknown as [AnalyseRequest];
     expect(first).toEqual({ scanId: SCAN_ID, dhash: TOP_HASH, imageKeys: { top: ref('top').key }, useAi: false });
@@ -174,8 +153,8 @@ describe('capture flow', () => {
     expect(AnalyseRequest.parse(first)).toEqual(first);
 
     const both = flowWith([response('identified')], { targetLocationCode: 'A·3·17' });
-    await both.flow.shoot(TOP_FILE);
-    await both.flow.addUnderside(UNDER_FILE);
+    await both.flow.shoot(TOP_PHOTO);
+    await both.flow.addUnderside(UNDER_PHOTO);
     const [second] = vi.mocked(both.deps.analyse).mock.calls[0] as unknown as [AnalyseRequest];
     expect(second).toEqual({
       scanId: SCAN_ID,
@@ -222,10 +201,10 @@ async function screen(kind: 'web' | 'native', handler: Handler, store = memorySt
   const api = fakeApi({ request: request as ApiClient['request'] });
   const ctx: AppContext = { ...(await shellContext({ api, platform })), navigate: vi.fn(), skipSignIn: vi.fn() };
   const put = vi.fn(async () => new Response(null, { status: 200 }));
-  const prepare = vi.fn(async (file: Blob) => photo(file.size === 2 ? UNDER_HASH : TOP_HASH));
-  const el = ScanView(ctx, { prepare, put, newId: () => SCAN_ID });
+  const check = fakeCropCheck((file) => photo(file.size === 2 ? UNDER_HASH : TOP_HASH));
+  const el = ScanView(ctx, { check, put, newId: () => SCAN_ID });
   document.body.replaceChildren(el);
-  return { el, ctx, calls, put, platform, prepare };
+  return { el, ctx, calls, put, platform, check };
 }
 
 const uploads: Handler = (path, _method, body) =>
@@ -243,6 +222,14 @@ const click = (root: ParentNode, selector: string) => {
   el.click();
 };
 
+/** Take or pick a photo with `selector`, then "Use photo" on the crop check (CAP-89). */
+async function takeAndUse(root: ParentNode, selector: string): Promise<void> {
+  click(root, selector);
+  await settle();
+  click(root, '[data-action="use-photo"]');
+  await settle();
+}
+
 describe('scan screen', () => {
   it('[T-app-070] web shows "Upload photo" and never calls the camera; iPhone shoots; both reach the outcome', async () => {
     const web = await screen('web', (path, method, body) =>
@@ -252,14 +239,12 @@ describe('scan screen', () => {
     expect(web.el.querySelector('[data-action="shoot"]')).toBeNull();
     expect(web.el.querySelector('[data-action="manual"]')?.getAttribute('href')).toBe('/new');
     vi.mocked(web.platform.pickFiles).mockResolvedValueOnce([new File(['t'], 'top.jpg')]);
-    click(web.el, '[data-action="upload"]');
-    await settle();
+    await takeAndUse(web.el, '[data-action="upload"]');
     expect(web.el.dataset.step).toBe('underside');
     expect(web.el.querySelector('.scan-guide img')).not.toBeNull();
     expect(web.el.querySelector('[data-action="upload"]')?.textContent).toBe(t('scan.uploadUnderside'));
     vi.mocked(web.platform.pickFiles).mockResolvedValueOnce([new File(['uu'], 'under.jpg')]);
-    click(web.el, '[data-action="upload"]');
-    await settle();
+    await takeAndUse(web.el, '[data-action="upload"]');
     expect(web.platform.camera).not.toHaveBeenCalled();
     expect(web.platform.pickFiles).toHaveBeenCalledWith({ accept: 'image/*' });
     expect(web.calls.map((c) => c.path)).toEqual(['/uploads', '/uploads', '/scans/analyse']);
@@ -276,8 +261,7 @@ describe('scan screen', () => {
     await settle();
     expect(phone.el.dataset.step).toBe('idle');
     vi.mocked(phone.platform.camera).mockResolvedValueOnce(new File(['t'], 'top.jpg'));
-    click(phone.el, '[data-action="shoot"]');
-    await settle();
+    await takeAndUse(phone.el, '[data-action="shoot"]');
     click(phone.el, '[data-action="skip"]');
     await settle();
     // 503 → the sheet: Enter manually (this scan), Export for external AI (this scan, CAP-45), Retry.
@@ -299,32 +283,32 @@ describe('scan screen', () => {
       memoryStore({ [USE_AI_KEY]: 'off' }),
     );
     vi.mocked(off.platform.pickFiles).mockResolvedValueOnce([new File(['t'], 'top.jpg')]);
-    click(off.el, '[data-action="library"]');
-    await settle();
+    await takeAndUse(off.el, '[data-action="library"]');
     click(off.el, '[data-action="skip"]');
     await settle();
     expect(off.calls.find((c) => c.path === '/scans/analyse')?.body).toMatchObject({ useAi: false });
     expect(off.el.querySelector('[role="alert"]')?.textContent).toBe(t('scan.analyseFailed'));
     expect(off.el.querySelector('[data-action="retry"]')?.textContent).toBe(t('common.retry'));
 
+    // An unusable photo is caught by the crop check: its message and Retake.
     const broken = await screen('native', uploads);
-    broken.prepare.mockRejectedValueOnce(new ImageDecodeError('bad'));
+    vi.mocked(broken.check.codec.decode).mockRejectedValueOnce(new ImageDecodeError('bad'));
     vi.mocked(broken.platform.camera).mockResolvedValueOnce(new File(['t'], 'top.jpg'));
     click(broken.el, '[data-action="shoot"]');
     await settle();
     expect(broken.el.querySelector('[role="alert"]')?.textContent).toBe(t('scan.photoFailed'));
-    expect(broken.el.querySelector('[data-action="retry"]')?.textContent).toBe(t('scan.retake'));
+    expect(broken.el.querySelector('[data-action="crop-retake"]')?.textContent).toBe(t('scan.retake'));
+    expect(broken.ctx.capture.current()).toBeNull();
   });
 
   it('[T-app-071] cancel clears the scan context; late results of the cancelled attempt are ignored', async () => {
-    let finish: (p: CapPhoto) => void = () => undefined;
-    const slow = flowWith([], { prepare: vi.fn(() => new Promise<CapPhoto>((resolve) => (finish = resolve))) });
-    const shot = slow.flow.shoot(TOP_FILE);
+    // Cancelled before the shot is in (the AI setting still loading): nothing starts.
+    let finish: (useAi: boolean) => void = () => undefined;
+    const slow = flowWith([], { useAi: vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve))) });
+    const shot = slow.flow.shoot(TOP_PHOTO);
     await flush();
-    expect(slow.flow.state()).toEqual({ step: 'preparing', side: 'top' });
-    expect(slow.store.current()?.scanId).toBe(SCAN_ID);
     slow.flow.cancel();
-    finish(photo(TOP_HASH));
+    finish(true);
     await shot;
     expect(slow.flow.state()).toEqual({ step: 'idle' });
     expect(slow.store.current()).toBeNull();
@@ -332,7 +316,7 @@ describe('scan screen', () => {
     // Cancelled while analysing: the answer never routes.
     let answer: (r: AnalyseResponse) => void = () => undefined;
     const late = flowWith([], { analyse: vi.fn(() => new Promise<AnalyseResponse>((resolve) => (answer = resolve))) });
-    await late.flow.shoot(TOP_FILE);
+    await late.flow.shoot(TOP_PHOTO);
     const submitted = late.flow.skipUnderside();
     await flush();
     late.flow.cancel();
@@ -345,8 +329,7 @@ describe('scan screen', () => {
     const s = await screen('native', uploads);
     vi.mocked(s.platform.camera).mockResolvedValueOnce(new File(['t'], 'top.jpg'));
     const cancel = s.el.querySelector<HTMLButtonElement>('[data-action="cancel"]');
-    click(s.el, '[data-action="shoot"]');
-    await settle();
+    await takeAndUse(s.el, '[data-action="shoot"]');
     expect(s.ctx.capture.current()).not.toBeNull();
     expect(cancel?.hidden).toBe(false);
     cancel?.click();
@@ -446,8 +429,7 @@ describe('scan screen', () => {
       path === '/uploads' ? new HttpError(500) : uploads(path, method, body),
     );
     vi.mocked(failed.platform.pickFiles).mockResolvedValueOnce([new File(['t'], 'top.jpg')]);
-    click(failed.el, '[data-action="upload"]');
-    await settle();
+    await takeAndUse(failed.el, '[data-action="upload"]');
     click(failed.el, '[data-action="skip"]');
     await settle();
     expect(failed.el.querySelector('[role="alert"]')?.textContent).toBe(t('scan.uploadFailed'));

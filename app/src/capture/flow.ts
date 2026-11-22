@@ -1,8 +1,10 @@
 // Capture flow of the Scan tab (CAP-41; SCREENS.md #2 and § Navigation; ADR-003 three outcomes; ADR-004 hash first):
-// top photo → circular crop + dHash (CAP-36) → optional underside ("Add underside?", skippable) → upload both
-// (CAP-25 `upload.ts`) → `POST /scans/analyse` → the route of the outcome. A 503 (AI unavailable) stops in its own
-// state so the screen offers Enter manually · Export for external AI · Retry. Pure orchestration over injected
-// effects, so every transition is testable without a canvas, a camera or the network.
+// top photo → optional underside ("Add underside?", skippable) → upload both (CAP-25 `upload.ts`) →
+// `POST /scans/analyse` → the route of the outcome. A 503 (AI unavailable) stops in its own state so the screen offers
+// Enter manually · Export for external AI · Retry. Pure orchestration over injected effects, so every transition is
+// testable without a canvas, a camera or the network. CAP-89 (ADR-010 §2): the photos arrive ready — cropped, masked,
+// hashed and encoded by the Scan screen's crop check (components/crop-check.ts) — so there is no blind centre crop
+// and no "photo" failure here any more; an unusable photo is caught in the crop check.
 import type { AnalyseRequest, AnalyseResponse, ImageRef } from '@capcollector/shared';
 
 import { HttpError, ProblemError } from '../api/errors.js';
@@ -25,25 +27,22 @@ export function routeFor(response: AnalyseResponse): string {
   return response.outcome === 'unidentified' ? manualEntryPath(response.scanId) : OUTCOME_PATHS[response.outcome];
 }
 
-/** Why a step failed: `photo` = the picked file is unusable (retake); the others can be retried as they are. */
-export type FailureKind = 'photo' | 'upload' | 'analyse';
+/** Why a step failed; both are retried as they are. */
+export type FailureKind = 'upload' | 'analyse';
 
 export type CaptureState =
   | { readonly step: 'idle' }
-  | { readonly step: 'preparing'; readonly side: Side }
   /** The top photo is ready: ask for the underside (skippable). */
   | { readonly step: 'underside' }
   | { readonly step: 'uploading' }
   | { readonly step: 'analysing' }
   /** `POST /scans/analyse` answered 503: manual entry, external AI (soon) or retry. */
   | { readonly step: 'aiUnavailable' }
-  | { readonly step: 'failed'; readonly kind: FailureKind; readonly side?: Side }
+  | { readonly step: 'failed'; readonly kind: FailureKind }
   | { readonly step: 'done'; readonly path: string };
 
 export interface CaptureDeps {
   readonly store: CaptureStore;
-  /** Circular crop, ≤ 1024 px WebP and dHash (`resizeToWebp(file, { crop: 'circle' })`). */
-  prepare(file: Blob): Promise<CapPhoto>;
   upload(side: Side, photo: CapPhoto): Promise<ImageRef>;
   analyse(body: AnalyseRequest): Promise<AnalyseResponse>;
   useAi(): Promise<boolean>;
@@ -54,9 +53,9 @@ export interface CaptureDeps {
 export interface CaptureFlow {
   state(): CaptureState;
   subscribe(listener: (state: CaptureState) => void): () => void;
-  /** The top photo was taken or picked. */
-  shoot(file: Blob): Promise<void>;
-  addUnderside(file: Blob): Promise<void>;
+  /** The top photo, cropped in the crop check (CAP-89). */
+  shoot(photo: CapPhoto): Promise<void>;
+  addUnderside(photo: CapPhoto): Promise<void>;
   skipUnderside(): Promise<void>;
   /** Run the failed (or 503) step again with what is already prepared and uploaded. */
   retry(): Promise<void>;
@@ -103,23 +102,6 @@ export function createCaptureFlow(deps: CaptureDeps): CaptureFlow {
     return attempt === generation ? { ok: true, value } : { ok: false };
   }
 
-  async function prepare(attempt: number, side: Side, file: Blob): Promise<boolean> {
-    set({ step: 'preparing', side });
-    try {
-      const result = await guarded(attempt, () => deps.prepare(file));
-      if (!result.ok) return false;
-      const session = deps.store.current();
-      if (session === null) return false;
-      session[side] = { photo: result.value };
-      return true;
-    } catch {
-      if (attempt !== generation) return false;
-      // Undecodable, no WebP encoder, too large (or anything else while preparing): the user retakes.
-      set({ step: 'failed', kind: 'photo', side });
-      return false;
-    }
-  }
-
   /** Upload what is not uploaded yet, then analyse; ends in `done`, `aiUnavailable` or `failed`. */
   async function submit(attempt: number): Promise<void> {
     const session = deps.store.current();
@@ -155,7 +137,7 @@ export function createCaptureFlow(deps: CaptureDeps): CaptureFlow {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async shoot(file) {
+    async shoot(photo) {
       const attempt = ++generation;
       const useAi = await deps.useAi();
       if (attempt !== generation) return;
@@ -164,24 +146,18 @@ export function createCaptureFlow(deps: CaptureDeps): CaptureFlow {
         scanId: deps.newId(),
         useAi,
         ...(target !== undefined ? { targetLocationCode: target } : {}),
+        top: { photo },
       });
-      if (await prepare(attempt, 'top', file)) set({ step: 'underside' });
+      set({ step: 'underside' });
     },
-    async addUnderside(file) {
-      const attempt = generation;
-      if (await prepare(attempt, 'underside', file)) await submit(attempt);
+    async addUnderside(photo) {
+      const session = deps.store.current();
+      if (session === null) return;
+      session.underside = { photo };
+      await submit(generation);
     },
     skipUnderside: () => submit(generation),
-    async retry() {
-      const attempt = generation;
-      if (state.step === 'failed' && state.kind === 'photo') {
-        // A bad underside photo is dropped; a bad top photo means starting over.
-        if (state.side === 'underside') return set({ step: 'underside' });
-        deps.store.clear();
-        return set({ step: 'idle' });
-      }
-      await submit(attempt);
-    },
+    retry: () => submit(generation),
     cancel() {
       generation++;
       deps.store.clear();

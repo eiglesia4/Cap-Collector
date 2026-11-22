@@ -10,7 +10,10 @@
 // (CAP-84: "Batch: 4 of 11 — Continue · Abandon") is shown, and Batch starts no new tray until it is finished or
 // abandoned. Cancel (always shown, CAP-90; ADR-010 §3) leaves the capture: the flow is cancelled (scan context
 // cleared) and the user goes back to where they came from — the album sheet of a pocket scan, otherwise Collection.
-// Styles: styles/scan.css.
+// CAP-89 (ADR-010 §2): every photo — camera, library or upload, top and underside, pocket scans too — goes through the
+// crop check (components/crop-check.ts: detector-placed circle, move/resize, Use photo) before the flow continues; the
+// flow receives the cropped `CapPhoto` (no blind centre crop). Retake on the check goes back to where the photo was
+// asked for (idle Scan, or the underside question). Styles: styles/scan.css.
 import { AnalyseResponse, formatLocationCode } from '@capcollector/shared';
 
 import { albumSheetPath, AlbumListSchema, newIntoPath, pocketLocation } from '../albums/model.js';
@@ -20,17 +23,17 @@ import { BatchBanner } from '../components/batch-banner.js';
 import { readUseAi } from '../capture/ai-setting.js';
 import { createCaptureFlow, manualEntryPath, type CaptureState } from '../capture/flow.js';
 import { newUlid } from '../capture/ulid.js';
+import { CropCheck, type CropCheckDeps } from '../components/crop-check.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
-import { resizeToWebp, type CapPhoto } from '../images/resize.js';
 import { uploadImage, type PutFn, type Side } from '../images/upload.js';
 import { exchangePath, pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
 
 export interface ScanOptions {
-  /** Circular crop + dHash; tests inject a fake (happy-dom has no canvas). */
-  readonly prepare?: (file: Blob) => Promise<CapPhoto>;
+  /** Codec / detector / cropper of the crop check; tests inject fakes (happy-dom has no canvas). */
+  readonly check?: CropCheckDeps;
   readonly put?: PutFn;
   readonly newId?: () => string;
   /** Pocket the scan is pre-assigned to (`A·3·17`, from an empty pocket of the album sheet, CAP-52). */
@@ -53,7 +56,6 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   const target = options.targetLocationCode;
   const flow = createCaptureFlow({
     store: ctx.capture,
-    prepare: options.prepare ?? ((file) => resizeToWebp(file, { crop: 'circle' })),
     upload: (side, photo) => uploadImage(ctx.api, side, photo, options.put),
     analyse: (body) => ctx.api.request('/scans/analyse', { method: 'POST', body, schema: AnalyseResponse }),
     useAi: () => readUseAi(ctx.platform.store),
@@ -62,6 +64,8 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   });
 
   let preview: string | null = null;
+  /** The photo being checked (CAP-89); the flow only sees it once "Use photo" has cropped it. */
+  let checking: { readonly side: Side; readonly file: Blob } | null = null;
   // Batch mode (CAP-83): not offered for a scan pre-assigned to a pocket.
   let mode: ScanMode = 'single';
   let pending: Batch | null = null;
@@ -101,6 +105,7 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
 
   /** Cancel on Scan (ADR-010 §3): back to the album sheet of a pocket scan, otherwise (or if it can't be found) Collection. */
   async function leave(): Promise<void> {
+    checking = null;
     flow.cancel();
     const pocket = pocketLocation(target);
     let path = pathFor('collection');
@@ -138,7 +143,8 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     const run = (source: 'camera' | 'library') => async () => {
       const file = await take(source);
       if (file === null) return;
-      await (side === 'top' ? flow.shoot(file) : flow.addUnderside(file));
+      checking = { side, file };
+      render(flow.state());
     };
     if (web) return [button(side === 'top' ? 'scan.upload' : 'scan.uploadUnderside', 'upload', run('library'))];
     return [
@@ -172,19 +178,28 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
   const progress = (key: MessageKey) => h('p', { class: 'scan-progress', attrs: { role: 'status' } }, t(key));
 
   function failure(state: Extract<CaptureState, { step: 'failed' }>): HTMLElement[] {
-    const message: MessageKey =
-      state.kind === 'photo'
-        ? state.side === 'underside'
-          ? 'scan.undersideFailed'
-          : 'scan.photoFailed'
-        : state.kind === 'upload'
-          ? 'scan.uploadFailed'
-          : 'scan.analyseFailed';
-    const again: MessageKey = state.kind === 'photo' ? 'scan.retake' : 'common.retry';
+    const message: MessageKey = state.kind === 'upload' ? 'scan.uploadFailed' : 'scan.analyseFailed';
     return [
       h('p', { class: 'status status--error', attrs: { role: 'alert' } }, t(message)),
-      button(again, 'retry', () => flow.retry()),
+      button('common.retry', 'retry', () => flow.retry()),
     ];
+  }
+
+  /** The crop check of `checking` (top or underside); Use photo hands the crop to the flow. */
+  function cropCheck(current: { readonly side: Side; readonly file: Blob }): HTMLElement {
+    return CropCheck({
+      ...options.check,
+      file: current.file,
+      side: current.side,
+      onUse: (photo) => {
+        checking = null;
+        return current.side === 'top' ? flow.shoot(photo) : flow.addUnderside(photo);
+      },
+      onRetake: () => {
+        checking = null;
+        render(flow.state());
+      },
+    });
   }
 
   function aiUnavailable(): HTMLElement {
@@ -211,6 +226,12 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     guide.replaceChildren(
       preview === null ? '' : h('img', { class: 'scan-photo', attrs: { src: preview, alt: t('scan.preview') } }),
     );
+    guide.hidden = checking !== null;
+    el.dataset.step = checking === null ? state.step : 'check';
+    if (checking !== null) {
+      body.replaceChildren(cropCheck(checking));
+      return;
+    }
     const parts: Node[] = [];
     switch (state.step) {
       case 'idle':
@@ -230,9 +251,6 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
           ...pickButtons('top'),
           manual(target !== undefined ? newIntoPath(target) : pathFor('newCap')),
         );
-        break;
-      case 'preparing':
-        parts.push(progress('scan.preparing'));
         break;
       case 'underside':
         parts.push(
@@ -259,7 +277,6 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     for (const option of switcher.querySelectorAll<HTMLElement>('[data-mode]')) {
       option.setAttribute('aria-pressed', String(option.dataset.mode === mode));
     }
-    el.dataset.step = state.step;
     el.dataset.mode = mode;
   }
 

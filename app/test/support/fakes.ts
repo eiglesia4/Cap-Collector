@@ -9,6 +9,8 @@ import type { ShellContext } from '../../src/app';
 import { createBatchContext } from '../../src/batch/context';
 import { memoryBatchStore } from '../../src/batch/store';
 import { createCaptureStore } from '../../src/capture/context';
+import type { CropCheckDeps } from '../../src/components/crop-check';
+import type { CapPhoto, RasterCodec } from '../../src/images/resize';
 import type { AppConfig } from '../../src/config';
 import type { KeyValueStore, Platform } from '../../src/platform/platform';
 import { createSessionStore } from '../../src/session/session-store';
@@ -97,3 +99,30 @@ export function json(status: number, body: unknown, contentType = 'application/j
 
 /** Resolves after pending promise callbacks have run. */
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Crop check doubles (CAP-89; happy-dom has no canvas): a 2000 × 1500 photo drawn at 1600 × 1200, no cap found (the
+ * centred fallback circle), and a cropper that returns `photoOf(file)` for the decoded file.
+ */
+export function fakeCropCheck(photoOf: (file: Blob) => CapPhoto) {
+  const codec: RasterCodec = {
+    decode: vi.fn(async (file: Blob) => ({ source: file as unknown as CanvasImageSource, width: 2000, height: 1500 })),
+    raster: vi.fn(async (_image, _crop, width: number, height: number) => ({
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+    })),
+    encode: vi.fn(async () => null),
+    encodeRaster: vi.fn(async () => null),
+  };
+  const detect = vi.fn<NonNullable<CropCheckDeps['detect']>>(() => ({
+    circles: [],
+    medianRadius: 0,
+    scale: 1.25,
+    truncated: false,
+  }));
+  const crop = vi.fn(async (input: Parameters<NonNullable<CropCheckDeps['crop']>>[0]) =>
+    photoOf(('image' in input ? input.image.source : new Blob()) as unknown as Blob),
+  );
+  return { codec, detect, crop } satisfies CropCheckDeps;
+}

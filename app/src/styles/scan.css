@@ -70,6 +70,13 @@
   gap: var(--space-3);
 }
 
+/* Crop check of the single capture (CAP-89): the tray stage and editor with one circle. */
+.crop-check,
+.crop-check__stage {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .tray-stage {
   position: relative;
   width: 100%;
