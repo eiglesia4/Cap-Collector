@@ -92,7 +92,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ needs.changes.outputs.docs_only == 'true' && 0 || 1 }}
+          # Full history so the docs-only prettier step can diff against origin/<base>. Unconditional on purpose:
+          # in an expression `cond && 0 || 1` yields 1, because 0 is falsy (CAP-91 review).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
