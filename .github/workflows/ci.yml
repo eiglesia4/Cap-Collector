@@ -3,13 +3,17 @@
 #
 # Triggers: pull_request against main · push to main (a merge can break what no branch broke alone).
 #
-# Jobs (parallel):
-#   secrets    gitleaks over the full history
+# Jobs:
+#   changes    docs_only=true|false (CAP-91): a PR is docs-only when every changed file is `.md` and none is
+#              TEST.md (tools/ci/docs-only.ts, T-infra-048/049); a push to main is never docs-only
+#   secrets    gitleaks over the full history (always)
 #   checks     lint (eslint + prettier) · typecheck (tsc per workspace) · catalog:check (TEST.md up to date,
-#              every test has a unique [T-<comp>-nnn] ID)
-#   test       vitest, all workspaces, coverage ≥ 80 %
-#   synth      cdk synth naeva/dev without credentials (T-infra-002/003 guard stays silent with no account)
-#   ci-gate    the ONLY check required by branch protection; aggregates the others (skipped counts as success)
+#              every test has a unique [T-<comp>-nnn] ID); docs-only PRs: prettier on the changed .md files only
+#   test       vitest, all workspaces, coverage ≥ 80 % — skipped on docs-only PRs
+#   synth      cdk synth naeva/dev without credentials (T-infra-002/003 guard stays silent with no account) —
+#              skipped on docs-only PRs
+#   ci-gate    the ONLY check required by branch protection; aggregates the others (skipped counts as success,
+#              but a failed or cancelled `changes` fails the gate: a broken detector never skips everything)
 #
 # Principles:
 #   • The CI has no AWS credentials, on purpose (as CCS_MRV): metadata and config files are switched off and
@@ -41,6 +45,34 @@ env:
   CDK_DISABLE_CLI_TELEMETRY: 'true'
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: detect docs-only PR
+        id: detect
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            docs_only=false
+          else
+            files=$(git diff --name-only "origin/$BASE_REF...HEAD")
+            echo "Changed files:"; echo "$files"
+            docs_only=$(printf '%s\n' "$files" | node --experimental-strip-types --no-warnings tools/ci/docs-only.ts)
+          fi
+          case "$docs_only" in true|false) ;; *) echo "::error::unexpected detector output '$docs_only'"; exit 1 ;; esac
+          echo "docs_only=$docs_only"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -54,23 +86,40 @@ jobs:
             detect --source . --redact --no-banner
 
   checks:
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the docs-only prettier step can diff against origin/<base>. Unconditional on purpose:
+          # in an expression `cond && 0 || 1` yields 1, because 0 is falsy (CAP-91 review).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: prettier on the changed Markdown (docs-only PR)
+        if: needs.changes.outputs.docs_only == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff --name-only -z --diff-filter=d "origin/$BASE_REF...HEAD" \
+            | xargs -0 -r npx prettier --check --no-error-on-unmatched-pattern
       - name: lint
+        if: needs.changes.outputs.docs_only != 'true'
         run: npm run lint
       - name: typecheck
+        if: needs.changes.outputs.docs_only != 'true'
         run: npm run typecheck
       - name: catalog up to date
+        if: needs.changes.outputs.docs_only != 'true'
         run: npm run catalog:check
 
   test:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -96,6 +145,8 @@ jobs:
           if-no-files-found: ignore
 
   synth:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -114,12 +165,17 @@ jobs:
 
   ci-gate:
     name: ci-gate
-    needs: [secrets, checks, test, synth]
+    needs: [changes, secrets, checks, test, synth]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate gate
         run: |
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::ci-gate failed: the docs-only detector (changes) ended in '${{ needs.changes.result }}'"
+            exit 1
+          fi
+          echo "docs_only=${{ needs.changes.outputs.docs_only }}"
           results="${{ join(needs.*.result, ' ') }}"
           echo "Job results: $results"
           for r in $results; do
