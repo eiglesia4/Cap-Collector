@@ -47,6 +47,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-88: when the canvas can't encode WebP (Safari, the iPhone app), captures are encoded with libwebp wasm (`@jsquash/webp/encode`, lazy-loaded, about 120 KB gzip). The fallback is remembered per session, and "can't save WebP" appears only when both fail. Covers every capture path (ADR-010 §1; T-app-165…170).
 - CAP-90: "⋯" and sort menus close on an outside tap or Escape, and only one is open at a time. Cancel on Scan is always visible and goes back to the album sheet for a pocket scan, otherwise to the Collection (ADR-010 §3; T-app-160…164).
 - CAP-73: naeva/dev `ai.modelId` is now `eu.anthropic.claude-haiku-5-5`; the Bedrock grant (inference profile + any-region foundation model) and the invocations alarm follow from it; `infra/README.md` § Bedrock model (T-infra-030, T-infra-046).
 - CAP-72: the Bedrock vision adapter is ready for Claude Haiku 5.5: EU price entry, thinking disabled and no `temperature` for 5.5 (per-model capability map), and only `text` blocks parsed (T-api-086…088). The model switch itself is CAP-73.
@@ -100,6 +101,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-91: CI: docs-only PRs (only `.md` files, never `TEST.md`) skip `test` and `synth` and get prettier on the changed Markdown only. A push to `main` always runs the full CI, and `ci-gate` fails if the detector fails (`tools/ci/docs-only.ts`, T-infra-048/049).
 - CAP-85: batch "Review skipped" re-analyses a skipped cap when a near-duplicate (dHash ≤ 12) was saved later in the same batch. It keeps the same `scanId` with no re-upload, and the server answers Already in collection without calling the AI, so the same cap cannot be saved twice (T-app-159).
 - CAP-71: Settings (scans & AI cost) and Stats (added per month) read an injectable clock (`AppContext.now`, `clockOf`); T-app-123 no longer depends on today's date, new T-app-124.
 
