@@ -28,7 +28,7 @@ import { NewCapScreen, ScanReviewScreen } from '../src/screens/cap-form-screen';
 import { CollectionScreen, SEARCH_DEBOUNCE_MS } from '../src/screens/collection-screen';
 import { ScanScreen, ScanView } from '../src/screens/scan-screen';
 import { ulid, wireCap, wirePage } from './support/caps';
-import { fakeApi, fakePlatform, flush, shellContext } from './support/fakes';
+import { fakeApi, fakeCropCheck, fakePlatform, flush, shellContext } from './support/fakes';
 
 const ALBUM_ID = ulid(900);
 const BOX_ID = ulid(901);
@@ -245,12 +245,16 @@ describe('album sheet', () => {
     };
     const shot = ScanView(scan.ctx, {
       targetLocationCode: 'A·3·18',
-      prepare: async () => photo,
+      check: fakeCropCheck(() => photo),
       put: async () => new Response(null, { status: 200 }),
       newId: () => SCAN_ID,
     });
     vi.mocked(scan.ctx.platform.camera).mockResolvedValueOnce(new File(['t'], 'top.jpg'));
     $(shot, '[data-action="shoot"]').click();
+    await settle();
+    // The crop check comes first (CAP-89); the pocket target survives it.
+    expect(shot.querySelector('[data-crop-check="top"]')).not.toBeNull();
+    $(shot, '[data-action="use-photo"]').click();
     await settle();
     expect(scan.ctx.capture.current()?.targetLocationCode).toBe('A·3·18');
     $(shot, '[data-action="skip"]').click();

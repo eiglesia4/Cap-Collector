@@ -6,6 +6,8 @@
 // Zero found → "No caps found…" with Retake and Add by hand. "Propose next free pocket" is off by default and goes
 // into the batch. Start (n) crops every circle from the full-resolution photo (`cropCircle`), stores the batch on the
 // device (ctx.batch.store) and opens `/scan/batch`; the tray photo is dropped, never stored or uploaded (ADR-009 §2).
+// The overlay and its gestures are components/circle-editor.ts (tray mode), shared with the single crop check (CAP-89).
+import { CircleEditor, type EditableCircle } from '../components/circle-editor.js';
 import { clockOf, type AppContext, type Screen } from '../context.js';
 import type { BatchItem } from '../batch/store.js';
 import { newUlid } from '../capture/ulid.js';
@@ -14,7 +16,7 @@ import { browserCodec, fitWithin, type DecodedImage, type RasterCodec } from '..
 import { pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
 import { cropCircle } from '../vision/crop.js';
-import { detectCaps, MAX_CIRCLES, readingOrder, type DetectedCircle } from '../vision/segment.js';
+import { detectCaps, MAX_CIRCLES, type DetectedCircle } from '../vision/segment.js';
 
 /** Long edge of the raster `detectCaps` works on (ADR-009 §1). */
 export const DETECT_EDGE = 1600;
@@ -25,24 +27,6 @@ export interface TrayAdjustOptions {
   readonly detect?: typeof detectCaps;
   readonly crop?: typeof cropCircle;
   readonly newId?: () => string;
-}
-
-interface Circle {
-  cx: number;
-  cy: number;
-  r: number;
-  uncertain: boolean;
-}
-
-const SVG = 'http://www.w3.org/2000/svg';
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string | number>,
-): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  return el;
 }
 
 function objectUrl(blob: Blob): string | null {
@@ -74,33 +58,12 @@ export function TrayAdjustView(ctx: AppContext, options: TrayAdjustOptions = {})
   let height = 0;
   let scale = 1;
   let median = 0;
-  let circles: Circle[] = [];
-  let selected: Circle | null = null;
+  let detected: EditableCircle[] = [];
+  let editor: CircleEditor | null = null;
   let placeAsYouGo = false;
   let busy = false;
 
   const status = h('p', { class: 'status', attrs: { role: 'status', 'data-status': '' } });
-  const overlay = svg('svg', { class: 'tray-overlay', preserveAspectRatio: 'xMidYMid meet' });
-  const slider = h('input', {
-    class: 'tray-size',
-    attrs: { type: 'range', 'aria-label': t('batch.size'), 'data-action': 'size' },
-  });
-  const remove = h(
-    'button',
-    {
-      class: 'button button--secondary button--small',
-      attrs: { type: 'button', 'data-action': 'remove' },
-      on: {
-        click: () => {
-          circles = circles.filter((c) => c !== selected);
-          selected = null;
-          edited();
-        },
-      },
-    },
-    t('batch.remove'),
-  );
-  const editor = h('div', { class: 'tray-editor' }, slider, remove);
   const start = h('button', {
     class: 'button',
     attrs: { type: 'button', 'data-action': 'start' },
@@ -118,144 +81,25 @@ export function TrayAdjustView(ctx: AppContext, options: TrayAdjustOptions = {})
     status.classList.toggle('status--error', error);
   };
 
-  /** Pointer position in detection pixels (the SVG viewBox). */
-  function point(event: MouseEvent): { x: number; y: number } {
-    const rect = overlay.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return { x: event.clientX, y: event.clientY };
-    return {
-      x: ((event.clientX - rect.left) * width) / rect.width,
-      y: ((event.clientY - rect.top) * height) / rect.height,
-    };
+  const circles = (): readonly EditableCircle[] => editor?.circles() ?? [];
+
+  /** Header count and Start label follow the circles. */
+  function counted(list: readonly EditableCircle[]): void {
+    count.textContent = t(list.length === 1 ? 'batch.countOne' : 'batch.count', { count: list.length });
+    start.textContent = t('batch.start', { count: list.length });
+    start.disabled = busy || list.length === 0;
   }
-
-  const clampCircle = (c: Circle) => {
-    c.r = Math.min(Math.max(c.r, median * 0.3), Math.max(width, height) / 2);
-    c.cx = Math.min(Math.max(c.cx, 0), width);
-    c.cy = Math.min(Math.max(c.cy, 0), height);
-  };
-
-  /** After an edit: reading order again, then draw. */
-  function edited(): void {
-    circles = readingOrder(circles, median);
-    draw();
-  }
-
-  function draw(): void {
-    overlay.replaceChildren(
-      ...circles.map((c, i) => {
-        const g = svg('g', { class: 'tray-circle', 'data-index': i });
-        if (c === selected) g.setAttribute('data-selected', '');
-        if (c.uncertain) g.setAttribute('data-uncertain', '');
-        g.append(
-          svg('circle', {
-            cx: c.cx,
-            cy: c.cy,
-            r: c.r,
-            ...(c.uncertain ? { 'stroke-dasharray': `${String(c.r / 4)} ${String(c.r / 6)}` } : {}),
-          }),
-        );
-        const label = svg('text', { x: c.cx, y: c.cy, 'font-size': Math.max(12, c.r * 0.6) });
-        label.textContent = String(i + 1);
-        g.append(label);
-        return g;
-      }),
-    );
-    if (selected) {
-      const d = selected.r * Math.SQRT1_2;
-      overlay.append(
-        svg('circle', {
-          class: 'tray-handle',
-          'data-handle': '',
-          cx: selected.cx + d,
-          cy: selected.cy + d,
-          r: Math.max(8, median * 0.25),
-        }),
-      );
-      slider.min = String(Math.round(median * 0.4));
-      slider.max = String(Math.round(median * 2));
-      slider.value = String(Math.round(selected.r));
-    }
-    editor.hidden = selected === null;
-    count.textContent = t(circles.length === 1 ? 'batch.countOne' : 'batch.count', { count: circles.length });
-    start.textContent = t('batch.start', { count: circles.length });
-    start.disabled = busy || circles.length === 0;
-  }
-
-  // ── pointer: select / move / resize / add ──
-  let drag: { kind: 'move' | 'resize'; circle: Circle; dx: number; dy: number } | null = null;
-  overlay.addEventListener('pointerdown', (event) => {
-    if (busy) return;
-    const p = point(event);
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('[data-handle]') && selected) {
-      drag = { kind: 'resize', circle: selected, dx: 0, dy: 0 };
-    } else {
-      const hit = target?.closest('[data-index]');
-      const index = hit ? Number(hit.getAttribute('data-index')) : -1;
-      const circle = circles[index];
-      if (circle) {
-        selected = circle;
-        drag = { kind: 'move', circle, dx: p.x - circle.cx, dy: p.y - circle.cy };
-      } else if (circles.length >= MAX_CIRCLES) {
-        say(t('batch.limit', { max: MAX_CIRCLES }), true);
-        return;
-      } else {
-        const added: Circle = { cx: p.x, cy: p.y, r: median, uncertain: false };
-        clampCircle(added);
-        circles = [...circles, added];
-        selected = added;
-        say('');
-        edited();
-        return;
-      }
-    }
-    if ('pointerId' in event && typeof overlay.setPointerCapture === 'function') {
-      try {
-        overlay.setPointerCapture(event.pointerId);
-      } catch {
-        // Not every engine captures synthetic pointers.
-      }
-    }
-    draw();
-  });
-  overlay.addEventListener('pointermove', (event) => {
-    if (!drag) return;
-    const p = point(event);
-    const c = drag.circle;
-    if (drag.kind === 'move') {
-      c.cx = p.x - drag.dx;
-      c.cy = p.y - drag.dy;
-    } else {
-      c.r = Math.hypot(p.x - c.cx, p.y - c.cy);
-    }
-    c.uncertain = false;
-    clampCircle(c);
-    draw();
-  });
-  const end = () => {
-    if (!drag) return;
-    drag = null;
-    edited();
-  };
-  overlay.addEventListener('pointerup', end);
-  overlay.addEventListener('pointercancel', end);
-  slider.addEventListener('input', () => {
-    if (!selected) return;
-    selected.r = Number(slider.value);
-    selected.uncertain = false;
-    clampCircle(selected);
-    edited();
-  });
 
   // ── Start: crop from full resolution, store the batch ──
   async function run(): Promise<void> {
-    if (busy || image === null || circles.length === 0) return;
+    const list = circles();
+    if (busy || image === null || list.length === 0) return;
     busy = true;
-    draw();
+    counted(list);
     const items: BatchItem[] = [];
     try {
-      for (const [index, circle] of circles.entries()) {
-        say(t('batch.cropping', { done: index + 1, total: circles.length }));
+      for (const [index, circle] of list.entries()) {
+        say(t('batch.cropping', { done: index + 1, total: list.length }));
         const photo = await crop({ image, codec }, circle, scale);
         items.push({
           index,
@@ -275,7 +119,7 @@ export function TrayAdjustView(ctx: AppContext, options: TrayAdjustOptions = {})
     } catch {
       busy = false;
       say(t('batch.cropFailed'), true);
-      draw();
+      counted(list);
       return;
     }
     // ADR-009 §2: the tray photo is never kept.
@@ -288,21 +132,30 @@ export function TrayAdjustView(ctx: AppContext, options: TrayAdjustOptions = {})
     const toggle = h('input', { attrs: { type: 'checkbox', name: 'place-as-you-go' } });
     toggle.checked = placeAsYouGo;
     toggle.addEventListener('change', () => (placeAsYouGo = toggle.checked));
-    overlay.setAttribute('viewBox', `0 0 ${String(width)} ${String(height)}`);
+    const ed = CircleEditor({
+      mode: 'tray',
+      width,
+      height,
+      median,
+      circles: detected,
+      onChange: counted,
+      onLimit: () => say(t('batch.limit', { max: MAX_CIRCLES }), true),
+      busy: () => busy,
+    });
+    editor = ed;
     body.replaceChildren(
       h(
         'div',
         { class: 'tray-stage', attrs: { style: `aspect-ratio: ${String(width)} / ${String(height)}` } },
         url === null ? '' : h('img', { class: 'tray-photo', attrs: { src: url, alt: t('batch.trayPhoto') } }),
-        overlay,
+        ed.overlay,
       ),
       h('p', { class: 'muted field-hint' }, t('batch.adjustHint')),
-      editor,
+      ed.controls,
       h('label', { class: 'field field--row' }, toggle, h('span', {}, t('batch.placeAsYouGo'))),
       status,
       start,
     );
-    draw();
   }
 
   function emptyView(url: string | null): void {
@@ -342,9 +195,9 @@ export function TrayAdjustView(ctx: AppContext, options: TrayAdjustOptions = {})
       const detection = detect(raster, { sourceWidth: image.width });
       scale = detection.scale;
       median = detection.medianRadius > 0 ? detection.medianRadius : Math.min(width, height) / 12;
-      circles = detection.circles.map((c: DetectedCircle) => ({ ...c }));
+      detected = detection.circles.map((c: DetectedCircle) => ({ ...c }));
       const url = objectUrl(tray);
-      if (circles.length === 0) emptyView(url);
+      if (detected.length === 0) emptyView(url);
       else editorView(url);
       if (detection.truncated) say(t('batch.truncated', { max: MAX_CIRCLES }), true);
     } catch {
