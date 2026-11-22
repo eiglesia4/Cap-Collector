@@ -21,7 +21,7 @@ import { newUlid } from '../src/capture/ulid';
 import type { AppContext } from '../src/context';
 import { t } from '../src/i18n/i18n';
 import { ImageDecodeError, type CapPhoto } from '../src/images/resize';
-import { matchRoute } from '../src/router/routes';
+import { matchRoute, pathFor } from '../src/router/routes';
 import { NewCapScreen, scanFields } from '../src/screens/cap-form-screen';
 import { ScanDuplicateScreen } from '../src/screens/scan-duplicate-screen';
 import { ScanView } from '../src/screens/scan-screen';
@@ -345,7 +345,6 @@ describe('scan screen', () => {
     const s = await screen('native', uploads);
     vi.mocked(s.platform.camera).mockResolvedValueOnce(new File(['t'], 'top.jpg'));
     const cancel = s.el.querySelector<HTMLButtonElement>('[data-action="cancel"]');
-    expect(cancel?.hidden).toBe(true);
     click(s.el, '[data-action="shoot"]');
     await settle();
     expect(s.ctx.capture.current()).not.toBeNull();
@@ -431,5 +430,73 @@ describe('scan screen', () => {
         },
       ),
     ).toEqual({ dhash: TOP_HASH });
+  });
+
+  it('[T-app-160] Cancel is shown on idle Scan and leaves to Collection; after a failed upload it also clears the capture context', async () => {
+    const idle = await screen('web', uploads);
+    const cancel = idle.el.querySelector<HTMLButtonElement>('[data-action="cancel"]');
+    expect(idle.el.dataset.step).toBe('idle');
+    expect(cancel?.hidden).toBe(false);
+    cancel?.click();
+    await settle();
+    expect(idle.ctx.navigate).toHaveBeenCalledWith(pathFor('collection'));
+    expect(idle.calls).toEqual([]);
+
+    const failed = await screen('web', (path, method, body) =>
+      path === '/uploads' ? new HttpError(500) : uploads(path, method, body),
+    );
+    vi.mocked(failed.platform.pickFiles).mockResolvedValueOnce([new File(['t'], 'top.jpg')]);
+    click(failed.el, '[data-action="upload"]');
+    await settle();
+    click(failed.el, '[data-action="skip"]');
+    await settle();
+    expect(failed.el.querySelector('[role="alert"]')?.textContent).toBe(t('scan.uploadFailed'));
+    expect(failed.ctx.capture.current()).not.toBeNull();
+    click(failed.el, '[data-action="cancel"]');
+    await settle();
+    expect(failed.ctx.capture.current()).toBeNull();
+    expect(failed.ctx.navigate).toHaveBeenCalledWith(pathFor('collection'));
+  });
+
+  it('[T-app-161] Cancel on a pocket scan goes back to that album sheet; Collection when the album cannot be found', async () => {
+    const albums = [
+      {
+        albumId: ulid(90),
+        letter: 'A',
+        name: 'Leuchtturm GRANDE',
+        kind: 'album',
+        sheets: 10,
+        cols: 6,
+        rows: 7,
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      },
+    ];
+    const run = async (handler: Handler, code: string) => {
+      const calls: string[] = [];
+      const request = vi.fn(async <T>(path: string, opts: RequestOptions<T>): Promise<T> => {
+        calls.push(path);
+        const answer = await handler(path, opts.method ?? 'GET', opts.body);
+        if (answer instanceof Error) throw answer;
+        const parsed = opts.schema.safeParse(answer);
+        if (!parsed.success) throw parsed.error;
+        return parsed.data;
+      });
+      const platform = fakePlatform('web', memoryStore());
+      const api = fakeApi({ request: request as ApiClient['request'] });
+      const ctx: AppContext = { ...(await shellContext({ api, platform })), navigate: vi.fn(), skipSignIn: vi.fn() };
+      const el = ScanView(ctx, { targetLocationCode: code });
+      click(el, '[data-action="cancel"]');
+      await settle();
+      return { ctx, calls };
+    };
+    const ok = await run((path) => (path === '/albums' ? albums : undefined), 'A·3·17');
+    expect(ok.calls).toEqual(['/albums']);
+    expect(ok.ctx.navigate).toHaveBeenCalledWith(`/albums/${ulid(90)}/sheets/3`);
+
+    const missing = await run((path) => (path === '/albums' ? albums : undefined), 'B·3·17');
+    expect(missing.ctx.navigate).toHaveBeenCalledWith(pathFor('collection'));
+    const offline = await run(() => new HttpError(503), 'A·3·17');
+    expect(offline.ctx.navigate).toHaveBeenCalledWith(pathFor('collection'));
   });
 });
