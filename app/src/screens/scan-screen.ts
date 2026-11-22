@@ -8,10 +8,12 @@
 // mode): a Single · Batch switch, remembered in the platform store; in Batch the tray photo (Shoot tray · Library, or
 // "Upload tray photo" on the Mac) is handed to Tray adjust in memory. While a batch is unfinished, the batch banner
 // (CAP-84: "Batch: 4 of 11 — Continue · Abandon") is shown, and Batch starts no new tray until it is finished or
-// abandoned. Styles: styles/scan.css.
+// abandoned. Cancel (always shown, CAP-90; ADR-010 §3) leaves the capture: the flow is cancelled (scan context
+// cleared) and the user goes back to where they came from — the album sheet of a pocket scan, otherwise Collection.
+// Styles: styles/scan.css.
 import { AnalyseResponse, formatLocationCode } from '@capcollector/shared';
 
-import { newIntoPath, pocketLocation } from '../albums/model.js';
+import { albumSheetPath, AlbumListSchema, newIntoPath, pocketLocation } from '../albums/model.js';
 import { parseScanMode, SCAN_MODE_KEY, type ScanMode } from '../batch/context.js';
 import type { Batch } from '../batch/store.js';
 import { BatchBanner } from '../components/batch-banner.js';
@@ -92,10 +94,27 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     {
       class: 'header-action',
       attrs: { type: 'button', 'data-action': 'cancel' },
-      on: { click: () => flow.cancel() },
+      on: { click: () => void leave() },
     },
     t('common.cancel'),
   );
+
+  /** Cancel on Scan (ADR-010 §3): back to the album sheet of a pocket scan, otherwise (or if it can't be found) Collection. */
+  async function leave(): Promise<void> {
+    flow.cancel();
+    const pocket = pocketLocation(target);
+    let path = pathFor('collection');
+    if (pocket !== null) {
+      try {
+        const albums = await ctx.api.request('/albums', { schema: AlbumListSchema });
+        const album = albums.find((a) => a.letter === pocket.album);
+        if (album) path = albumSheetPath(album.albumId, pocket.sheet);
+      } catch {
+        // Albums unreachable: Collection is the safe way out.
+      }
+    }
+    ctx.navigate(path);
+  }
 
   /** Native: the camera, or the photo library; web: always a file picker (never the camera). */
   async function take(source: 'camera' | 'library'): Promise<File | null> {
@@ -192,7 +211,6 @@ export function ScanView(ctx: AppContext, options: ScanOptions = {}): HTMLElemen
     guide.replaceChildren(
       preview === null ? '' : h('img', { class: 'scan-photo', attrs: { src: preview, alt: t('scan.preview') } }),
     );
-    cancel.hidden = state.step === 'idle';
     const parts: Node[] = [];
     switch (state.step) {
       case 'idle':

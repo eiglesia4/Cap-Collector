@@ -3,6 +3,7 @@
 // screen; signing in lands on Collection, signing out (Settings, or a refused refresh) returns to sign-in (CAP-22).
 // A cap link opened signed out (`collectors://cap/<id>`, `/cap/<id>`) is kept in memory as the pending route and opened
 // after a successful sign-in instead of Collection; a cancelled sign-in or a restart drops it (CAP-54, CAP-33 review).
+// The "⋯" and sort menus of every screen close on an outside tap or Escape (ui/menus.ts, CAP-90).
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
 import { t } from './i18n/i18n.js';
@@ -11,6 +12,7 @@ import { createRouter, type Router } from './router/router.js';
 import { pathFor } from './router/routes.js';
 import { SCREENS } from './screens/index.js';
 import { h } from './ui/dom.js';
+import { installMenuDismissal } from './ui/menus.js';
 
 export type ShellContext = Omit<AppContext, 'navigate' | 'skipSignIn'>;
 
@@ -64,6 +66,7 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
       pending = null;
     },
   };
+  const stopMenus = installMenuDismissal(win.document);
   router.start();
   const unsubscribe = ctx.session.subscribe(reroute);
   // `collectors://cap/<id>` opens the cap (CAP-33); signed out, the guard above still sends it to Sign in.
@@ -72,6 +75,7 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
     router,
     destroy: () => {
       stopDeepLinks();
+      stopMenus();
       unsubscribe();
       router.stop();
     },
