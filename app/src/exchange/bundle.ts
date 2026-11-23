@@ -6,12 +6,13 @@ import {
   EXCHANGE_CURRENT_VERSION,
   EXCHANGE_FIELD_SCHEMA,
   EXCHANGE_FORMAT,
-  EXCHANGE_INSTRUCTIONS,
+  exchangeInstructions,
   emptyExchangeResponse,
   type CapFields,
   type ExchangeDocument,
 } from '@capcollector/shared';
 import { strToU8, zipSync, type Zippable } from 'fflate';
+import { language } from '../i18n/i18n.js';
 
 export type PhotoSide = 'top' | 'underside';
 
@@ -69,7 +70,7 @@ export function requestDocument(
     ...(subject.capId !== undefined ? { capId: subject.capId } : {}),
     ...(subject.scanId !== undefined ? { scanId: subject.scanId } : {}),
     photos,
-    instructions: EXCHANGE_INSTRUCTIONS,
+    instructions: exchangeInstructions(language()),
     schema: { ...EXCHANGE_FIELD_SCHEMA },
     known: { ...subject.known },
     response: emptyExchangeResponse(),

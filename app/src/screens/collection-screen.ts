@@ -29,7 +29,7 @@ import { BatchBanner } from '../components/batch-banner.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
 import { countryName } from '../i18n/countries.js';
-import { t, type MessageKey } from '../i18n/i18n.js';
+import { locale, t, type MessageKey } from '../i18n/i18n.js';
 import { TYPE_LABEL } from '../i18n/labels.js';
 import { pathFor } from '../router/routes.js';
 import { h } from '../ui/dom.js';
@@ -48,16 +48,16 @@ const SORT_LABEL: Record<Sort, MessageKey> = {
   year: 'collection.sortYear',
 };
 
-const numberFormat = new Intl.NumberFormat('en-US');
+const numberFormat = () => new Intl.NumberFormat(locale('number'));
 
 function capsCount(n: number): string {
-  return n === 1 ? t('collection.countOne') : t('collection.count', { count: numberFormat.format(n) });
+  return n === 1 ? t('collection.countOne') : t('collection.count', { count: numberFormat().format(n) });
 }
 
 /** "1,284 caps" from `total`; without it "60+ caps" while more pages remain, else the exact loaded count. */
 export function countLabel(state: Pick<PagerState, 'items' | 'total' | 'done'>): string {
   if (state.total !== null) return capsCount(state.total);
-  if (!state.done) return t('collection.countMore', { count: numberFormat.format(state.items.length) });
+  if (!state.done) return t('collection.countMore', { count: numberFormat().format(state.items.length) });
   return capsCount(state.items.length);
 }
 

@@ -11,6 +11,7 @@ import { HttpError, ProblemError } from '../api/errors.js';
 import type { CapPhoto } from '../images/resize.js';
 import type { Side } from '../images/upload.js';
 import type { CaptureSession, CaptureStore } from './context.js';
+import { language } from '../i18n/i18n.js';
 
 /** Where each outcome continues (SCREENS.md #3/#4/#5; CAP-42, CAP-43, CAP-25). */
 export const OUTCOME_PATHS = {
@@ -72,6 +73,7 @@ export function analyseBody(session: CaptureSession): AnalyseRequest {
     dhash: top.photo.dhash,
     imageKeys: { top: top.ref.key },
     useAi: session.useAi,
+    language: language(),
   };
   if (session.underside?.ref) {
     body.dhashUnderside = session.underside.photo.dhash;

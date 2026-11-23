@@ -4,10 +4,11 @@
 // each album's pocket / pitch in mm (`PATCH /albums/{id}`, read by the insert PDF, CAP-54), "Scans & AI cost" (the
 // last 50 `GET /scans` and the week's AI cost, ADR-004 threshold tuning), About (app, API, web and contracts
 // versions), "Export backup" (CAP-80: the whole collection as one zip, shared on the iPhone, downloaded on the Mac,
-// the last export date kept in the platform store) and Sign out (CAP-22: clears the stored session; the shell then
-// shows the sign-in screen).
+// the last export date kept in the platform store), Language (CAP-97, SCREENS.md § Language: Español · English,
+// applied at once, kept per device) and Sign out (CAP-22: clears the stored session; the shell then shows the sign-in
+// screen).
 // Styles: styles/settings.css.
-import { Album, CONTRACTS_VERSION, type Scan } from '@capcollector/shared';
+import { Album, CONTRACTS_VERSION, UiLanguage, type Scan } from '@capcollector/shared';
 
 import { AlbumListSchema, parseMeasures } from '../albums/model.js';
 import { exportBackup, MAX_CAPS_WITH_PHOTOS, ZIP_TYPE } from '../backup/export.js';
@@ -17,7 +18,8 @@ import { readUseAi, writeUseAi } from '../capture/ai-setting.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import { ConfigError } from '../config.js';
 import type { Screen } from '../context.js';
-import { t, type MessageKey } from '../i18n/i18n.js';
+import { language, LANGUAGES, locale, t, type MessageKey } from '../i18n/i18n.js';
+import { chooseLanguage } from '../i18n/language-setting.js';
 import { scanReport, SCANS_SHOWN, type ScanReport } from '../settings/scans.js';
 import { h } from '../ui/dom.js';
 
@@ -84,6 +86,7 @@ export const SettingsScreen: Screen = (ctx) => {
     'section',
     { class: 'screen settings' },
     ScreenHeader(t('settings.title')),
+    LanguageRow(ctx),
     ctx.config.dev && apiSection(),
     check,
     status,
@@ -106,22 +109,40 @@ export const SettingsScreen: Screen = (ctx) => {
   );
 };
 
-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
+const usd = () =>
+  new Intl.NumberFormat(locale('number'), { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
 /** Week total: cents, or sub-cent precision for the small amounts a week of Haiku calls costs. */
-const usdTotal = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-});
-const when = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const integer = new Intl.NumberFormat('en-US');
+const usdTotal = () =>
+  new Intl.NumberFormat(locale('number'), {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+const when = () =>
+  new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const integer = () => new Intl.NumberFormat(locale('number'));
 
 const OUTCOME_LABEL: Readonly<Record<Scan['outcome'], MessageKey>> = {
   duplicate: 'settings.scans.duplicate',
   identified: 'settings.scans.identified',
   unidentified: 'settings.scans.unidentified',
 };
+
+/** Settings → Language: Español · English (endonyms), applied at once and stored on this device. */
+export function LanguageRow(ctx: Pick<AppContext, 'platform'>): HTMLElement {
+  const select = h(
+    'select',
+    { class: 'input', attrs: { id: 'language', name: 'language' } },
+    ...LANGUAGES.map((lang) => h('option', { attrs: { value: lang } }, t(`language.${lang}`))),
+  );
+  select.value = language();
+  select.addEventListener('change', () => {
+    const parsed = UiLanguage.safeParse(select.value);
+    if (parsed.success) void chooseLanguage(ctx.platform.store, parsed.data);
+  });
+  return h('div', { class: 'field' }, h('label', { attrs: { for: 'language' } }, t('settings.language')), select);
+}
 
 /** Default album (CAP-53) and the pocket / pitch of each album (CAP-54), over `GET /albums`. */
 function AlbumSettings(ctx: AppContext): HTMLElement {
@@ -231,7 +252,7 @@ function AlbumSettings(ctx: AppContext): HTMLElement {
 
 function ScanRow(scan: Scan): HTMLElement {
   const parts = [
-    when.format(new Date(scan.ts)),
+    when().format(new Date(scan.ts)),
     t(OUTCOME_LABEL[scan.outcome]),
     scan.bestDistance === undefined
       ? t('settings.scans.noDistance', { threshold: String(scan.threshold) })
@@ -241,10 +262,10 @@ function ScanRow(scan: Scan): HTMLElement {
     ? [
         scan.aiModel ?? t('settings.scans.ai'),
         t('settings.scans.tokens', {
-          input: integer.format(scan.inputTokens ?? 0),
-          output: integer.format(scan.outputTokens ?? 0),
+          input: integer().format(scan.inputTokens ?? 0),
+          output: integer().format(scan.outputTokens ?? 0),
         }),
-        usd.format(scan.costEstimateUsd ?? 0),
+        usd().format(scan.costEstimateUsd ?? 0),
       ]
     : [t('settings.scans.noAi')];
   const row = h(
@@ -263,9 +284,9 @@ export function ScanReportView(report: ScanReport): HTMLElement[] {
     'p',
     { class: 'scan-week', attrs: { 'data-week-cost': '' } },
     t(week.complete ? 'settings.scans.week' : 'settings.scans.weekPartial', {
-      cost: usdTotal.format(week.costUsd),
-      calls: integer.format(week.aiCalls),
-      scans: integer.format(week.scans),
+      cost: usdTotal().format(week.costUsd),
+      calls: integer().format(week.aiCalls),
+      scans: integer().format(week.scans),
     }),
   );
   if (report.recent.length === 0) return [total, h('p', { class: 'muted' }, t('settings.scans.empty'))];
@@ -329,7 +350,7 @@ function browserDownload(file: File): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateFormat = () => new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** "Export backup" (CAP-80): progress "caps · photos n/N", then the share sheet (iPhone) or a download (Mac). */
 export function BackupSection(ctx: AppContext, options: BackupOptions = {}): HTMLElement {
@@ -347,7 +368,7 @@ export function BackupSection(ctx: AppContext, options: BackupOptions = {}): HTM
     last.textContent =
       date === null || Number.isNaN(date.getTime())
         ? t('settings.backup.never')
-        : t('settings.backup.last', { date: dateFormat.format(date) });
+        : t('settings.backup.last', { date: dateFormat().format(date) });
   };
   void ctx.platform.store.get(LAST_BACKUP_KEY).then(showLast);
 

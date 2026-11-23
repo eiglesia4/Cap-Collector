@@ -225,6 +225,7 @@ describe('AI review (CAP-43)', () => {
       imageKeys: { top: ref('top').key, underside: ref('underside').key },
       known: { brand: 'Mahou Clásica' },
       useAi: true,
+      language: 'en',
     });
     expect(q<HTMLInputElement>(el, '#cap-brand')?.value).toBe('Mahou Clásica'); // kept
     expect(q<HTMLSelectElement>(el, '#cap-country')?.value).toBe('PT'); // re-filled
@@ -312,6 +313,7 @@ describe('AI review (CAP-43)', () => {
       known: { brand: 'Mahou', country: 'ES' },
       capId: CAP_ID,
       useAi: true,
+      language: 'en',
     });
     expect(calls.some((c) => c.path === '/uploads')).toBe(false);
     expect(q(el, 'h1')?.textContent).toBe(t('reidentify.title'));
