@@ -150,6 +150,26 @@ describe('scans: POST /scans/analyse', () => {
     expect(identify).toHaveBeenCalledTimes(1);
   });
 
+  it('[T-api-095] language (contracts v0.4) reaches the adapter on a new scan and on re-identify; absent → not sent; an unknown language → 422 before the adapter', async () => {
+    const self = await storeCap({ dhash: flip(TOP, 40) });
+    const identify = fakeVision({ status: 'unidentified', aiModel: 'fake-model', suggestions: [] });
+
+    expect((await call(body({ language: 'es' }))).statusCode).toBe(200);
+    expect(identify).toHaveBeenLastCalledWith(expect.objectContaining({ language: 'es' }));
+
+    await call(body({ capId: self.capId, known: { brand: 'Mahou' }, language: 'es' }));
+    expect(identify).toHaveBeenLastCalledWith(expect.objectContaining({ known: { brand: 'Mahou' }, language: 'es' }));
+
+    await call(body());
+    expect(identify.mock.lastCall![0]).not.toHaveProperty('language');
+    expect(identify).toHaveBeenCalledTimes(3);
+
+    // SPEC-GAP CAP-96: the story says 400; the API answers every zod failure with 422 (openapi.yaml, lib/http.ts).
+    const bad = await call(body({ language: 'fr' }));
+    expect(bad.statusCode).toBe(422);
+    expect(identify).toHaveBeenCalledTimes(3);
+  });
+
   it('[T-api-046] brand re-check: an identified brand+variant already in the collection → duplicate by brand; a new one → identified with tokens and cost stored', async () => {
     const mahou = await storeCap({ brand: 'Mahou', variant: 'Clásica', dhash: flip(TOP, 20) });
     await storeCap({ brand: 'Mahou', variant: 'Sin', dhash: undefined });

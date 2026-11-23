@@ -142,7 +142,11 @@ export async function analyse(deps: AnalyseDeps, uid: string, req: AnalyseReques
   }
 
   // Step 2 — the vision model.
-  const result: IdentifyResult = await vision.identify({ imageKeys: req.imageKeys, ...(known ? { known } : {}) });
+  const result: IdentifyResult = await vision.identify({
+    imageKeys: req.imageKeys,
+    ...(known ? { known } : {}),
+    ...(req.language ? { language: req.language } : {}),
+  });
   if (result.status === 'unavailable') {
     await store({ outcome: 'unidentified', aiCalled: true });
     throw new ServiceUnavailable('AI identification is unavailable; continue with manual entry or exchange');

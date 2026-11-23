@@ -1,5 +1,5 @@
 // Bedrock vision adapter (CAP-39, ADR-004 step 2, ADR-008 §7): identifies a cap from its photo(s) through the Converse
-// API. Prompt = `EXCHANGE_INSTRUCTIONS` (system) + the photos + `EXCHANGE_FIELD_SCHEMA`, `known` and the empty
+// API. Prompt = `exchangeInstructions(language)` (system, CAP-96) + the photos + `EXCHANGE_FIELD_SCHEMA`, `known` and the empty
 // `response` exactly as written into `request.json`; the answer is read by the exchange parser (answer.ts). Called ONLY
 // after the dHash check found no near-match (lib/scans.ts, CLAUDE.md § Invariantes). Never logs images or the prompt.
 import {
@@ -10,7 +10,7 @@ import {
   type ConverseCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime';
 import { GetObjectCommand, type GetObjectCommandOutput } from '@aws-sdk/client-s3';
-import { EXCHANGE_FIELD_SCHEMA, EXCHANGE_INSTRUCTIONS, emptyExchangeResponse } from '@capcollector/shared';
+import { EXCHANGE_FIELD_SCHEMA, emptyExchangeResponse, exchangeInstructions } from '@capcollector/shared';
 import { z } from 'zod';
 
 import { ValidationError } from '../http.js';
@@ -68,7 +68,8 @@ export class BedrockVisionAdapter implements VisionAdapter {
     const images = await this.readImages(input.imageKeys);
     const command = new ConverseCommand({
       modelId: this.opts.modelId,
-      system: [{ text: EXCHANGE_INSTRUCTIONS }],
+      // Contracts v0.4 (CAP-96): `description` in the UI language; no language → English (= EXCHANGE_INSTRUCTIONS).
+      system: [{ text: exchangeInstructions(input.language ?? 'en') }],
       messages: [{ role: 'user', content: [...images, { text: promptText(input) }] }],
       ...modelParams(this.opts.modelId),
     });

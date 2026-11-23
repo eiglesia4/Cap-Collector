@@ -8,10 +8,14 @@ import { getS3 } from '../images.js';
 import { BedrockVisionAdapter, createBedrockClient } from './bedrock.js';
 import { FakeVisionAdapter } from './fake.js';
 
-/** What the adapter is given: the uploaded image keys and, on re-identify, what the record already has. */
+/**
+ * What the adapter is given: the uploaded image keys, on re-identify what the record already has, and (v0.4, CAP-96)
+ * the UI language the model writes `description` in (absent → English).
+ */
 export interface IdentifyInput {
   imageKeys: AnalyseRequest['imageKeys'];
   known?: NonNullable<AnalyseRequest['known']>;
+  language?: NonNullable<AnalyseRequest['language']>;
 }
 
 /** Token use and cost of one identification, stored on the Scan item (data-model.md § Scan). */
