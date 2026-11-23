@@ -36,9 +36,10 @@ const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]
 
 /**
  * AWS tagging (CONVENTIONS.md § AWS tagging, decided in CAP-13 revision, 2026-11-01): every taggable resource carries
- * `project`, `UserName`, `installation` and `stage`, applied once at app level in app.ts. `project` and `UserName`
- * never vary per installation/stage, so they are constants here and not in config/*.json. Cost Explorer filters on
- * `project = EIM_CAP`. `cap:config_version` is kept as well (which config file a resource came from).
+ * `project`, `UserName`, `installation` and `stage`, applied once at app level in app.ts, plus `cap:config_version`
+ * (which config file a resource came from). The keys are fixed (they are the cost-allocation keys activated in
+ * Billing); the `project` and `UserName` values come from the target's `tags` in config (CAP-102, 2026-11-23), so a
+ * self-hosted copy never tags its resources with the owner's values. naeva/dev keeps `EIM_CAP` / `eiglesia4`.
  */
 export const TAG_KEYS = {
   project: 'project',
@@ -47,17 +48,27 @@ export const TAG_KEYS = {
   stage: 'stage',
   configVersion: 'cap:config_version',
 } as const;
-export const PROJECT_TAG_VALUE = 'EIM_CAP';
-export const USER_NAME_TAG_VALUE = 'eiglesia4';
+
+/**
+ * Installation names `cdk synth` (and every script that validates a deployment) refuses: `example` is the template
+ * in `config/example.dev.json`, to be copied, never deployed (CAP-102).
+ */
+export const RESERVED_INSTALLATIONS: readonly string[] = ['example'];
+
+/** An AWS tag value: 1–256 chars of letters, digits, spaces and `_ . : / = + - @` (what every service accepts). */
+const TAG_VALUE_RE = /^[\p{L}\p{N} _.:/=+\-@]{1,256}$/u;
 
 /** The tags every taggable resource carries (CONVENTIONS § AWS tagging), applied once in app.ts. */
-export function deploymentTags(deployment: Deployment, configVersion: string): Readonly<Record<string, string>> {
+export function deploymentTags(
+  deployment: Deployment,
+  config: Pick<InstallationConfig, 'config_version' | 'tags'>,
+): Readonly<Record<string, string>> {
   return {
-    [TAG_KEYS.project]: PROJECT_TAG_VALUE,
-    [TAG_KEYS.userName]: USER_NAME_TAG_VALUE,
+    [TAG_KEYS.project]: config.tags.project,
+    [TAG_KEYS.userName]: config.tags.owner,
     [TAG_KEYS.installation]: deployment.installation,
     [TAG_KEYS.stage]: deployment.stage,
-    [TAG_KEYS.configVersion]: configVersion,
+    [TAG_KEYS.configVersion]: config.config_version,
   };
 }
 
@@ -86,10 +97,22 @@ export interface InstallationConfig {
    * has logs, costs and data.
    */
   readonly ops: OpsConfig;
+  /**
+   * Values of the cost-allocation tags (CAP-102). Required: without them a copy of the repo would inherit someone
+   * else's values, and the monthly budget would watch someone else's spend.
+   */
+  readonly tags: TagsConfig;
+}
+
+export interface TagsConfig {
+  /** Value of the `project` tag; the monthly budget filters on it (`user:project$<project>`). */
+  readonly project: string;
+  /** Value of the `UserName` tag: who owns the deployment. */
+  readonly owner: string;
 }
 
 export interface OpsConfig {
-  /** Monthly AWS Budget, filtered by `project=EIM_CAP`. Sent to the Budgets API as USD (config README). */
+  /** Monthly AWS Budget, filtered by the `project` tag value of `tags`. Sent to the Budgets API as USD (config README). */
   readonly budgetEur: number;
   /** Retention of every Lambda log group: one of the values CloudWatch Logs accepts (1, 3, 5, 7, 14, 30…). */
   readonly logRetentionDays: RetentionDays;
@@ -140,6 +163,12 @@ export function validateDeployment(installation: string | undefined, stage: stri
   if (installation === undefined || installation === '') {
     throw new Error('Missing installation: pass --context installation=<id> or set CAP_INSTALLATION');
   }
+  if (RESERVED_INSTALLATIONS.includes(installation)) {
+    throw new Error(
+      `Installation "${installation}" is the template (infra/config/${installation}.<stage>.json): ` +
+        'copy it to <you>.<stage>.json and pass --context installation=<you>',
+    );
+  }
   if (!INSTALLATION_RE.test(installation)) {
     throw new Error(
       `Invalid installation "${installation}": lowercase letters, digits and hyphens, 3-32 chars, ` +
@@ -188,7 +217,25 @@ export function loadInstallationConfig(deployment: Deployment, dir: string = CON
     ...(domains && { domains }),
     ai: validateAi(file, raw.ai),
     ops: validateOps(file, raw.ops),
+    tags: validateTags(file, raw.tags),
   };
+}
+
+/** `tags` is required: both values, each a valid AWS tag value (T-infra-047). */
+function validateTags(file: string, value: unknown): TagsConfig {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(
+      `${file}: "tags" is required: { "project": "capcollector", "owner": "<you>" } (cost-allocation tags)`,
+    );
+  }
+  const t = value as Record<string, unknown>;
+  for (const key of ['project', 'owner'] as const) {
+    const v = t[key];
+    if (typeof v !== 'string' || !TAG_VALUE_RE.test(v)) {
+      throw new Error(`${file}: "tags.${key}" must be a tag value: 1-256 letters, digits, spaces or _ . : / = + - @`);
+    }
+  }
+  return { project: t.project as string, owner: t.owner as string };
 }
 
 /** `ops` is required: a positive budget, a retention CloudWatch accepts and whole backup days (T-infra-032/036). */

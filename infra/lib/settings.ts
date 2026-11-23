@@ -9,7 +9,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type Deployment, deploymentTags, loadInstallationConfig, validateDeployment } from './config.js';
+import {
+  type Deployment,
+  deploymentTags,
+  loadInstallationConfig,
+  type TagsConfig,
+  validateDeployment,
+} from './config.js';
 import { settingParameterName, UNSET_PARAMETER_VALUE } from './collectors-data-stack.js';
 import { SETTINGS } from './routes.js';
 
@@ -25,6 +31,8 @@ export interface SettingsTarget {
   readonly deployment: Deployment;
   readonly region: string;
   readonly configVersion: string;
+  /** Cost-allocation tag values from config (CAP-102): `settings:bootstrap` tags each parameter it creates. */
+  readonly tags: TagsConfig;
   /** The six parameter names of this target, in SETTINGS order. */
   readonly names: readonly string[];
 }
@@ -34,11 +42,12 @@ export type SettingState = 'set' | 'unset' | 'missing';
 /** The deployment comes from CAP_INSTALLATION / CAP_STAGE only: no default, so a bare run refuses. */
 export function settingsTarget(env: NodeJS.ProcessEnv = process.env, configDir?: string): SettingsTarget {
   const deployment = validateDeployment(env.CAP_INSTALLATION, env.CAP_STAGE);
-  const { region, config_version } = loadInstallationConfig(deployment, configDir);
+  const { region, config_version, tags } = loadInstallationConfig(deployment, configDir);
   return {
     deployment,
     region,
     configVersion: config_version,
+    tags,
     names: SETTINGS.map((n) => settingParameterName(deployment, n)),
   };
 }
@@ -80,7 +89,7 @@ export function bootstrapSettings(
   target: SettingsTarget,
   run: Runner,
 ): { created: readonly string[]; skipped: readonly string[] } {
-  const tags = deploymentTags(target.deployment, target.configVersion);
+  const tags = deploymentTags(target.deployment, { config_version: target.configVersion, tags: target.tags });
   const created: string[] = [];
   const skipped: string[] = [];
   for (const name of target.names) {

@@ -16,7 +16,7 @@ import {
   IMAGES_IA_AFTER_DAYS,
   IMAGES_NONCURRENT_EXPIRY_DAYS,
 } from '../lib/collectors-data-stack.js';
-import { loadInstallationConfig, PROJECT_TAG_VALUE, USER_NAME_TAG_VALUE } from '../lib/config.js';
+import { loadInstallationConfig } from '../lib/config.js';
 
 const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
@@ -108,7 +108,7 @@ describe('Backups', () => {
       };
       writeFileSync(
         join(dir, 'naeva.dev.json'),
-        JSON.stringify({ config_version: 'v', region: 'r', ai: config.ai, ops }),
+        JSON.stringify({ config_version: 'v', region: 'r', ai: config.ai, ops, tags: config.tags }),
       );
       return loadInstallationConfig(deployment, dir);
     };
@@ -148,8 +148,8 @@ describe('Backups', () => {
   it('[T-infra-038] tags: the Backup vault, plan and selection role carry project, UserName, installation, stage', () => {
     const dev = devTemplate();
     const expected = {
-      project: PROJECT_TAG_VALUE,
-      UserName: USER_NAME_TAG_VALUE,
+      project: 'EIM_CAP',
+      UserName: 'eiglesia4',
       installation: deployment.installation,
       stage: deployment.stage,
     };

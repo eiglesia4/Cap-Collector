@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../lib/app.js';
 import { settingParameterName, UNSET_PARAMETER_VALUE } from '../lib/collectors-data-stack.js';
-import { PROJECT_TAG_VALUE, USER_NAME_TAG_VALUE } from '../lib/config.js';
 import { SETTINGS } from '../lib/routes.js';
 import {
   bootstrapSettings,
@@ -136,8 +135,8 @@ describe('Settings', () => {
       expect(ssm.store.get(n)).toBe(UNSET_PARAMETER_VALUE);
       expect(ssm.tags.get(n)).toEqual(
         expect.arrayContaining([
-          { Key: 'project', Value: PROJECT_TAG_VALUE },
-          { Key: 'UserName', Value: USER_NAME_TAG_VALUE },
+          { Key: 'project', Value: 'EIM_CAP' },
+          { Key: 'UserName', Value: 'eiglesia4' },
           { Key: 'installation', Value: 'naeva' },
           { Key: 'stage', Value: 'dev' },
         ]),

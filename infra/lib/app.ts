@@ -54,7 +54,7 @@ export function buildApp(app: App = new App(), configDir?: string): BuiltApp {
   // AWS tagging (CONVENTIONS.md § AWS tagging): once, at app level, so every current and future stack and every
   // taggable construct inherits the tags — never per construct. CDK's own provider Lambdas are raw resources that
   // Tags.of does not reach; the aspect gives them the same tags (CAP-51, T-infra-035).
-  const tags = deploymentTags(deployment, config.config_version);
+  const tags = deploymentTags(deployment, config);
   for (const [key, value] of Object.entries(tags)) Tags.of(app).add(key, value);
   Aspects.of(app).add(new TagCdkProviders(tags));
   return { app, deployment, data, api };

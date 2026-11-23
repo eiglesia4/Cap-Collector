@@ -43,6 +43,7 @@ const stackFor = (stage: string) =>
         app_origins: ['capacitor://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
         ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
+        tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
       },
     }),
   );
@@ -185,6 +186,7 @@ describe('CollectorsData stack', () => {
           region: 'r',
           ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
           ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
+          tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
           ...extra,
         }),
       );
@@ -213,6 +215,7 @@ describe('CollectorsData stack', () => {
           app_origins,
           ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
           ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
+          tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
         }),
       );
       return loadInstallationConfig(target, dir).app_origins;

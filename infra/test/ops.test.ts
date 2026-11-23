@@ -9,8 +9,8 @@ import { Template } from 'aws-cdk-lib/assertions';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../lib/app.js';
-import { LOG_RETENTION_DAYS, loadInstallationConfig, PROJECT_TAG_VALUE, USER_NAME_TAG_VALUE } from '../lib/config.js';
-import { BUDGET_NOTIFICATIONS, BUDGET_TAG_FILTER, LAMBDA_ERRORS_PER_ALARM, OPS_ALARMS } from '../lib/ops.js';
+import { LOG_RETENTION_DAYS, loadInstallationConfig } from '../lib/config.js';
+import { BUDGET_NOTIFICATIONS, LAMBDA_ERRORS_PER_ALARM, OPS_ALARMS } from '../lib/ops.js';
 
 const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
@@ -76,7 +76,13 @@ describe('Operations', () => {
     const load = (ops?: unknown) => {
       writeFileSync(
         join(dir, 'naeva.dev.json'),
-        JSON.stringify({ config_version: 'v', region: 'r', ai: config.ai, ...(ops !== undefined && { ops }) }),
+        JSON.stringify({
+          config_version: 'v',
+          region: 'r',
+          ai: config.ai,
+          tags: config.tags,
+          ...(ops !== undefined && { ops }),
+        }),
       );
       return loadInstallationConfig(deployment, dir);
     };
@@ -158,9 +164,8 @@ describe('Operations', () => {
       BudgetType: 'COST',
       TimeUnit: 'MONTHLY',
       BudgetLimit: { Amount: config.ops.budgetEur, Unit: 'USD' },
-      CostFilters: { TagKeyValue: [BUDGET_TAG_FILTER] },
+      CostFilters: { TagKeyValue: ['user:project$EIM_CAP'] },
     });
-    expect(BUDGET_TAG_FILTER).toBe('user:project$EIM_CAP');
 
     // Notifications exist only when the e-mail parameter is not `unset` (same condition as the alerts subscription).
     const conditional = props.NotificationsWithSubscribers as { 'Fn::If': [string, unknown[], unknown] };
@@ -193,7 +198,7 @@ describe('Operations', () => {
     const props = budget.Properties ?? {};
     // A fixed name collides when CloudFormation creates the replacement before deleting the old budget (CAP-69).
     expect(props.Budget).not.toHaveProperty('BudgetName');
-    expect(props.Budget).toMatchObject({ TimeUnit: 'MONTHLY', CostFilters: { TagKeyValue: [BUDGET_TAG_FILTER] } });
+    expect(props.Budget).toMatchObject({ TimeUnit: 'MONTHLY', CostFilters: { TagKeyValue: ['user:project$EIM_CAP'] } });
     expect(props.ResourceTags).toContainEqual({ Key: 'Name', Value: 'cap-naeva-dev-monthly' });
     expect(api.toJSON().Outputs).toHaveProperty('MonthlyBudgetName.Value', ref(id));
   });
@@ -214,8 +219,8 @@ describe('Operations', () => {
       'AWS::SNS::Subscription',
     ]);
     const expected = {
-      project: PROJECT_TAG_VALUE,
-      UserName: USER_NAME_TAG_VALUE,
+      project: 'EIM_CAP',
+      UserName: 'eiglesia4',
       installation: deployment.installation,
       stage: deployment.stage,
     };

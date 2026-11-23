@@ -345,9 +345,10 @@ export class CollectorsApiStack extends Stack {
     addMonthlyBudget(this, {
       deployment,
       budgetEur: config.ops.budgetEur,
+      project: config.tags.project,
       alertEmail,
       hasAlertEmail,
-      tags: deploymentTags(deployment, config.config_version),
+      tags: deploymentTags(deployment, config),
     });
     retainProviderLogs(this, config.ops.logRetentionDays, removalPolicy);
 
