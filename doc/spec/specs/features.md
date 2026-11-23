@@ -27,10 +27,25 @@ Fill rather than leave blank, but show what is a guess:
   - Manual entry with no AI: `type` pre-selected from the brand/producer/description text when it names a brewery
     (cervecera, brewery, brauerei, brasserie, birra…) → beer, cider maker → cider, winery/bodega → wine; marked
     "guessed — check".
-  - `year` is never defaulted (today's year would be wrong data).
-- **Status:** a new cap saved while an AI-unsure or text-guessed field is still untouched is saved as `needsReview`
-  ("to verify"); touching or confirming the field clears its mark. Defaults for `acquiredOn`, `material` and
-  `closure` alone don't make a cap `needsReview`.
+  - `year` = the current year when empty (Edu, 2026-11-23, overriding the first rule), marked "default — check".
+  - `acquiredWhere` = the place where the phone is now (§ Place from GPS) when empty, marked "default — check".
+- **Status:** a new cap saved while an AI-unsure or text-guessed field **with a value** is still untouched is saved
+  as `needsReview` ("to verify"); touching or confirming the field clears its mark. Fields the AI left empty don't
+  count (nothing to verify; CAP-98). Defaults (`acquiredOn`, `material`, `closure`, `year`, `acquiredWhere`) alone
+  don't make a cap `needsReview`.
+
+### Place from GPS (decided with Edu, 2026-11-23)
+- iPhone only: an in-app native plugin (like the Sign in with Apple one, no new dependency) asks for "when in use"
+  location with **reduced accuracy**, and reverse-geocodes it **on the device** with Apple's `CLGeocoder` (free, no
+  API key, no server, nothing stored but the name). Result: `"<locality>, <province or region>"`, e.g.
+  "La Adrada, Ávila"; the country is not repeated when it is the device's region.
+- Asked once per form (and once per batch, reused for every cap of that batch), with a short timeout (≈ 3 s); a denied
+  permission, a timeout or no result leaves the field empty. The permission is requested the first time a new cap's
+  form opens, with a usage string that says why.
+- Mac/web: no GPS lookup; the field is pre-filled with the last place used on that device, if any, marked the same.
+- Coordinates are never stored or sent. Privacy manifest and App Store answers: coarse location, linked to the
+  user, app functionality, no tracking.
+
 
 ## Phase 2 — worth it
 - Batch mode (ADR-009, SCREENS.md § Batch mode): tray photo → caps segmented on the device → user adjusts the circles →
