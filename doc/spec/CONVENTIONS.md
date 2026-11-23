@@ -48,12 +48,12 @@ Every taggable resource in every stack carries, applied once at the CDK app leve
 
 | Tag | Value |
 |---|---|
-| `project` | `EIM_CAP` |
-| `UserName` | `eiglesia4` |
+| `project` | `tags.project` of the target config (`infra/config/<installation>.<stage>.json`, CAP-102) |
+| `UserName` | `tags.owner` of the target config |
 | `installation` | `<installation>` (e.g. `naeva`) |
 | `stage` | `<stage>` (e.g. `dev`) |
 
-These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_version`, the `config/*.json` version a deployment was synthesised from) are welcome. A synth test asserts the four on the table and on every bucket. Cost Explorer filters on `project = EIM_CAP`.
+These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_version`, the `config/*.json` version a deployment was synthesised from) are welcome. A synth test asserts the four on the table and on every bucket. Cost Explorer and the monthly budget filter on the target's `project` value.
 
 ## Deployment targets
 | installation.stage | Region | AWS profile (local) | Deployed by |

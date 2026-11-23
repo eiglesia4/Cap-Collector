@@ -8,7 +8,7 @@
 in your album.**
 
 [![CI](https://github.com/eiglesia4/Cap-Collector/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eiglesia4/Cap-Collector/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-97%25%20lines%20%C2%B7%2089%25%20branches-brightgreen)](TEST.md)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/eiglesia4/Cap-Collector/badges/coverage.json)](TEST.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-iOS%20%C2%B7%20web-lightgrey?logo=apple)
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933?logo=node.js&logoColor=white)
@@ -108,12 +108,13 @@ A deployment target is an **installation** (yours, e.g. `jane`) and a **stage** 
 named `cap-<installation>-<stage>-…`.
 
 ```bash
-cp infra/config/naeva.dev.json infra/config/jane.dev.json
+cp infra/config/example.dev.json infra/config/jane.dev.json
 ```
 
 Edit `infra/config/jane.dev.json`: your `region`, the Bedrock `ai.modelId` available there (e.g. an `eu.` or `us.`
-inference profile), `ops.budgetEur`; **delete the `domains` block** unless you have your own domain names and ACM
-certificates (without it you get the CloudFront and API Gateway default URLs). Reference:
+inference profile), `ops.budgetEur` and your cost-allocation `tags`. The example has no `domains` block: add one only
+if you have your own domain names and ACM certificates (without it you get the CloudFront and API Gateway default
+URLs). The installation name `example` itself is refused, so you can't deploy the template by mistake. Reference:
 [`infra/config/README.md`](infra/config/README.md).
 
 ```bash
@@ -180,7 +181,7 @@ installation and must be replaced in a copy of your own:
 | Bundle id `com.naevatec.collectors`                           | `app/capacitor.config.ts` (`appId`), Xcode target _Bundle Identifier_ | your reverse-DNS id, also in the `apple-client-ids` setting               |
 | Apple Team (`DEVELOPMENT_TEAM`)                               | Xcode → _Signing & Capabilities_                                      | your team                                                                 |
 | Sign in with Apple (web)                                      | Apple Developer → Services ID + return URL                            | your Services ID, `<WebUrl>/auth/callback`                                |
-| Cost-allocation tags `project` / `UserName` on every resource | `infra/lib/config.ts`                                                 | your values (optional; used by the budget filter)                         |
+| Cost-allocation tags `project` / `UserName` on every resource | `tags` in your `infra/config/<you>.<stage>.json`                      | your values (the budget filters on `project`)                             |
 | GitHub code owners                                            | `.github/CODEOWNERS`                                                  | your login (only if you keep the branch protection)                       |
 | Author's agent workflow (Jira site, OneDrive spec path)       | `.envrc`, `CLAUDE.md`, `.claude/`                                     | ignore or delete: not needed to build or run                              |
 
@@ -206,8 +207,7 @@ npm run dev -w @capcollector/app
 | `tools/`    | Test catalogue and CI helpers                                    |
 
 Tests never touch the cloud or the internet (in-memory repositories, Bedrock fixtures). The full list of tests is in
-[`TEST.md`](TEST.md); the coverage badge above is the latest `main` run (lines 97 %, statements 96 %, functions 95 %,
-branches 89 %). The design decisions are in [`doc/spec/decisions/`](doc/spec/decisions/); the author's
+[`TEST.md`](TEST.md); the coverage badge above follows the latest `main` run. The design decisions are in [`doc/spec/decisions/`](doc/spec/decisions/); the author's
 multi-agent workflow is described in [`doc/maintainers.md`](doc/maintainers.md).
 
 ## Privacy
