@@ -10,7 +10,7 @@
 | EP-06 AI identification: Bedrock vision Lambda, AI review screen, confidence, re-identify | V2 | dev-api + dev-app | Photo → pre-filled record |
 | EP-07 Exchange with external AI: request/response bundles, upload validation, pending, backup | V2 | dev-app (+ dev-api for pending items) | Free AI path and backups |
 | EP-08 Physical album: location model, sheet view, next free pocket, insert-card PDF | V3 | dev-app + dev-api | Virtual ↔ physical link |
-| EP-09 Release & operations: TestFlight/App Store, domain, CloudFront, cost alarms, backups | V3 | integrator / Edu | App on the phone, costs watched |
+| EP-09 Release & operations: TestFlight/App Store, domain, CloudFront, cost alarms, backups | V3 | integrator / the owner | App on the phone, costs watched |
 | EP-10 Phase 2: batch mode, wishlist, stats, offline queue, sheet photo check, QR | V4 | mixed | Ordered by use, one flag each |
 
 Full descriptions are created in Jira by the architect (Cowork) with: Goal · Scope · Done when · Deliverable, labels `cap-<slug>` + `deliverable-V<n>`.

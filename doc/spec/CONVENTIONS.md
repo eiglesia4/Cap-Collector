@@ -2,7 +2,7 @@
 
 ## Language
 - Documentation and code in **English**.
-- UI (decided with Edu, 2026-11-23, CAP-95): **Spanish (`es`) by default**, English (`en`) available. Settings →
+- UI (decided with the owner, 2026-11-23, CAP-95): **Spanish (`es`) by default**, English (`en`) available. Settings →
   Language, remembered per device; the device language is not used as the default. Every string goes through i18n keys;
   enum labels and country names are localised (country names via `Intl.DisplayNames`), and dates and numbers use the
   selected locale. Data values are never translated (brand, variant, textOnCap, producer). The AI writes `description`
@@ -58,9 +58,9 @@ These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_ve
 ## Deployment targets
 | installation.stage | Region | AWS profile (local) | Deployed by |
 |---|---|---|---|
-| `naeva.dev` | `eu-west-1` | `naevatecdev` | Edu, by hand (`npm run diff` → `npm run deploy`), never an agent |
+| `naeva.dev` | `eu-west-1` | the owner's profile (`.envrc.local`) | The owner, by hand (`npm run diff` → `npm run deploy`), never an agent |
 
-Region lives in `infra/config/<installation>.<stage>.json`; the profile and the account guard (`CAP_ACCOUNT_NAEVA_DEV`) live only in `.envrc.local` on Edu's machine. Nothing account-specific is ever committed.
+Region lives in `infra/config/<installation>.<stage>.json`; the profile and the account guard (`CAP_ACCOUNT_NAEVA_DEV`) live only in `.envrc.local` on the owner's machine. Nothing account-specific is ever committed.
 
 ## Cost rules
 - Stay serverless; no NAT, no VPC, no always-on compute.

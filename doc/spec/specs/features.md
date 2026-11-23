@@ -16,7 +16,7 @@
   review; pending requests; backup export/import (see exchange.md, ADR-007).
 - Settings: album definitions (name, sheets, pocket size & pitch), AI on/off.
 
-## Defaults when unsure (decided with Edu, 2026-11-23, CAP-95)
+## Defaults when unsure (decided with the owner, 2026-11-23, CAP-95)
 Fill rather than leave blank, but show what is a guess:
 - **AI:** best guess with a low confidence instead of null (`exchangeInstructions`): `type` inferred from the
   producer/brand/text (a brewery → beer), crown caps steel + pry-off unless the photo says otherwise; `year` stays null
@@ -27,18 +27,18 @@ Fill rather than leave blank, but show what is a guess:
   - Manual entry with no AI: `type` pre-selected from the brand/producer/description text when it names a brewery
     (cervecera, brewery, brauerei, brasserie, birra…) → beer, cider maker → cider, winery/bodega → wine; marked
     "guessed — check".
-  - `year` = the current year when empty (Edu, 2026-11-23, overriding the first rule), marked "default — check".
+  - `year` = the current year when empty (the owner, 2026-11-23, overriding the first rule), marked "default — check".
   - `acquiredWhere` = the place where the phone is now (§ Place from GPS) when empty, marked "default — check".
 - **Status:** a new cap saved while an AI-unsure or text-guessed field **with a value** is still untouched is saved
   as `needsReview` ("to verify"); touching or confirming the field clears its mark. Fields the AI left empty don't
   count (nothing to verify; CAP-98). Defaults (`acquiredOn`, `material`, `closure`, `year`, `acquiredWhere`) alone
   don't make a cap `needsReview`.
 
-### Place from GPS (decided with Edu, 2026-11-23)
+### Place from GPS (decided with the owner, 2026-11-23)
 - iPhone only: an in-app native plugin (like the Sign in with Apple one, no new dependency) asks for "when in use"
   location with **reduced accuracy**, and reverse-geocodes it **on the device** with Apple's `CLGeocoder` (free, no
   API key, no server, nothing stored but the name). Result: `"<locality>, <province or region>"`, e.g.
-  "La Adrada, Ávila"; the country is not repeated when it is the device's region.
+  "Segovia, Segovia"; the country is not repeated when it is the device's region.
 - Asked once per form (and once per batch, reused for every cap of that batch), with a short timeout (≈ 3 s); a denied
   permission, a timeout or no result leaves the field empty. The permission is requested the first time a new cap's
   form opens, with a usage string that says why.

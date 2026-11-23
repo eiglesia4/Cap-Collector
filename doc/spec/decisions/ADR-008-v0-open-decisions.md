@@ -1,7 +1,7 @@
 # ADR-008: Decisions closed for V0 — variants, batch mode, web in V1, auth, domain, contract ownership
 
 - **Status:** Accepted
-- **Date:** 2026-10-31 (CAP-12, confirmed by Edu)
+- **Date:** 2026-10-31 (CAP-12, confirmed by the owner)
 
 ## Context
 Five questions were left open after the October design sessions and had to be settled before the contracts (`shared/`, `openapi.yaml`, data model) could be published.

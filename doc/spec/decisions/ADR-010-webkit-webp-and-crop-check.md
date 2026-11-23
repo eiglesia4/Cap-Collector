@@ -4,7 +4,7 @@
 - **Date:** 2026-11-22
 
 ## Context
-These problems came out of Edu's first real use (web on Safari, macOS 26, and the iPhone, 2026-11-22):
+These problems came out of the owner's first real use (web on Safari, macOS 26, and the iPhone, 2026-11-22):
 
 1. **WebKit cannot encode WebP from a canvas.** `canvas.toBlob(…, 'image/webp')` silently returns a PNG in Safari
    (macOS and iOS) and in WKWebView, so it fails in the Capacitor app as well. Every capture path ends in
@@ -13,7 +13,7 @@ These problems came out of Edu's first real use (web on Safari, macOS 26, and th
    The contract stays as it is: images are WebP ≤ 1024 px (CONVENTIONS, `POST /uploads` `contentType: image/webp`).
 2. **The single capture crops a centred square blindly.** The "circular guide" is a static drawing; neither the
    native camera nor a file picker shows it while shooting. A normal photo (cap at about a quarter of the frame, as
-   in Edu's sample) is cropped to mostly background, so the dHash and the AI see cloth, not the cap.
+   in the owner's sample) is cropped to mostly background, so the dHash and the AI see cloth, not the cap.
 
 ## Decision
 1. **WebP encoding has a fallback.** The codec first tries the canvas. If the blob that comes back is not
@@ -38,4 +38,4 @@ These problems came out of Edu's first real use (web on Safari, macOS 26, and th
 - The single capture gets one extra tap (Use photo). It also gets a better crop, so the AI and the duplicate check
   see the cap.
 - Real-browser coverage is still missing: the CI only runs happy-dom. We accept that for now. Device checks stay in
-  Edu's checklist until a Playwright smoke test on WebKit is worth adding.
+  the owner's checklist until a Playwright smoke test on WebKit is worth adding.
