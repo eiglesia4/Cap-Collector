@@ -36,6 +36,7 @@ export function fakePlatform(kind: 'web' | 'native' = 'native', store = memorySt
     signInWithApple: vi.fn(async () => null),
     supportsNativeAppleSignIn: () => false,
     onDeepLink: vi.fn(() => () => undefined),
+    currentPlace: vi.fn(async () => null),
   };
 }
 

@@ -18,6 +18,8 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		C5650002AE5100010065A001 /* AppleSignInPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5650001AE5100010065A001 /* AppleSignInPlugin.swift */; };
+		CA100002AE5100010065A001 /* PlaceNamePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA100001AE5100010065A001 /* PlaceNamePlugin.swift */; };
+		CA100004AE5100010065A001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = CA100003AE5100010065A001 /* InfoPlist.strings */; };
 		C5650004AE5100010065A001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5650003AE5100010065A001 /* MainViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -35,6 +37,8 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		FE78A453309923A40018BEA4 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		CA100001AE5100010065A001 /* PlaceNamePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceNamePlugin.swift; sourceTree = "<group>"; };
+		CA100005AE5100010065A001 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		C5650001AE5100010065A001 /* AppleSignInPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInPlugin.swift; sourceTree = "<group>"; };
 		C5650003AE5100010065A001 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -77,10 +81,12 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				C5650003AE5100010065A001 /* MainViewController.swift */,
 				C5650001AE5100010065A001 /* AppleSignInPlugin.swift */,
+				CA100001AE5100010065A001 /* PlaceNamePlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				CA100003AE5100010065A001 /* InfoPlist.strings */,
 				C56A00012EB1000100CA5600 /* PrivacyInfo.xcprivacy */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
@@ -133,6 +139,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
@@ -159,6 +166,7 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				CA100004AE5100010065A001 /* InfoPlist.strings in Resources */,
 				C56A00022EB1000100CA5600 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -174,6 +182,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				C5650004AE5100010065A001 /* MainViewController.swift in Sources */,
 				C5650002AE5100010065A001 /* AppleSignInPlugin.swift in Sources */,
+				CA100002AE5100010065A001 /* PlaceNamePlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -194,6 +203,14 @@
 				504EC3111FED79650016851F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		CA100003AE5100010065A001 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				CA100005AE5100010065A001 /* es */,
+			);
+			name = InfoPlist.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

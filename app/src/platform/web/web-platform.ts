@@ -70,6 +70,8 @@ export function createWebPlatform(win: Window, options: WebPlatformOptions = {})
     signInWithApple: apple.signIn,
     supportsNativeAppleSignIn: () => false,
     onDeepLink: () => () => undefined,
+    // No geolocation on the web (features.md § Place from GPS): the form uses the last place used instead.
+    currentPlace: () => Promise.resolve(null),
     async camera() {
       const [file] = await chooseFiles(win, IMAGES, false, 'environment');
       return file ?? null;

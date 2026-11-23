@@ -104,7 +104,7 @@ describe('defaults when unsure (CAP-98)', () => {
     expect(localDate(NOW)).toBe('2026-03-05');
   });
 
-  it('[T-app-193] a new manual cap gets today, steel and pry-off (marked, not flagged) and never a year', async () => {
+  it("[T-app-193] a new manual cap gets today, steel and pry-off (marked, not flagged); the year is CAP-100's", async () => {
     const { el, saved } = await mount({ mode: 'empty', scan: session(unidentified()) });
     expect(control(el, 'acquiredOn')?.value).toBe('2026-03-05');
     expect(markOf(el, 'acquiredOn')).toBeNull();
@@ -113,7 +113,8 @@ describe('defaults when unsure (CAP-98)', () => {
     expect(markOf(el, 'material')).toBe('default');
     expect(fieldEl(el, 'closure')?.classList.contains('field--default')).toBe(true);
     expect(el.querySelector('[data-hint-for="material"] .unsure-label')?.textContent).toBe(t('form.markDefault'));
-    expect(control(el, 'year')?.value).toBe('');
+    // CAP-100 overrides CAP-98's "never a year": the current year, marked (T-app-198).
+    expect(control(el, 'year')?.value).toBe('2026');
     expect(control(el, 'type')?.value).toBe('');
 
     type(el, 'brand', 'Mahou');
@@ -123,9 +124,9 @@ describe('defaults when unsure (CAP-98)', () => {
       acquiredOn: '2026-03-05',
       material: 'steel',
       closure: 'pry-off',
+      year: 2026,
       status: 'complete',
     });
-    expect(body).not.toHaveProperty('year');
     expect(body).not.toHaveProperty('type');
   });
 

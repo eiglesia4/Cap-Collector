@@ -56,6 +56,20 @@ export class AppleSignInError extends Error {
   }
 }
 
+/**
+ * The place the phone is at, as names only (CAP-100, features.md § Place from GPS): reverse-geocoded on the device
+ * from a reduced-accuracy fix. Coordinates never leave the native plugin.
+ */
+export interface PlaceName {
+  readonly locality?: string;
+  /** Province or region (`subAdministrativeArea ?? administrativeArea`), e.g. `Ávila`. */
+  readonly region?: string;
+  /** ISO 3166-1 alpha-2 of the place. */
+  readonly countryCode?: string;
+  /** ISO region of the device's settings (`Locale.current`), to leave out the country when it is the same. */
+  readonly deviceRegion?: string;
+}
+
 export interface Platform {
   /** `native` = Capacitor iPhone app; `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
   readonly kind: 'web' | 'native';
@@ -88,6 +102,11 @@ export interface Platform {
    * unsubscribe. The web build never receives any: its links are ordinary HTTPS URLs.
    */
   onDeepLink(listener: (url: string) => void): () => void;
+  /**
+   * Where the phone is now (CAP-100): asks for "when in use" location the first time, ≈ 3 s at most. Null on denial,
+   * timeout, error or no result, and always on the web (no geolocation there). Never rejects.
+   */
+  currentPlace(): Promise<PlaceName | null>;
 }
 
 export function isCancel(error: unknown): boolean {

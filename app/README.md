@@ -66,7 +66,11 @@ What App Store review reads from the project:
 - `ios/App/App/Info.plist`: display name CapCollector; camera / photo library / photo add usage strings (CAP-21);
   `ITSAppUsesNonExemptEncryption = false`; `UIRequiresFullScreen`; portrait only on iPhone; `LSRequiresIPhoneOS`.
 - `ios/App/App/PrivacyInfo.xcprivacy`: no tracking and no tracking domains. Collected data: photos (the user's own
-  caps) and the user ID (Apple `sub`), both linked to the user, used only for app functionality. Required-reason
+  caps), the user ID (Apple `sub`) and coarse location (CAP-100), all linked to the user, used only for app
+  functionality. Coarse location: `PlaceNamePlugin.swift` asks "when in use" permission, takes one reduced-accuracy
+  fix and turns it into a place name on the device (`CLGeocoder`) to pre-fill "Where acquired"; only that name is
+  saved with the cap, the coordinates are never stored or sent. In App Store Connect: _Location → Coarse Location_,
+  linked to the user, _App Functionality_, not used for tracking. Required-reason
   APIs: UserDefaults `CA92.1` (`@capacitor/preferences`) and file timestamps `C617.1` (`@capacitor/filesystem`). The
   answers in App Store Connect's privacy questionnaire must match this file.
 
