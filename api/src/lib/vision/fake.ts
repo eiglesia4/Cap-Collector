@@ -13,6 +13,8 @@ export const FAKE_MODEL_ID = 'fake';
 
 export class FakeVisionAdapter implements VisionAdapter {
   private readonly answers: string[];
+  /** Language of each `identify` call, in order (CAP-96); `undefined` = none sent (English). For tests only. */
+  readonly languages: (IdentifyInput['language'] | undefined)[] = [];
 
   constructor(dir: string = FAKE_FIXTURES_DIR) {
     const files = readdirSync(dir)
@@ -23,6 +25,7 @@ export class FakeVisionAdapter implements VisionAdapter {
   }
 
   async identify(input: IdentifyInput): Promise<IdentifyResult> {
+    this.languages.push(input.language);
     let h = 0;
     for (const ch of input.imageKeys.top) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     const answer = this.answers[h % this.answers.length]!;

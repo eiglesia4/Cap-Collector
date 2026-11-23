@@ -1,5 +1,5 @@
 // Bedrock vision adapter (CAP-39) with the Bedrock and S3 clients mocked — never the network. Spec: ADR-004 step 2,
-// ADR-008 §7 (prompt = EXCHANGE_INSTRUCTIONS + EXCHANGE_FIELD_SCHEMA + known; the model returns `response` only),
+// ADR-008 §7 (prompt = exchangeInstructions(language) + EXCHANGE_FIELD_SCHEMA + known; the model returns `response` only),
 // shared exchange.ts (parseExchangeUpload → normaliseResponseFields), data-model.md § Scan (tokens, cost).
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,7 +7,13 @@ import { join } from 'node:path';
 
 import type { ConverseCommand, ConverseCommandOutput } from '@aws-sdk/client-bedrock-runtime';
 import type { GetObjectCommand, GetObjectCommandOutput } from '@aws-sdk/client-s3';
-import { EXCHANGE_FIELD_SCHEMA, EXCHANGE_INSTRUCTIONS, Scan, emptyExchangeResponse } from '@capcollector/shared';
+import {
+  EXCHANGE_FIELD_SCHEMA,
+  EXCHANGE_INSTRUCTIONS,
+  Scan,
+  emptyExchangeResponse,
+  exchangeInstructions,
+} from '@capcollector/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig } from '../src/lib/config.js';
@@ -75,7 +81,7 @@ const awsError = (name: string, httpStatusCode?: number) =>
   Object.assign(new Error(name), { name, ...(httpStatusCode ? { $metadata: { httpStatusCode } } : {}) });
 
 describe('vision: Bedrock adapter', () => {
-  it('[T-api-058] request shape: Converse with system = EXCHANGE_INSTRUCTIONS, top then underside WebP bytes from S3, schema + known + empty response; 600 tokens, temperature 0, 8 s abort', async () => {
+  it('[T-api-058] request shape: Converse with system = EXCHANGE_INSTRUCTIONS when no language is given, top then underside WebP bytes from S3, schema + known + empty response; 600 tokens, temperature 0, 8 s abort', async () => {
     const { adapter, calls, s3 } = setup([answer({ brand: 'Mahou' })]);
     const known = { brand: 'Mahou', country: 'ES' as const };
     await adapter.identify({ imageKeys: { top: TOP_KEY, underside: UNDER_KEY }, known });
@@ -120,6 +126,65 @@ describe('vision: Bedrock adapter', () => {
     const s3Down = setup([answer({ brand: 'Mahou' })]);
     s3Down.s3.send.mockRejectedValueOnce(awsError('InternalError', 500));
     await expect(s3Down.adapter.identify({ imageKeys: { top: TOP_KEY } })).rejects.toThrow('InternalError');
+  });
+
+  it('[T-api-092] language (contracts v0.4): es → system = exchangeInstructions(es), "Write `description` in Spanish"; en = EXCHANGE_INSTRUCTIONS; same tokens and user prompt', async () => {
+    const es = setup([answer({ brand: 'Mahou' })]);
+    await es.adapter.identify({ imageKeys: { top: TOP_KEY }, language: 'es' });
+    const esInput = es.calls[0]!.command.input;
+    expect(esInput.system).toEqual([{ text: exchangeInstructions('es') }]);
+    expect(esInput.system![0]!.text).toContain('Write `description` in Spanish');
+    expect(esInput.inferenceConfig).toEqual({ maxTokens: MAX_TOKENS, temperature: 0 });
+
+    const en = setup([answer({ brand: 'Mahou' })]);
+    await en.adapter.identify({ imageKeys: { top: TOP_KEY }, language: 'en' });
+    const enInput = en.calls[0]!.command.input;
+    expect(enInput.system).toEqual([{ text: EXCHANGE_INSTRUCTIONS }]);
+    expect(enInput.system![0]!.text).toContain('Write `description` in English');
+    // Only the system text changes with the language.
+    expect(enInput.messages).toEqual(esInput.messages);
+  });
+
+  it('[T-api-093] best guesses pass through untouched: a Spanish answer with low-confidence type/material/closure keeps every confidence as given (no threshold in the API)', async () => {
+    const confidence = {
+      brand: 0.92,
+      type: 0.35,
+      material: 0.3,
+      closure: 0.3,
+      country: 0.55,
+      description: 0.8,
+      year: null,
+    };
+    const fields = {
+      brand: 'Cervecera La Virgen',
+      producer: 'Cervecera La Virgen',
+      country: 'ES',
+      type: 'beer',
+      material: 'steel',
+      closure: 'pry-off',
+      year: null,
+      description: 'Chapa negra con el logotipo blanco de la cervecera.',
+    };
+    const { adapter } = setup([answer(fields, confidence)]);
+    const r = await adapter.identify({ imageKeys: { top: TOP_KEY }, language: 'es' });
+    expect(r).toMatchObject({
+      status: 'identified',
+      fields: { type: 'beer', material: 'steel', closure: 'pry-off', description: fields.description },
+      confidence: { brand: 0.92, type: 0.35, material: 0.3, closure: 0.3, country: 0.55, description: 0.8 },
+    });
+    if (r.status !== 'identified') throw new Error('expected identified');
+    expect(r.confidence).not.toHaveProperty('year');
+
+    // End to end through analyse(): the response carries the same confidences for the app to highlight.
+    const repos = createMemoryRepositories();
+    const out = await analyse({ repos, vision: setup([answer(fields, confidence)]).adapter, threshold: 10 }, UID, {
+      scanId: newId(),
+      dhash: 'a3f0c81e7b2d9f44',
+      imageKeys: { top: TOP_KEY },
+      useAi: true,
+      language: 'es',
+    });
+    expect(out).toMatchObject({ outcome: 'identified', fields: { type: 'beer' }, confidence: { type: 0.35 } });
   });
 
   it('[T-api-059] fenced JSON + unknown field → parsed through the exchange path (normalised, `ignored` reported); missing provider/model tolerated; a full document is read too', async () => {
@@ -458,5 +523,13 @@ describe('vision: Bedrock adapter', () => {
     expect([...outcomes].sort()).toEqual(['identified', 'unidentified']);
     expect(FAKE_FIXTURES_DIR).toMatch(/test\/fixtures\/vision\/$/);
     expect(() => new FakeVisionAdapter(`${mkdtempSync(join(tmpdir(), 'cap-vision-'))}/`)).toThrow(/no vision fixtures/);
+  });
+
+  it('[T-api-094] the fake adapter records the language of each call (undefined when none is sent)', async () => {
+    const fake = new FakeVisionAdapter();
+    await fake.identify({ imageKeys: { top: TOP_KEY }, language: 'es' });
+    await fake.identify({ imageKeys: { top: TOP_KEY } });
+    await fake.identify({ imageKeys: { top: TOP_KEY }, language: 'en' });
+    expect(fake.languages).toEqual(['es', undefined, 'en']);
   });
 });
