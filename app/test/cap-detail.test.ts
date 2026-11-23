@@ -317,12 +317,12 @@ describe('cap detail', () => {
       url: `https://caps.test/cap/${ID}`,
     });
 
-    const { el, platform } = await mount(standard, 'native', ID, 'https://caps.naevatec.com');
+    const { el, platform } = await mount(standard, 'native', ID, 'https://caps.example.com');
     el.querySelector<HTMLButtonElement>('[data-action="share"]')?.click();
     expect(platform.share).toHaveBeenCalledWith({
       title: 'Mahou',
       text: 'Mahou · Clásica · ES · 2023',
-      url: `https://caps.naevatec.com/cap/${ID}`,
+      url: `https://caps.example.com/cap/${ID}`,
     });
     // A share sheet that throws is swallowed.
     vi.mocked(platform.share).mockRejectedValueOnce(new Error('boom'));
@@ -332,11 +332,9 @@ describe('cap detail', () => {
 
   it('[T-app-060] share link: VITE_WEB_URL on iPhone and Mac; web falls back to its origin; iPhone without it shares text only', async () => {
     // No collectors:// link any more (ADR-008 §5 as amended; the scheme is V2).
-    expect(linkOrigin('native', 'https://caps.naevatec.com', 'capacitor://localhost')).toBe(
-      'https://caps.naevatec.com',
-    );
-    expect(linkOrigin('web', 'https://caps.naevatec.com', 'https://d111.cloudfront.net')).toBe(
-      'https://caps.naevatec.com',
+    expect(linkOrigin('native', 'https://caps.example.com', 'capacitor://localhost')).toBe('https://caps.example.com');
+    expect(linkOrigin('web', 'https://caps.example.com', 'https://d111.cloudfront.net')).toBe(
+      'https://caps.example.com',
     );
     expect(linkOrigin('web', null, 'https://d111.cloudfront.net')).toBe('https://d111.cloudfront.net');
     expect(linkOrigin('native', null, 'capacitor://localhost')).toBeNull();
@@ -348,7 +346,7 @@ describe('cap detail', () => {
       el.querySelector<HTMLButtonElement>('[data-action="share"]')?.click();
       return vi.mocked(platform.share).mock.calls[0]?.[0];
     };
-    expect((await share('web', 'https://caps.naevatec.com'))?.url).toBe(`https://caps.naevatec.com/cap/${ID}`);
+    expect((await share('web', 'https://caps.example.com'))?.url).toBe(`https://caps.example.com/cap/${ID}`);
     expect((await share('web', null))?.url).toBe(`${window.location.origin}/cap/${ID}`);
     const native = await share('native', null);
     expect(native).toEqual({ title: 'Mahou', text: 'Mahou · Clásica · ES · 2023' });

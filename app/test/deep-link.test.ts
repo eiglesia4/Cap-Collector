@@ -27,7 +27,7 @@ describe('deep links', () => {
       `collectors://cap/${ID}/history`,
       `collectors://album/${ID}`,
       `collectors:/cap/${ID}`,
-      `https://caps.naevatec.com/cap/${ID}`,
+      `https://caps.example.com/cap/${ID}`,
       `other://cap/${ID}`,
       '',
     ]) {

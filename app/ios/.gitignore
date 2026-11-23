@@ -11,3 +11,6 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Personal signing settings (CAP-104): copy App/Local.xcconfig.example
+App/Local.xcconfig

@@ -33,6 +33,18 @@ those keep the name `App` (renaming them breaks `cap sync` / `cap open`). The na
 (`App.xcodeproj/xcshareddata/xcschemes/CapCollector.xcscheme`, also `ios.scheme` in `capacitor.config.ts`) are
 `CapCollector` (CAP-94). The home-screen name is `CFBundleDisplayName` in `Info.plist`.
 
+## Signing team
+
+The tracked project has no Apple Team ID (CAP-104). The target's base configuration `ios/App/CapCollector.xcconfig`
+includes `ios/App/Local.xcconfig`, which is gitignored. Create it once per checkout with your team (Apple Developer →
+Membership details):
+
+```bash
+cp app/ios/App/Local.xcconfig.example app/ios/App/Local.xcconfig   # then set DEVELOPMENT_TEAM = <your team id>
+```
+
+Without it the simulator build still works, but signing for a device or archiving asks for a team.
+
 ## Versions
 
 - **Marketing version** (`MARKETING_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`, shown as the App Store
@@ -46,8 +58,8 @@ those keep the name `App` (renaming them breaks `cap sync` / `cap open`). The na
 
 What Edu does by hand; no agent archives or uploads.
 
-1. On `main` at the release tag, with `app/.env.local` holding the production values: `VITE_API_URL=https://api.caps.naevatec.com`,
-   `VITE_WEB_URL=https://caps.naevatec.com` and the Apple web values.
+1. On `main` at the release tag, with `app/.env.local` holding the production values: `VITE_API_URL=<ApiUrl>`,
+   `VITE_WEB_URL=<WebUrl>` and the Apple web values.
 2. Build the bundle and copy it into the iOS project:
    ```bash
    npm ci
@@ -86,5 +98,5 @@ What App Store review reads from the project:
 
 ### Network (ATS)
 
-The app talks only to `https://api.caps.naevatec.com` (the API) and to S3 presigned HTTPS URLs for the images, so App
+The app talks only to the API (`<ApiUrl>`, an HTTPS stack output) and to S3 presigned HTTPS URLs for the images, so App
 Transport Security needs no exception: `Info.plist` has no `NSAppTransportSecurity` entry and must not get one.

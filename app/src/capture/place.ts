@@ -1,5 +1,5 @@
 // `acquiredWhere` default (CAP-100, features.md § Defaults when unsure and § Place from GPS): on the iPhone, the place
-// where the phone is now ("La Adrada, Ávila"), asked once per form and once per batch; on the web (Mac), the last
+// where the phone is now ("Talavera de la Reina, Toledo"), asked once per form and once per batch; on the web (Mac), the last
 // place used on this device, stored when a cap is saved with one. Only names are kept: never coordinates.
 import type { AppContext } from '../context.js';
 import { countryName } from '../i18n/countries.js';

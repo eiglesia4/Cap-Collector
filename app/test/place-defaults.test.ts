@@ -22,7 +22,12 @@ import { fakeApi, fakePlatform, flush, memoryStore, shellContext } from './suppo
 
 const SCAN_ID = ulid(61);
 const NOW = new Date(2026, 2, 5, 10, 30);
-const ADRADA: PlaceName = { locality: 'La Adrada', region: 'Ávila', countryCode: 'ES', deviceRegion: 'ES' };
+const TALAVERA: PlaceName = {
+  locality: 'Talavera de la Reina',
+  region: 'Toledo',
+  countryCode: 'ES',
+  deviceRegion: 'ES',
+};
 
 const photo: CapPhoto = {
   blob: new Blob([new Uint8Array(900)], { type: 'image/webp' }),
@@ -107,7 +112,7 @@ afterEach(() => {
 
 describe('year and place defaults (CAP-100)', () => {
   it('[T-app-197] formatPlace: "Locality, Region"; the country only when foreign; no repeats; cut to 120', () => {
-    expect(formatPlace(ADRADA, 'ES')).toBe('La Adrada, Ávila');
+    expect(formatPlace(TALAVERA, 'ES')).toBe('Talavera de la Reina, Toledo');
     expect(formatPlace({ locality: 'Lyon', region: 'Rhône', countryCode: 'FR' }, 'ES')).toBe('Lyon, Rhône, France');
     expect(formatPlace({ locality: 'Madrid', region: 'madrid', countryCode: 'ES' }, 'ES')).toBe('Madrid');
     // An unknown device region cannot tell foreign from home: the country is left out.
@@ -135,7 +140,7 @@ describe('year and place defaults (CAP-100)', () => {
     expect(markOf(review.el, 'year')).toBe('default');
     expect(await review.saved()).toMatchObject({ year: 2026, status: 'complete' });
 
-    const platform = nativeAt(ADRADA);
+    const platform = nativeAt(TALAVERA);
     const edit = await mount({ mode: 'edit', cap: Cap.parse(wireCap(3)) }, platform);
     expect(control(edit.el, 'year')?.value).toBe('');
     expect(control(edit.el, 'acquiredWhere')?.value).toBe('');
@@ -143,13 +148,13 @@ describe('year and place defaults (CAP-100)', () => {
     expect(platform.currentPlace).not.toHaveBeenCalled();
   });
 
-  it('[T-app-199] iPhone: currentPlace → "La Adrada, Ávila" filled and marked, saved and not flagged; null → empty', async () => {
-    const at = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(ADRADA));
+  it('[T-app-199] iPhone: currentPlace → "Talavera de la Reina, Toledo" filled and marked, saved and not flagged; null → empty', async () => {
+    const at = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(TALAVERA));
     expect(at.platform.currentPlace).toHaveBeenCalledTimes(1);
-    expect(control(at.el, 'acquiredWhere')?.value).toBe('La Adrada, Ávila');
+    expect(control(at.el, 'acquiredWhere')?.value).toBe('Talavera de la Reina, Toledo');
     expect(markOf(at.el, 'acquiredWhere')).toBe('default');
     type(at.el, 'brand', 'Mahou');
-    expect(await at.saved()).toMatchObject({ acquiredWhere: 'La Adrada, Ávila', status: 'complete' });
+    expect(await at.saved()).toMatchObject({ acquiredWhere: 'Talavera de la Reina, Toledo', status: 'complete' });
 
     const nowhere = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(null));
     expect(control(nowhere.el, 'acquiredWhere')?.value).toBe('');
@@ -163,22 +168,22 @@ describe('year and place defaults (CAP-100)', () => {
     const late = new Promise<PlaceName | null>((resolve) => (answer = resolve));
     const typed = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(late));
     type(typed.el, 'acquiredWhere', 'Rastro de Madrid');
-    answer(ADRADA);
+    answer(TALAVERA);
     await settle();
     expect(control(typed.el, 'acquiredWhere')?.value).toBe('Rastro de Madrid');
     expect(markOf(typed.el, 'acquiredWhere')).toBeNull();
 
-    const confirmed = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(ADRADA));
+    const confirmed = await mount({ mode: 'empty', scan: session(unidentified()) }, nativeAt(TALAVERA));
     confirmed.el.querySelector<HTMLButtonElement>('[data-confirm="acquiredWhere"]')?.click();
     expect(markOf(confirmed.el, 'acquiredWhere')).toBeNull();
-    expect(control(confirmed.el, 'acquiredWhere')?.value).toBe('La Adrada, Ávila');
+    expect(control(confirmed.el, 'acquiredWhere')?.value).toBe('Talavera de la Reina, Toledo');
   });
 
   it('[T-app-201] batch: one place lookup for every cap of the batch, a new one for the next batch', async () => {
-    const platform = nativeAt(ADRADA);
+    const platform = nativeAt(TALAVERA);
     for (let i = 0; i < 3; i++) {
       const item = await mount({ mode: 'empty', scan: session(unidentified(), 'batch-1') }, platform);
-      expect(control(item.el, 'acquiredWhere')?.value).toBe('La Adrada, Ávila');
+      expect(control(item.el, 'acquiredWhere')?.value).toBe('Talavera de la Reina, Toledo');
     }
     expect(platform.currentPlace).toHaveBeenCalledTimes(1);
     await defaultPlace({ platform }, 'batch-2');
@@ -196,12 +201,12 @@ describe('year and place defaults (CAP-100)', () => {
     expect(control(first.el, 'acquiredWhere')?.value).toBe('');
     expect(web.currentPlace).not.toHaveBeenCalled();
     type(first.el, 'brand', 'Mahou');
-    type(first.el, 'acquiredWhere', 'Mercadillo de Ávila');
+    type(first.el, 'acquiredWhere', 'Mercadillo de Toledo');
     await first.saved();
-    expect(store.data.get(LAST_PLACE_KEY)).toBe('Mercadillo de Ávila');
+    expect(store.data.get(LAST_PLACE_KEY)).toBe('Mercadillo de Toledo');
 
     const next = await mount({ mode: 'empty', scan: session(unidentified()) }, web);
-    expect(control(next.el, 'acquiredWhere')?.value).toBe('Mercadillo de Ávila');
+    expect(control(next.el, 'acquiredWhere')?.value).toBe('Mercadillo de Toledo');
     expect(markOf(next.el, 'acquiredWhere')).toBe('default');
 
     // A store that fails only loses the default.
@@ -215,8 +220,18 @@ describe('year and place defaults (CAP-100)', () => {
       PlaceName: { currentPlace: call },
     } as unknown as CapacitorPlugins);
 
-    call.mockResolvedValueOnce({ locality: ' La Adrada ', region: 'Ávila', countryCode: 'ES', deviceRegion: '', x: 1 });
-    expect(await platform.currentPlace()).toEqual({ locality: 'La Adrada', region: 'Ávila', countryCode: 'ES' });
+    call.mockResolvedValueOnce({
+      locality: ' Talavera de la Reina ',
+      region: 'Toledo',
+      countryCode: 'ES',
+      deviceRegion: '',
+      x: 1,
+    });
+    expect(await platform.currentPlace()).toEqual({
+      locality: 'Talavera de la Reina',
+      region: 'Toledo',
+      countryCode: 'ES',
+    });
     call.mockResolvedValueOnce({});
     expect(await platform.currentPlace()).toBeNull();
     call.mockRejectedValueOnce(new Error('denied'));

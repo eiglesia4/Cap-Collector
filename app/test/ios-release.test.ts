@@ -218,4 +218,26 @@ describe('iOS release readiness', () => {
     expect(info.CFBundleName).toBe('$(PRODUCT_NAME)');
     expect(readFileSync(join(APP, 'Base.lproj', 'Main.storyboard'), 'utf8')).toContain('customModule="CapCollector"');
   });
+
+  it('[T-app-205] no Apple Team ID in the tracked project: the target signs from CapCollector.xcconfig → gitignored Local.xcconfig', () => {
+    const pbx = readFileSync(join(IOS, 'App.xcodeproj', 'project.pbxproj'), 'utf8');
+    expect(pbx).not.toMatch(/DEVELOPMENT_TEAM\s*=/);
+    // The target's Debug and Release are based on CapCollector.xcconfig (the project-level Debug keeps debug.xcconfig).
+    const ref =
+      /(\w{24}) \/\* CapCollector\.xcconfig \*\/ = \{isa = PBXFileReference;[^}]*path = CapCollector\.xcconfig;/.exec(
+        pbx,
+      )?.[1];
+    expect(ref).toBeDefined();
+    for (const name of ['Debug', 'Release']) {
+      const config = new RegExp(
+        `/\\* ${name} \\*/ = \\{\\s*isa = XCBuildConfiguration;\\s*baseConfigurationReference = ${ref ?? '?'} [^]*?PRODUCT_NAME = CapCollector;`,
+      );
+      expect(pbx, name).toMatch(config);
+    }
+    const xcconfig = readFileSync(join(IOS, 'CapCollector.xcconfig'), 'utf8');
+    expect(xcconfig).toMatch(/^#include\? "Local\.xcconfig"$/m);
+    expect(xcconfig).not.toMatch(/DEVELOPMENT_TEAM/);
+    expect(readFileSync(join(IOS, 'Local.xcconfig.example'), 'utf8')).toMatch(/^DEVELOPMENT_TEAM = <your team id>$/m);
+    expect(readFileSync(join(IOS, '..', '.gitignore'), 'utf8')).toMatch(/^App\/Local\.xcconfig$/m);
+  });
 });
