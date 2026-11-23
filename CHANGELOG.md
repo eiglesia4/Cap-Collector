@@ -96,6 +96,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-98: form defaults when unsure (new caps only): `acquiredOn` today, steel and pry-off marked "default — check", `type` guessed from brand, producer, description and text on the cap and marked "guessed — check". A cap is saved as `needsReview` while a guess or a non-empty AI-unsure value is still unchecked; edit mode is unchanged and `year` is never defaulted (T-app-192…196).
 - CAP-97: Spanish UI by default with Settings → Language (Español · English), chosen per device and applied without a reload. `es.json` has all 585 keys; countries, enum labels, dates and numbers are localised (Spanish collation, accent-insensitive search). Every `POST /scans/analyse` sends `language`, exchange bundles use `exchangeInstructions(language)`, and the PDF follows the language (T-app-185…191).
 - CAP-96: the Bedrock system prompt is `exchangeInstructions(language)` from `AnalyseRequest.language`, on new scans and re-identify; with no language it stays the English `EXCHANGE_INSTRUCTIONS` (T-api-058, T-api-092…095).
 - CAP-95: contracts v0.4: `UiLanguage` (`es` | `en`, `DEFAULT_LANGUAGE = es`), optional `AnalyseRequest.language` and `exchangeInstructions(language)`; openapi 0.4.0. Spec: CONVENTIONS § Language, features.md § Defaults when unsure (AI best guesses and form defaults), SCREENS.md § Language (T-shared-009).
