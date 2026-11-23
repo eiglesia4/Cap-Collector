@@ -8,10 +8,16 @@ CONVENTIONS.md § Deployment targets; per-target settings: [`config/`](config/RE
 | `CollectorsData` | images + web buckets, CloudFront (+ `domains.web`), the DynamoDB single table + its AWS Backup plan (reads, never creates, the SSM settings) | CAP-13, CAP-29, CAP-57, CAP-60 |
 | `CollectorsApi`  | HTTP API (+ `domains.api`), one Lambda per `api/src/handlers/*.ts` routed by [`lib/routes.ts`](lib/routes.ts), authorizer, alarms + budget   | CAP-15, CAP-29, CAP-40, CAP-51 |
 
-## Deploy (Edu)
+## Deploy
+
+**A new target** (your own AWS account): copy [`config/example.dev.json`](config/example.dev.json) to
+`config/<inst>.<stage>.json` and set its `region`, `ai.modelId` (an inference profile your region offers) and `tags`
+(the values of the `project` / `UserName` cost-allocation tags; the monthly budget filters on `project`). `example`
+itself is refused as an installation name, so the template is never deployed by mistake (CAP-102). The installation
+goes into resource names: lowercase letters, digits and hyphens.
 
 ```bash
-export CAP_INSTALLATION=naeva CAP_STAGE=dev AWS_PROFILE=naevatecdev   # .envrc.local does this
+export CAP_INSTALLATION=<inst> CAP_STAGE=<stage> AWS_PROFILE=<profile>   # .envrc.local does this
 npm run diff                       # from the repo root (builds shared first)
 npm run deploy                     # CollectorsData first, then CollectorsApi
 ```
@@ -23,9 +29,9 @@ the auth ones before relying on Sign in with Apple (CAP-19), then run `npm run d
 resolves the new values:
 
 ```bash
-aws ssm put-parameter --overwrite --name /cap/naeva/dev/allowed-apple-subs --value '<apple sub>'
-aws ssm put-parameter --overwrite --name /cap/naeva/dev/apple-client-ids  --value 'com.naevatec.collectors,<web service id>'
-aws ssm put-parameter --overwrite --name /cap/naeva/dev/session-secret    --value "$(openssl rand -base64 48)"
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/allowed-apple-subs --value '<apple sub>'
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/apple-client-ids  --value '<bundle id>,<web service id>'
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/session-secret    --value "$(openssl rand -base64 48)"
 ```
 
 **Alerts (CAP-40):** `CollectorsApi` creates the topic `cap-<inst>-<stage>-alerts` and an alarm when Bedrock is
@@ -33,7 +39,7 @@ invoked more than 300 times in a day (cost guard). The e-mail comes from `/cap/<
 `unset` the topic has no subscription. Set it, redeploy `CollectorsApi`, and confirm the e-mail AWS sends:
 
 ```bash
-aws ssm put-parameter --overwrite --name /cap/naeva/dev/alert-email --value '<your e-mail>'
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/alert-email --value '<your e-mail>'
 ```
 
 **Bedrock model (CAP-40, CAP-73):** `ai.modelId` in `config/<inst>.<stage>.json`. naeva/dev uses **Claude Haiku 5.5**
@@ -126,14 +132,14 @@ ARN before the parameters are removed.
 Every alarm notifies the topic `cap-<inst>-<stage>-alerts`, so it reaches the `alert-email` above (nothing is sent
 while it is `unset`). Missing data never fires (`notBreaching`). Thresholds live in [`lib/ops.ts`](lib/ops.ts).
 
-| Alarm / budget                                      | Fires when                                                                                            | Look first at                                             |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `cap-<inst>-<stage>-api-5xx`                        | the HTTP API returns ≥ 5 `5xx` in 5 min                                                               | the log groups of the functions behind the failing routes |
-| `cap-<inst>-<stage>-lambda-errors-<n>`              | any one function of that group has ≥ 3 `Errors` in 5 min (groups of ≤ 9; the description lists them)  | that function's log group                                 |
-| `cap-<inst>-<stage>-dynamodb-throttles`             | the table records ≥ 1 read or write throttle event in 5 min                                           | a hot partition or a runaway client (on-demand table)     |
-| `cap-<inst>-<stage>-authorizer-throttles`           | the authorizer is throttled at least once in 5 min                                                    | account Lambda concurrency, a client retry loop           |
-| `cap-<inst>-<stage>-bedrock-invocations` (CAP-40)   | more than 300 Bedrock invocations of `ai.modelId` in a day                                            | Scan items: is the dHash check being skipped?             |
-| AWS Budget tagged `Name=cap-<inst>-<stage>-monthly` | spend tagged `project=EIM_CAP` reaches 80 % of `ops.budgetEur` (actual) or is forecast to reach 100 % | Cost Explorer filtered by `project`                       |
+| Alarm / budget                                      | Fires when                                                                                                                          | Look first at                                             |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `cap-<inst>-<stage>-api-5xx`                        | the HTTP API returns ≥ 5 `5xx` in 5 min                                                                                             | the log groups of the functions behind the failing routes |
+| `cap-<inst>-<stage>-lambda-errors-<n>`              | any one function of that group has ≥ 3 `Errors` in 5 min (groups of ≤ 9; the description lists them)                                | that function's log group                                 |
+| `cap-<inst>-<stage>-dynamodb-throttles`             | the table records ≥ 1 read or write throttle event in 5 min                                                                         | a hot partition or a runaway client (on-demand table)     |
+| `cap-<inst>-<stage>-authorizer-throttles`           | the authorizer is throttled at least once in 5 min                                                                                  | account Lambda concurrency, a client retry loop           |
+| `cap-<inst>-<stage>-bedrock-invocations` (CAP-40)   | more than 300 Bedrock invocations of `ai.modelId` in a day                                                                          | Scan items: is the dHash check being skipped?             |
+| AWS Budget tagged `Name=cap-<inst>-<stage>-monthly` | spend tagged `project=<tags.project>` (naeva/dev: `EIM_CAP`) reaches 80 % of `ops.budgetEur` (actual) or is forecast to reach 100 % | Cost Explorer filtered by `project`                       |
 
 The budget filters on the **cost allocation tag** `project`: activate it once in Billing → Cost allocation tags (it
 takes up to 24 h to apply), or the budget sees no spend. Its two e-mail notifications follow the same rule as the

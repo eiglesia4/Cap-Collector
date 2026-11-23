@@ -29,7 +29,7 @@ import { LogRetention, type RetentionDays } from 'aws-cdk-lib/aws-logs';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import type { IConstruct } from 'constructs';
 
-import { type Deployment, PROJECT_TAG_VALUE, resourceName, TAG_KEYS } from './config.js';
+import { type Deployment, resourceName, TAG_KEYS } from './config.js';
 
 /** Alarm thresholds (story CAP-51), all over a 5-minute window, `≥` the value. */
 export const OPS_ALARMS = {
@@ -58,8 +58,11 @@ export const BUDGET_NOTIFICATIONS = [
   { notificationType: 'FORECASTED', threshold: 100 },
 ] as const;
 
-/** Cost-allocation tag filter of the budget: `user:project$EIM_CAP` (the tag must be activated in Billing once). */
-export const BUDGET_TAG_FILTER = `user:${TAG_KEYS.project}$${PROJECT_TAG_VALUE}`;
+/**
+ * Cost-allocation tag filter of the budget: `user:project$<tags.project>` (naeva/dev: `user:project$EIM_CAP`; the tag
+ * must be activated in Billing once). The value comes from config (CAP-102).
+ */
+export const budgetTagFilter = (project: string): string => `user:${TAG_KEYS.project}$${project}`;
 
 const period = () => Duration.minutes(OPS_ALARMS.periodMinutes);
 
@@ -156,6 +159,8 @@ export interface MonthlyBudgetProps {
   readonly deployment: Deployment;
   /** `ops.budgetEur` from config; the Budgets API only takes USD (config README: 1 EUR ≈ 1 USD on purpose). */
   readonly budgetEur: number;
+  /** `tags.project` from config: the budget watches the spend tagged with it (CAP-102). */
+  readonly project: string;
   /** `/cap/<inst>/<stage>/alert-email`, resolved at deploy time. */
   readonly alertEmail: string;
   /** CAP-40's `HasAlertEmail`: the notifications exist only when the e-mail is not `unset`. */
@@ -165,7 +170,7 @@ export interface MonthlyBudgetProps {
 }
 
 /**
- * Monthly cost budget filtered by `project=EIM_CAP`, e-mail at 80 % actual / 100 % forecast.
+ * Monthly cost budget filtered by `project=<tags.project>`, e-mail at 80 % actual / 100 % forecast.
  *
  * No `budgetName` (CAP-69): most `AWS::Budgets::Budget` changes, the notifications among them (`alert-email` set or
  * changed), need replacement, and CloudFormation creates the new budget before deleting the old one, so a fixed name
@@ -188,7 +193,7 @@ export function addMonthlyBudget(stack: Stack, props: MonthlyBudgetProps): CfnBu
       budgetType: 'COST',
       timeUnit: 'MONTHLY',
       budgetLimit: { amount: props.budgetEur, unit: 'USD' },
-      costFilters: { TagKeyValue: [BUDGET_TAG_FILTER] },
+      costFilters: { TagKeyValue: [budgetTagFilter(props.project)] },
     },
     // Same pattern as the alerts subscription (SPEC-GAP CAP-40): one template, decided at deploy time.
     notificationsWithSubscribers: Fn.conditionIf(props.hasAlertEmail.logicalId, notifications, Aws.NO_VALUE),

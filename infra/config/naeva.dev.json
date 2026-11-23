@@ -4,5 +4,6 @@
   "app_origins": ["capacitor://localhost", "http://localhost:5173"],
   "domains": { "web": "caps.naevatec.com", "api": "api.caps.naevatec.com" },
   "ai": { "modelId": "eu.anthropic.claude-haiku-5-5", "dhashThreshold": 10 },
-  "ops": { "budgetEur": 10, "logRetentionDays": 30, "backupRetentionDays": 35 }
+  "ops": { "budgetEur": 10, "logRetentionDays": 30, "backupRetentionDays": 35 },
+  "tags": { "project": "EIM_CAP", "owner": "eiglesia4" }
 }
