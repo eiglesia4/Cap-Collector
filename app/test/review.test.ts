@@ -129,8 +129,8 @@ describe('AI review (CAP-43)', () => {
     expect(q<HTMLSelectElement>(el, '#cap-country')?.value).toBe('ES');
     expect(fieldEl(el, 'brand')?.classList.contains('field--unsure')).toBe(false);
     expect(fieldEl(el, 'country')?.classList.contains('field--unsure')).toBe(true);
-    expect(q(el, '[data-hint-for="country"]')?.textContent).toBe('Unsure · 55 %');
-    expect(q(el, '[data-hint-for="variant"]')?.textContent).toBe(t('review.unsure'));
+    expect(q(el, '[data-hint-for="country"] .unsure-label')?.textContent).toBe('Unsure · 55 %');
+    expect(q(el, '[data-hint-for="variant"] .unsure-label')?.textContent).toBe(t('review.unsure'));
     // Collector's own fields are never "unsure".
     expect(fieldEl(el, 'notes')?.classList.contains('field--unsure')).toBe(false);
     // The scan's photos are shown from memory.
@@ -153,6 +153,8 @@ describe('AI review (CAP-43)', () => {
     );
     ctx.capture.start(session(true));
     const el = review(ctx);
+    // CAP-98: every unsure value checked ("Looks right"), so the cap is saved `complete`.
+    for (const button of el.querySelectorAll<HTMLButtonElement>('[data-confirm]')) button.click();
     submit(el);
     await settle();
     const post = calls.find((c) => c.path === '/caps');
@@ -160,6 +162,9 @@ describe('AI review (CAP-43)', () => {
       brand: 'Mahou',
       country: 'ES',
       type: 'beer',
+      material: 'steel',
+      closure: 'pry-off',
+      acquiredOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       year: 1998,
       tags: [],
       quantity: 1,

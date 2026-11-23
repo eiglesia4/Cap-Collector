@@ -25,6 +25,11 @@
 // CAP-93 (ADR-004, architect decision in the CAP-92 review): a photo picked in the form carries its dHash (computed by
 // `cropCircle` exactly like a scan's), sent as `dhash` / `dhashUnderside` with the new cap or, in edit, in the PATCH
 // of the side it replaces — while that photo is still the one attached — so hand-entered caps are found by later scans.
+// Defaults when unsure (CAP-98, features.md § Defaults when unsure): a new cap (AI review, Manual entry, batch) starts
+// with `acquiredOn` = today, steel + pry-off when empty (marked "default — check") and `type` guessed from its text
+// (marked "guessed — check", re-guessed while the text is typed). Changing a marked or unsure field, or its "Looks
+// right" tap, clears the mark; Save of a new cap with an AI-unsure or guessed value still unchecked → `needsReview`.
+// Edit mode gets no defaults and no automatic status; `year` is never defaulted.
 import {
   AnalyseResponse,
   Cap,
@@ -66,6 +71,7 @@ import {
   type ValueField,
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
+import { DEFAULT_CLOSURE, DEFAULT_MATERIAL, guessType, localDate, type Mark } from '../capture/defaults.js';
 import { scanSource } from '../capture/duplicate.js';
 import { analyseBody, routeFor } from '../capture/flow.js';
 import {
@@ -87,7 +93,7 @@ import { ConfirmSheet } from '../components/confirm-sheet.js';
 import { CropCheckSheet, type CropCheckDeps } from '../components/crop-check.js';
 import { proposeLocation } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
-import type { AppContext, Screen } from '../context.js';
+import { clockOf, type AppContext, type Screen } from '../context.js';
 import { searchCountries } from '../i18n/countries.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
@@ -215,8 +221,34 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     : aiFields
       ? valuesFromFields(aiFields)
       : (prefill ?? { ...EMPTY_VALUES, tags: [] });
-  const initialValues: FormValues =
-    !cap && options.notes !== undefined ? { ...baseValues, notes: options.notes } : baseValues;
+  // CAP-98: how the values the user did not type got there (defaults, text guess); new caps only.
+  const marks = new Map<ValueField, Mark>();
+  const textOnCap = [aiFields?.textOnCap, scan?.response?.fields?.textOnCap, extra?.textOnCap].find(
+    (v): v is string => typeof v === 'string',
+  );
+  /** Guess `type` from the cap's text while it is empty or still a guess; drop a guess the text no longer backs. */
+  const guess = (v: FormValues): void => {
+    if (v.type !== '' && marks.get('type') !== 'guessed') return;
+    const guessed = guessType([v.brand, v.producer, v.description, textOnCap ?? ''].join(' '));
+    if (guessed !== undefined) {
+      v.type = guessed;
+      marks.set('type', 'guessed');
+    } else if (marks.delete('type')) v.type = '';
+  };
+  const seeded: FormValues = { ...baseValues, tags: [...baseValues.tags] };
+  if (mode !== 'edit') {
+    if (seeded.acquiredOn === '') seeded.acquiredOn = localDate(clockOf(ctx));
+    if (seeded.material === '') {
+      seeded.material = DEFAULT_MATERIAL;
+      marks.set('material', 'default');
+    }
+    if (seeded.closure === '') {
+      seeded.closure = DEFAULT_CLOSURE;
+      marks.set('closure', 'default');
+    }
+    guess(seeded);
+  }
+  const initialValues: FormValues = !cap && options.notes !== undefined ? { ...seeded, notes: options.notes } : seeded;
   const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
   const values: FormValues = { ...initialValues, tags: [...initialValues.tags] };
   const images: FormImages = { ...initialImages };
@@ -277,7 +309,15 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
 
   function changed(name: ValueField): void {
     touched.add(name);
-    if (isAiField(name) && unsure.delete(name)) renderHints();
+    const cleared = marks.delete(name);
+    if ((isAiField(name) && unsure.delete(name)) || cleared) renderHints();
+    if (
+      mode !== 'edit' &&
+      !touched.has('type') &&
+      (name === 'brand' || name === 'producer' || name === 'description')
+    ) {
+      reguess();
+    }
     // Quantity and forTrade are checked together (forTrade ≤ quantity).
     if (name === 'quantity') touched.add('forTrade');
     delete serverErrors[name];
@@ -304,6 +344,42 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     );
   }
 
+  /** Re-run the type guess over the current text (CAP-98) and show its result. */
+  function reguess(): void {
+    const before = values.type;
+    guess(values);
+    if (values.type !== before) setValue('type', values.type);
+    renderHints();
+  }
+
+  /** "Looks right" on a mark or an unsure highlight: the value is now the user's (CAP-98). */
+  function confirmField(name: ValueField): void {
+    touched.add(name);
+    marks.delete(name);
+    if (isAiField(name)) unsure.delete(name);
+    renderHints();
+  }
+
+  /** A new cap still holding an AI-unsure value or a text guess nobody checked is saved as `needsReview` (CAP-98). */
+  function toVerify(): boolean {
+    if ([...marks.values()].includes('guessed')) return true;
+    // SPEC-GAP CAP-98: an unsure field the AI left empty (typically `year`) has no value to verify, so it does not
+    // flag the cap; otherwise nearly every AI save would be `needsReview`.
+    // A field holding one of our defaults is not an AI guess (defaults alone never flag the cap).
+    return [...unsure.keys()].some((name) => !marks.has(name) && values[name].trim() !== '');
+  }
+
+  const confirmButton = (name: ValueField) =>
+    h(
+      'button',
+      {
+        class: 'button button--small button--secondary',
+        attrs: { type: 'button', 'data-confirm': name },
+        on: { click: () => confirmField(name) },
+      },
+      t('form.markConfirm'),
+    );
+
   /** Put `value` into field `name` as if typed (re-fill after "Ask again", an accepted AI suggestion). */
   function setValue(name: AiField, value: string): void {
     values[name] = value;
@@ -316,10 +392,22 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   function renderHints(): void {
     for (const [name, hint] of hints) {
       const fieldEl = hint.closest('.field');
-      const isUnsure = isAiField(name) && unsure.has(name);
+      const mark = marks.get(name);
+      const isUnsure = mark === undefined && isAiField(name) && unsure.has(name);
       fieldEl?.classList.toggle('field--unsure', isUnsure);
+      fieldEl?.classList.toggle('field--default', mark === 'default');
+      fieldEl?.classList.toggle('field--guessed', mark === 'guessed');
       const suggestion = options.ai?.suggestions.find((s) => s.field === name && values[name] !== s.value);
-      if (isUnsure) {
+      if (mark) {
+        hint.replaceChildren(
+          h(
+            'span',
+            { class: 'unsure-label', attrs: { 'data-mark': mark } },
+            t(mark === 'default' ? 'form.markDefault' : 'form.markGuessed'),
+          ),
+          confirmButton(name),
+        );
+      } else if (isUnsure) {
         const c = unsure.get(name as AiField);
         hint.replaceChildren(
           h(
@@ -327,6 +415,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
             { class: 'unsure-label' },
             c === undefined ? t('review.unsure') : t('review.unsureConfidence', { percent: Math.round(c * 100) }),
           ),
+          confirmButton(name),
         );
       } else if (suggestion) {
         hint.replaceChildren(
@@ -350,7 +439,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       } else {
         hint.replaceChildren();
       }
-      hint.hidden = !isUnsure && !suggestion;
+      hint.hidden = !mark && !isUnsure && !suggestion;
     }
   }
 
@@ -798,7 +887,19 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       if (response.outcome === 'unidentified') return sayAi('review.notIdentified');
       for (const [field, value] of Object.entries(refill(values, touched, response.fields))) {
         setValue(field as AiField, value);
+        if (value !== '') marks.delete(field as AiField);
       }
+      // CAP-98: the AI's new answer may leave material / closure / type empty again: default and guess as at the start.
+      for (const [name, value] of [
+        ['material', DEFAULT_MATERIAL],
+        ['closure', DEFAULT_CLOSURE],
+      ] as const) {
+        if (!touched.has(name) && values[name] === '') {
+          setValue(name, value);
+          marks.set(name, 'default');
+        }
+      }
+      if (!touched.has('type')) reguess();
       unsure = unsureFields(response.confidence);
       for (const name of touched) if (isAiField(name)) unsure.delete(name);
       renderHints();
@@ -932,7 +1033,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       on: {
         submit: (e) => {
           e.preventDefault();
-          void save(cap ? editStatus(cap) : 'complete');
+          void save(cap ? editStatus(cap) : toVerify() ? 'needsReview' : 'complete');
         },
       },
     },

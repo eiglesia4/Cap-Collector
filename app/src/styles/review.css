@@ -30,3 +30,10 @@
 .ai-status {
   margin: var(--space-2) 0 0;
 }
+
+/* Defaults when unsure (CAP-98): a filled-in default or a text guess, same family as the unsure highlight. */
+.field--default .input,
+.field--guessed .input {
+  border-color: var(--color-accent);
+  border-style: dashed;
+}
