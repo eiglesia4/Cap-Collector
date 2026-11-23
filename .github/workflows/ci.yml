@@ -14,6 +14,9 @@
 #              skipped on docs-only PRs
 #   ci-gate    the ONLY check required by branch protection; aggregates the others (skipped counts as success,
 #              but a failed or cancelled `changes` fails the gate: a broken detector never skips everything)
+#   coverage-badge  push to main only, after a green `test` (CAP-103): writes the README's shields.io endpoint JSON
+#              (tools/ci/coverage-badge.ts, T-infra-054/055) to the orphan branch `badges`. Only this job gets
+#              `contents: write`; it never touches `main` and is not part of ci-gate (it runs after the merge)
 #
 # Principles:
 #   • The CI has no AWS credentials, on purpose (as CCS_MRV): metadata and config files are switched off and
@@ -143,6 +146,49 @@ jobs:
           name: coverage
           path: coverage/
           if-no-files-found: ignore
+
+  coverage-badge:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    # Runs of successive merges queue instead of racing on the `badges` branch (never cancelled).
+    concurrency:
+      group: coverage-badge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+      - name: build coverage.json
+        run: node --experimental-strip-types --no-warnings tools/ci/coverage-badge.ts coverage/coverage-summary.json > "$RUNNER_TEMP/coverage.json" && cat "$RUNNER_TEMP/coverage.json"
+      - name: commit to the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A separate repo in a temp dir: the `badges` branch is orphan and shares no history with main.
+          dir="$RUNNER_TEMP/badges"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" badges >/dev/null; then
+            git clone --quiet --depth 1 --branch badges "$remote" "$dir"
+          else
+            git init --quiet "$dir" && git -C "$dir" checkout --quiet --orphan badges
+            git -C "$dir" remote add origin "$remote"
+          fi
+          cp "$RUNNER_TEMP/coverage.json" "$dir/coverage.json"
+          cd "$dir"
+          git add coverage.json
+          if git diff --cached --quiet; then echo "coverage unchanged"; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit --quiet -m "coverage for ${GITHUB_SHA::7}"
+          git push --quiet origin badges
 
   synth:
     needs: changes
