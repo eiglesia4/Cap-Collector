@@ -234,7 +234,9 @@ describe('AI review (CAP-43)', () => {
     });
     expect(q<HTMLInputElement>(el, '#cap-brand')?.value).toBe('Mahou Clásica'); // kept
     expect(q<HTMLSelectElement>(el, '#cap-country')?.value).toBe('PT'); // re-filled
-    expect(q<HTMLInputElement>(el, '#cap-year')?.value).toBe(''); // the new answer has none
+    // The new answer has none: the year default again (CAP-100), marked.
+    expect(q<HTMLInputElement>(el, '#cap-year')?.value).toBe(String(new Date().getFullYear()));
+    expect(fieldEl(el, 'year')?.classList.contains('field--default')).toBe(true);
     expect(fieldEl(el, 'country')?.classList.contains('field--unsure')).toBe(false); // 0.9 now
     expect(fieldEl(el, 'brand')?.classList.contains('field--unsure')).toBe(false); // edited by the user
     expect(q(el, '[data-ai-status]')?.textContent).toBe(t('review.updated'));

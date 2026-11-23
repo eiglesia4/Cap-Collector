@@ -29,7 +29,11 @@
 // with `acquiredOn` = today, steel + pry-off when empty (marked "default — check") and `type` guessed from its text
 // (marked "guessed — check", re-guessed while the text is typed). Changing a marked or unsure field, or its "Looks
 // right" tap, clears the mark; Save of a new cap with an AI-unsure or guessed value still unchecked → `needsReview`.
-// Edit mode gets no defaults and no automatic status; `year` is never defaulted.
+// Edit mode gets no defaults and no automatic status.
+// CAP-100 (same section, and § Place from GPS): an empty `year` = the current year and an empty `acquiredWhere` = the
+// place the phone is at now (web: the last place used on this device), both marked "default — check" and never
+// flagging the cap. The place arrives after the form opens (once per form, once per batch) and does not overwrite
+// what the user typed meanwhile; a saved `acquiredWhere` becomes the device's last place used.
 import {
   AnalyseResponse,
   Cap,
@@ -72,6 +76,7 @@ import {
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
 import { DEFAULT_CLOSURE, DEFAULT_MATERIAL, guessType, localDate, type Mark } from '../capture/defaults.js';
+import { defaultPlace, rememberPlace } from '../capture/place.js';
 import { scanSource } from '../capture/duplicate.js';
 import { analyseBody, routeFor } from '../capture/flow.js';
 import {
@@ -236,8 +241,13 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     } else if (marks.delete('type')) v.type = '';
   };
   const seeded: FormValues = { ...baseValues, tags: [...baseValues.tags] };
+  const thisYear = String(clockOf(ctx).getFullYear());
   if (mode !== 'edit') {
     if (seeded.acquiredOn === '') seeded.acquiredOn = localDate(clockOf(ctx));
+    if (seeded.year === '') {
+      seeded.year = thisYear;
+      marks.set('year', 'default');
+    }
     if (seeded.material === '') {
       seeded.material = DEFAULT_MATERIAL;
       marks.set('material', 'default');
@@ -810,6 +820,8 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         };
         saved = await ctx.api.request('/caps', { method: 'POST', body, schema: Cap });
       }
+      // CAP-100: the device's last place used (the web's `acquiredWhere` default).
+      if (saved.acquiredWhere) await rememberPlace(ctx.platform.store, saved.acquiredWhere);
       // An external AI's answer (CAP-45): its pending request is now reviewed.
       if (scan?.exchange) await markReviewed(ctx.api, scan);
       await options.onSaved?.(saved);
@@ -893,6 +905,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       for (const [name, value] of [
         ['material', DEFAULT_MATERIAL],
         ['closure', DEFAULT_CLOSURE],
+        ['year', thisYear],
       ] as const) {
         if (!touched.has(name) && values[name] === '') {
           setValue(name, value);
@@ -1115,6 +1128,22 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   );
   renderPhotos();
   renderHints();
+  // CAP-100: the place default arrives after the form opens; typing first wins. Started after the first render, and
+  // on a microtask, so a test API or platform that rejects synchronously only loses the default.
+  if (mode !== 'edit' && values.acquiredWhere === '') {
+    void Promise.resolve()
+      .then(() => defaultPlace(ctx, scan?.batch?.batchId))
+      .then((place) => {
+        if (!place || touched.has('acquiredWhere') || values.acquiredWhere !== '') return;
+        values.acquiredWhere = place;
+        initialValues.acquiredWhere = place;
+        const control = controls.get('acquiredWhere');
+        if (control) control.value = place;
+        marks.set('acquiredWhere', 'default');
+        renderHints();
+      })
+      .catch(() => undefined);
+  }
   return el;
 }
 

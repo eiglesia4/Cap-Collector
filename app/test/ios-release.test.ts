@@ -86,6 +86,7 @@ describe('iOS release readiness', () => {
       'NSCameraUsageDescription',
       'NSPhotoLibraryUsageDescription',
       'NSPhotoLibraryAddUsageDescription',
+      'NSLocationWhenInUseUsageDescription',
     ]) {
       expect(info[key], key).toMatch(/^CapCollector .{20,}/);
     }
@@ -113,6 +114,7 @@ describe('iOS release readiness', () => {
     expect(collected.map((d) => d.NSPrivacyCollectedDataType)).toEqual([
       'NSPrivacyCollectedDataTypePhotosorVideos',
       'NSPrivacyCollectedDataTypeUserID',
+      'NSPrivacyCollectedDataTypeCoarseLocation',
     ]);
     for (const d of collected) {
       expect(d.NSPrivacyCollectedDataTypeLinked).toBe(true);

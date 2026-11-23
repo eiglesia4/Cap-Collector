@@ -60,6 +60,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>CapCollector uses the camera to photograph bottle caps for your collection.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CapCollector uses your location to fill in where you got the cap (only the place name).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CapCollector reads photos you pick to add bottle caps to your collection.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

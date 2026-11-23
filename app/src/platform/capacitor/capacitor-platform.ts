@@ -9,11 +9,17 @@ import { Share } from '@capacitor/share';
 
 import { APPLE_CANCELLED, AppleSignIn, type AppleSignInPlugin } from './apple-sign-in-plugin.js';
 import {
+  PLACE_GUARD_MS,
+  PlaceName as PlaceNamePlugin,
+  type PlaceNamePlugin as PlaceNameApi,
+} from './place-name-plugin.js';
+import {
   AppleSignInError,
   isCancel,
   type AppleCredential,
   type AppleSignInRequest,
   type PickOptions,
+  type PlaceName,
   type Platform,
   type ShareRequest,
 } from '../platform.js';
@@ -33,12 +39,24 @@ export function isAppleCancel(error: unknown): boolean {
   return code === undefined ? isCancel(error) : code === APPLE_CANCELLED;
 }
 
+/** The plugin's answer as a PlaceName: only non-empty strings, null when it named nothing. */
+function placeFrom(raw: Record<string, unknown> | null | undefined): PlaceName | null {
+  if (!raw) return null;
+  const out: Record<string, string> = {};
+  for (const key of ['locality', 'region', 'countryCode', 'deviceRegion'] as const) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.trim() !== '') out[key] = value.trim();
+  }
+  return out.locality || out.region || out.countryCode ? (out as PlaceName) : null;
+}
+
 export interface CapacitorPlugins {
   readonly Camera: Pick<typeof Camera, 'takePhoto' | 'chooseFromGallery'>;
   readonly Share: Pick<typeof Share, 'share'>;
   readonly Filesystem: Pick<typeof Filesystem, 'writeFile'>;
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
   readonly AppleSignIn: Pick<AppleSignInPlugin, 'authorize'>;
+  readonly PlaceName: Pick<PlaceNameApi, 'currentPlace'>;
   readonly App: Pick<typeof App, 'addListener'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
@@ -50,6 +68,7 @@ const defaultPlugins = (): CapacitorPlugins => ({
   Filesystem,
   Preferences,
   AppleSignIn,
+  PlaceName: PlaceNamePlugin,
   App,
   fetch: (input) => fetch(input),
 });
@@ -90,8 +109,25 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     }
   }
 
+  // CAP-100 (features.md § Place from GPS): the plugin answers within its own ≈ 3 s once location is authorised; the
+  // JS guard only covers a bridge that never answers. Any failure is "no place".
+  async function currentPlace(): Promise<PlaceName | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), PLACE_GUARD_MS);
+    });
+    try {
+      return await Promise.race([plugins.PlaceName.currentPlace().then(placeFrom), timeout]);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     kind: 'native',
+    currentPlace,
     // The native sheet needs no SDK and keeps no popup to protect (CAP-64 is the web flow).
     prepareAppleSignIn: () => Promise.resolve(),
     signInWithApple,

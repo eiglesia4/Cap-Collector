@@ -1,0 +1,2 @@
+/* Spanish permission texts (CAP-100; the English ones are in Info.plist). */
+"NSLocationWhenInUseUsageDescription" = "Para rellenar dónde conseguiste la chapa (solo el nombre del lugar)";
