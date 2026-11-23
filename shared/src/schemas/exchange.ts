@@ -3,7 +3,18 @@
 import { z } from 'zod';
 
 import { CapFields } from './cap.js';
-import { CapType, Closure, Confidence, CountryCode, DHash, Instant, Material, Ulid, Year } from './enums.js';
+import {
+  CapType,
+  Closure,
+  Confidence,
+  CountryCode,
+  DHash,
+  Instant,
+  Material,
+  type UiLanguage,
+  Ulid,
+  Year,
+} from './enums.js';
 
 export const EXCHANGE_FORMAT = 'capcollector.exchange' as const;
 /** Every version ever emitted must stay accepted by `parseExchangeUpload` (CONVENTIONS.md § Identifiers). */
@@ -11,9 +22,27 @@ export const EXCHANGE_VERSIONS = [1] as const;
 export const EXCHANGE_CURRENT_VERSION = 1 as const;
 
 /** Text handed to the external model; the app copies it verbatim into `request.json` (exchange.md). */
-export const EXCHANGE_INSTRUCTIONS =
-  'You are helping identify a bottle cap. Look at the attached photo(s). Fill the `response` object below. ' +
-  'Use null when unsure and give a confidence 0–1 per field. Country is ISO 3166-1 alpha-2. Return ONLY the JSON of `response`.';
+const LANGUAGE_NAME: Record<UiLanguage, string> = { es: 'Spanish', en: 'English' };
+
+/**
+ * Instructions for the vision model, Bedrock and external alike (ADR-007, ADR-008 §7). v0.4 (CAP-95, decided with Edu
+ * on 2026-11-23): best guesses with a low confidence instead of null, `type` inferred from the producer, the usual
+ * crown-cap material/closure, never a guessed `year`, and `description` written in the user's language.
+ */
+export function exchangeInstructions(language: UiLanguage = 'en'): string {
+  return (
+    'You are helping identify a bottle cap. Look at the attached photo(s). Fill the `response` object below and give ' +
+    'a confidence 0–1 per field. Give your best guess for every field you can reasonably infer: a low confidence is ' +
+    'better than null. Infer `type` from the brand, producer or text (a brewery → beer, a cider maker → cider, a ' +
+    'winery → wine). Crown caps are usually steel and pry-off unless the photo shows otherwise. Use null only when ' +
+    'there is no basis at all, and for `year` unless a year is printed or the design clearly dates it. Keep brand, ' +
+    'variant and textOnCap exactly as printed. Country is ISO 3166-1 alpha-2. Write `description` in ' +
+    `${LANGUAGE_NAME[language]}. Return ONLY the JSON of \`response\`.`
+  );
+}
+
+/** The English instructions (pre-v0.4 callers and exchange bundles without a language). */
+export const EXCHANGE_INSTRUCTIONS = exchangeInstructions('en');
 
 /** Human-readable field schema sent to the model (strings, not zod), kept in step with `ResponseFields`. */
 export const EXCHANGE_FIELD_SCHEMA = {

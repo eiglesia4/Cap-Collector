@@ -36,7 +36,7 @@ second opinion for `needsReview` caps.
   "requestId": "01J9…",
   "createdAt": "2026-10-18T10:14:00Z",
   "photos": [{ "file": "top.webp", "side": "top", "dhash": "a3f0…" }],
-  "instructions": "You are helping identify a bottle cap. Look at the attached photo(s). Fill the `response` object below. Use null when unsure and give a confidence 0–1 per field. Return ONLY the JSON of `response`.",
+  "instructions": "<exchangeInstructions(language) from shared: best guesses with low confidence instead of null, type inferred from the producer, never a guessed year, description in the user's language (v0.4)>",
   "schema": {
     "brand": "string", "variant": "string|null", "producer": "string|null",
     "country": "ISO 3166-1 alpha-2|null", "type": "beer|soft drink|water|cider|wine|other",

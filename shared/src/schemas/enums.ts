@@ -9,6 +9,11 @@ export type CapStatus = z.infer<typeof CapStatus>;
 export const LocationKind = z.enum(['album', 'box', 'frame']);
 export type LocationKind = z.infer<typeof LocationKind>;
 
+/** Language of the UI and of the AI's free-text fields (contracts v0.4, CAP-95). Spanish is the app default. */
+export const UiLanguage = z.enum(['es', 'en']);
+export type UiLanguage = z.infer<typeof UiLanguage>;
+export const DEFAULT_LANGUAGE: UiLanguage = 'es';
+
 /** Drink category printed on the cap (exchange.md § request.json schema). */
 export const CapType = z.enum(['beer', 'soft drink', 'water', 'cider', 'wine', 'other']);
 export type CapType = z.infer<typeof CapType>;

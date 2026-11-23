@@ -34,6 +34,9 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 - Mac/web: identical bundle; Scan becomes "Upload photo"; Exchange gets a drag-and-drop zone;
   bulk edit and export live here.
 
+## Language (CAP-95)
+- Settings → **Language**: Español (default) · English. Applies immediately, without reloading the page or the app.
+
 ## Batch mode (ADR-009, decided 2026-11-21)
 - **Entry:** Scan has a **Single · Batch** switch (remembered per device). On Mac/web it reads "Upload tray photo".
   Batch shows a one-line hint over the camera: "Plain dark background · caps face up · a finger's width apart · up to 30".

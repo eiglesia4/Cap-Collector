@@ -12,6 +12,9 @@ import {
   AppleSignInRequest,
   CapPatch,
   CONTRACTS_VERSION,
+  DEFAULT_LANGUAGE,
+  EXCHANGE_INSTRUCTIONS,
+  exchangeInstructions,
   SheetView,
   Healthz,
   Problem,
@@ -228,7 +231,7 @@ describe('shared contracts v0.2 (CAP-26)', () => {
 
   it('[T-shared-006] routes manifest equals openapi.yaml: same path+method set, auth matches security markers, handler names unique', () => {
     const doc = api();
-    expect(doc.info.version).toBe('0.3.0');
+    expect(doc.info.version).toBe(CONTRACTS_VERSION);
     const fromApi = new Set<string>();
     const publicOps = new Set<string>();
     for (const [path, ops] of Object.entries(doc.paths)) {
@@ -296,8 +299,7 @@ describe('shared contracts v0.2 (CAP-26)', () => {
 });
 
 describe('shared contracts v0.3 (CAP-76)', () => {
-  it('[T-shared-008] v0.3 additions: optional SheetPocket.thumbUrl (URL), version 0.3.0, no new routes', () => {
-    expect(CONTRACTS_VERSION).toBe('0.3.0');
+  it('[T-shared-008] v0.3 additions: optional SheetPocket.thumbUrl (URL), no new routes', () => {
     expect(routeByHandler('albums-get')).toBeUndefined();
     const base = {
       albumId: '01JBF70A1B2C3D4E5F6G7H8J9K',
@@ -312,5 +314,28 @@ describe('shared contracts v0.3 (CAP-76)', () => {
     expect(SheetView.safeParse(withUrl).success).toBe(true);
     const bad = { ...base, pockets: [{ ...base.pockets[0], thumbUrl: 'not a url' }] };
     expect(SheetView.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('shared contracts v0.4 (CAP-95)', () => {
+  it('[T-shared-009] v0.4: optional AnalyseRequest.language (es|en), Spanish default, language-aware AI instructions, version 0.4.0', () => {
+    expect(CONTRACTS_VERSION).toBe('0.4.0');
+    expect(DEFAULT_LANGUAGE).toBe('es');
+    const base = {
+      scanId: '01JBF70A1B2C3D4E5F6G7H8J9K',
+      dhash: '0123456789abcdef',
+      imageKeys: { top: 'u1/x/top.webp' },
+    };
+    expect(AnalyseRequest.safeParse(base).success).toBe(true); // v0.3 requests stay valid
+    expect(AnalyseRequest.safeParse({ ...base, language: 'es' }).success).toBe(true);
+    expect(AnalyseRequest.safeParse({ ...base, language: 'fr' }).success).toBe(false);
+    expect(exchangeInstructions('es')).toContain('Write `description` in Spanish');
+    expect(exchangeInstructions('en')).toContain('Write `description` in English');
+    expect(EXCHANGE_INSTRUCTIONS).toBe(exchangeInstructions('en'));
+    for (const text of [exchangeInstructions('es'), EXCHANGE_INSTRUCTIONS]) {
+      expect(text).toContain('a brewery → beer');
+      expect(text).toContain('`year`');
+      expect(text).not.toMatch(/use null when unsure/i);
+    }
   });
 });

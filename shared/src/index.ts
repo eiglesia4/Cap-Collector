@@ -1,6 +1,6 @@
 // @capcollector/shared — contracts between app/ and api/: zod schemas, inferred types, DynamoDB keys and the
 // `capcollector.exchange` format (EP-01, CAP-12, contracts v0.2 (CAP-26)). Only the architect writes here (OWNERSHIP.md).
-export const CONTRACTS_VERSION = '0.3.0';
+export const CONTRACTS_VERSION = '0.4.0';
 
 export * from './schemas/enums.js';
 export * from './schemas/location.js';
