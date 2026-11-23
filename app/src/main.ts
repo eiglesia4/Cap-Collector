@@ -11,6 +11,7 @@ import { createBatchContext } from './batch/context.js';
 import { indexedDbBatchStore } from './batch/store.js';
 import { createCaptureStore } from './capture/context.js';
 import { loadConfig } from './config.js';
+import { loadLanguage } from './i18n/language-setting.js';
 import { selectPlatform } from './platform/select-platform.js';
 import { createSessionStore } from './session/session-store.js';
 
@@ -19,7 +20,7 @@ async function start(root: HTMLElement): Promise<void> {
   const platform = await selectPlatform(window, config.apple);
   const session = createSessionStore(platform.store);
   const apiUrl = createApiUrlSetting(config, platform.store);
-  await Promise.all([session.load(), apiUrl.load()]);
+  await Promise.all([session.load(), apiUrl.load(), loadLanguage(platform.store)]);
   const api = createApiClient({ baseUrl: apiUrl.current, session });
   const batch = createBatchContext(indexedDbBatchStore());
   renderApp(root, { config, platform, session, api, apiUrl, capture: createCaptureStore(), batch });

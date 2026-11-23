@@ -4,9 +4,10 @@
 // A cap link opened signed out (`collectors://cap/<id>`, `/cap/<id>`) is kept in memory as the pending route and opened
 // after a successful sign-in instead of Collection; a cancelled sign-in or a restart drops it (CAP-54, CAP-33 review).
 // The "⋯" and sort menus of every screen close on an outside tap or Escape (ui/menus.ts, CAP-90).
+// Settings → Language (CAP-97) switches at once: the tab bar, the title and the current screen are rendered again.
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
-import { t } from './i18n/i18n.js';
+import { onLanguageChange, t } from './i18n/i18n.js';
 import { handleDeepLinks } from './router/deep-link.js';
 import { createRouter, type Router } from './router/router.js';
 import { pathFor } from './router/routes.js';
@@ -23,7 +24,7 @@ export interface AppHandle {
 
 export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = window): AppHandle {
   const view = h('main', { class: 'view' });
-  const tabs = TabBar(ctx.platform.kind);
+  let tabs = TabBar(ctx.platform.kind);
   const shell = h('div', { class: 'shell' }, view, tabs.el);
   root.replaceChildren(shell);
   win.document.title = t('app.name');
@@ -69,12 +70,21 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
   const stopMenus = installMenuDismissal(win.document);
   router.start();
   const unsubscribe = ctx.session.subscribe(reroute);
+  const stopLanguage = onLanguageChange(() => {
+    const next = TabBar(ctx.platform.kind);
+    next.el.hidden = tabs.el.hidden;
+    tabs.el.replaceWith(next.el);
+    tabs = next;
+    win.document.title = t('app.name');
+    reroute();
+  });
   // `collectors://cap/<id>` opens the cap (CAP-33); signed out, the guard above still sends it to Sign in.
   const stopDeepLinks = handleDeepLinks(ctx.platform, full.navigate);
   return {
     router,
     destroy: () => {
       stopDeepLinks();
+      stopLanguage();
       stopMenus();
       unsubscribe();
       router.stop();

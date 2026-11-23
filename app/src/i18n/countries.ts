@@ -1,5 +1,9 @@
 // Countries for the cap form's country select (CAP-25) and the collection chips (CAP-23): the ISO 3166-1 alpha-2
-// codes (shared `CountryCode`), named by the runtime's Intl data in English (copy is English first, CLAUDE.md § app).
+// codes (shared `CountryCode`), named by the runtime's Intl data in the UI language (CAP-97, CONVENTIONS.md § Language),
+// sorted with that language's collation; search ignores case and accents.
+import type { UiLanguage } from '@capcollector/shared';
+
+import { language } from './i18n.js';
 
 /** Officially assigned ISO 3166-1 alpha-2 codes. */
 export const COUNTRY_CODES: readonly string[] = (
@@ -12,17 +16,24 @@ export const COUNTRY_CODES: readonly string[] = (
   'TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'
 ).split(' ');
 
-let names: Intl.DisplayNames | null | undefined;
+const displayNames = new Map<UiLanguage, Intl.DisplayNames | null>();
 
-/** English name of an ISO code (`ES` → `Spain`), or the code itself when the runtime has no name for it. */
-export function countryName(code: string): string {
+function namesFor(lang: UiLanguage): Intl.DisplayNames | null {
+  let names = displayNames.get(lang);
   if (names === undefined) {
     try {
-      names = new Intl.DisplayNames(['en'], { type: 'region' });
+      names = new Intl.DisplayNames([lang], { type: 'region' });
     } catch {
       names = null;
     }
+    displayNames.set(lang, names);
   }
+  return names;
+}
+
+/** Name of an ISO code in the UI language (`ES` → `España` / `Spain`), or the code when the runtime has no name. */
+export function countryName(code: string): string {
+  const names = namesFor(language());
   try {
     return names?.of(code) ?? code;
   } catch {
@@ -30,9 +41,12 @@ export function countryName(code: string): string {
   }
 }
 
-/** Every country as `{ code, name }`, sorted by name. */
+/** Every country as `{ code, name }`, sorted by name in the UI language (`Á` sorts with `A`). */
 export function countryOptions(): { code: string; name: string }[] {
-  return COUNTRY_CODES.map((code) => ({ code, name: countryName(code) })).sort((a, b) => a.name.localeCompare(b.name));
+  const collator = new Intl.Collator(language(), { sensitivity: 'base' });
+  return COUNTRY_CODES.map((code) => ({ code, name: countryName(code) })).sort((a, b) =>
+    collator.compare(a.name, b.name),
+  );
 }
 
 /** Countries whose name or code contains `query` (case/accent-insensitive); all of them for an empty query. */

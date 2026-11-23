@@ -26,6 +26,7 @@ import { hammingDistance } from '../images/dhash.js';
 import type { CapPhoto } from '../images/resize.js';
 import type { CaptureSession } from './context.js';
 import { manualEntryPath, routeFor } from './flow.js';
+import { language } from '../i18n/i18n.js';
 
 /** Client-side intra-batch duplicate guard (ADR-009 §4): wider than the server's default threshold (10). */
 export const BATCH_DHASH_GUARD = 12;
@@ -118,6 +119,7 @@ export function createBatchRunner(initial: Batch, deps: BatchRunDeps): BatchRunn
         dhash: start.dhash,
         imageKeys: { top: ref.key },
         useAi: await deps.useAi(),
+        language: language(),
       };
       try {
         const response = await deps.analyse(body);

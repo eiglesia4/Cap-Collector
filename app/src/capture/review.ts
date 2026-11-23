@@ -7,6 +7,7 @@ import { CapFields, type AnalyseRequest, type AnalyseResponse, type Cap } from '
 import { valuesFromFields, type FormValues } from '../cap/form-model.js';
 import type { CaptureSession } from './context.js';
 import { scanSource } from './duplicate.js';
+import { language } from '../i18n/i18n.js';
 
 /** Below this confidence (or with none) a pre-filled field is highlighted as unsure (story CAP-43). */
 export const UNSURE_BELOW = 0.7;
@@ -103,6 +104,7 @@ export function reidentifyBody(cap: Cap, scanId: string, dhash: string): Analyse
     known: knownFromCap(cap),
     capId: cap.capId,
     useAi: true,
+    language: language(),
   };
   if (cap.images.underside) {
     body.imageKeys.underside = cap.images.underside.key;

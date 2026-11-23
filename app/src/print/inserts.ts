@@ -8,7 +8,7 @@ import { formatLocationCode, type Album, type Cap } from '@capcollector/shared';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import QRCode from 'qrcode';
 
-import { t } from '../i18n/i18n.js';
+import { locale, t } from '../i18n/i18n.js';
 import { MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
 import { APP_SCHEME } from '../router/deep-link.js';
 import {
@@ -236,7 +236,7 @@ function drawCalibration(d: Drawer): void {
   d.text(t('print.calibration'), MARGIN_MM + CALIBRATION_MM + 3, MARGIN_MM + CALIBRATION_MM / 2 + 1.5, 9);
 }
 
-const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateFormat = () => new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', year: 'numeric' });
 
 function drawIndex(d: Drawer, input: InsertsInput, sheet: IndexSheet, g: IndexGeometry): void {
   const album = input.album;
@@ -246,7 +246,7 @@ function drawIndex(d: Drawer, input: InsertsInput, sheet: IndexSheet, g: IndexGe
     t('print.indexHeader', {
       letter: album.letter,
       sheet: String(sheet.sheet),
-      date: dateFormat.format(input.printedOn),
+      date: dateFormat().format(input.printedOn),
     }),
     MARGIN_MM,
     MARGIN_MM + 6,

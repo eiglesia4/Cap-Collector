@@ -10,7 +10,7 @@ import { collectionFilterPath, type CollectionFilter } from '../collection/query
 import { ScreenHeader } from '../components/screen-header.js';
 import { clockOf, type Screen } from '../context.js';
 import { countryName } from '../i18n/countries.js';
-import { t, type MessageKey } from '../i18n/i18n.js';
+import { locale, t, type MessageKey } from '../i18n/i18n.js';
 import { TYPE_LABEL } from '../i18n/labels.js';
 import { collectionStats, OTHERS, UNKNOWN, type Bar, type Stats } from '../stats/aggregate.js';
 import { statsCaps } from '../stats/data.js';
@@ -19,8 +19,8 @@ import { h } from '../ui/dom.js';
 /** Pull distance (px) that refreshes on the iPhone, as on Collection. */
 const PULL_THRESHOLD = 70;
 
-const numberFormat = new Intl.NumberFormat('en-US');
-const monthFormat = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+const numberFormat = () => new Intl.NumberFormat(locale('number'));
+const monthFormat = () => new Intl.DateTimeFormat(locale('date'), { month: 'short', year: '2-digit', timeZone: 'UTC' });
 
 const STATUS_LABEL: Readonly<Record<string, MessageKey>> = {
   complete: 'stats.status.complete',
@@ -50,7 +50,7 @@ function BarList(series: Series): HTMLElement {
     const children = [
       h('span', { class: 'stats-bar__label' }, series.label(bar.key)),
       h('span', { class: 'stats-bar__track', attrs: { 'aria-hidden': 'true' } }, fill),
-      h('span', { class: 'stats-bar__count' }, numberFormat.format(bar.count)),
+      h('span', { class: 'stats-bar__count' }, numberFormat().format(bar.count)),
     ];
     const filter = bar.count > 0 ? series.filter?.(bar.key) : undefined;
     const row =
@@ -78,7 +78,7 @@ function Totals(stats: Stats): HTMLElement {
       'div',
       { class: 'stats-total', attrs: { 'data-total': key } },
       h('dt', {}, t(label)),
-      h('dd', {}, numberFormat.format(n)),
+      h('dd', {}, numberFormat().format(n)),
     );
   const { totals } = stats;
   return h(
@@ -95,7 +95,7 @@ function Totals(stats: Stats): HTMLElement {
 
 function monthLabel(key: string): string {
   const [year, month] = key.split('-').map(Number);
-  return monthFormat.format(new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, 1)));
+  return monthFormat().format(new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, 1)));
 }
 
 export function StatsView(stats: Stats): HTMLElement[] {

@@ -21,6 +21,7 @@ import { CapPageSchema } from '../collection/cap-page.js';
 import { hammingDistance } from '../images/dhash.js';
 import type { CapPhoto } from '../images/resize.js';
 import type { Side } from '../images/upload.js';
+import { language } from '../i18n/i18n.js';
 
 /** Caps fetched for the brand re-check (`GET /caps?q=<brand>`). */
 export const BRAND_CHECK_LIMIT = 60;
@@ -96,6 +97,7 @@ export async function continueToReview(deps: ContinueDeps, input: ContinueInput)
     imageKeys: { top: topRef.key },
     known: { ...input.fields },
     useAi: false,
+    language: language(),
   };
   if (underside && undersideRef) {
     body.dhashUnderside = underside.photo.dhash;

@@ -118,6 +118,7 @@ describe('batch runner', () => {
         dhash: runner.batch().items[i]?.dhash,
         imageKeys: { top: expect.stringMatching(/^u1\/u\d+\/top\.webp$/) },
         useAi: true,
+        language: 'en',
       });
     }
     // The answers arrive; nothing more starts until the current item is resolved.

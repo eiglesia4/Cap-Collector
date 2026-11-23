@@ -10,7 +10,7 @@ import { Album, type Cap } from '@capcollector/shared';
 import { AlbumListSchema, albumSheetPath, parseMeasures, parseSheetList, sheetCount } from '../albums/model.js';
 import { fetchAllCaps } from '../collection/all-caps.js';
 import type { AppContext, Screen } from '../context.js';
-import { t, type MessageKey } from '../i18n/i18n.js';
+import { locale, t, type MessageKey } from '../i18n/i18n.js';
 import { buildInsertsPdf, planInserts, type PrintWhat } from '../print/inserts.js';
 import { discDiameter, SUGGESTED_PITCH_MM, SUGGESTED_POCKET_MM } from '../print/layout.js';
 import { albumCaps, indexSheets, markPrinted, readLastPrint, scopeCaps, type PrintScope } from '../print/scope.js';
@@ -34,7 +34,7 @@ function browserDownload(file: File): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateFormat = () => new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** The ask-first form: pocket and pitch in mm, suggested from Edu's COMPART measurement. */
 function MeasureForm(ctx: AppContext, album: Album, saved: (album: Album) => void): HTMLElement {
@@ -163,7 +163,7 @@ export function PrintView(
             const when = now();
             void markPrinted(ctx.platform.store, album.albumId, when).then(() => {
               since = when;
-              sinceLabel.textContent = t('print.scope.since', { date: dateFormat.format(when) });
+              sinceLabel.textContent = t('print.scope.since', { date: dateFormat().format(when) });
               mark.hidden = true;
               say('print.marked');
               update();
@@ -254,7 +254,7 @@ export function PrintView(
     const sinceLabel = h(
       'span',
       {},
-      since === null ? t('print.scope.sinceNever') : t('print.scope.since', { date: dateFormat.format(since) }),
+      since === null ? t('print.scope.sinceNever') : t('print.scope.since', { date: dateFormat().format(since) }),
     );
 
     body.replaceChildren(

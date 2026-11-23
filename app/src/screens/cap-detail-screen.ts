@@ -19,7 +19,7 @@ import { ConfirmSheet } from '../components/confirm-sheet.js';
 import { placeActions } from '../components/place-sheet.js';
 import { showToast } from '../components/toast.js';
 import type { AppContext, Screen } from '../context.js';
-import { t, type MessageKey } from '../i18n/i18n.js';
+import { locale, t, type MessageKey } from '../i18n/i18n.js';
 import { CLOSURE_LABEL, CONDITION_LABEL, MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
 import { exchangePath, pathFor } from '../router/routes.js';
 import { h, type Child } from '../ui/dom.js';
@@ -38,11 +38,11 @@ const ACTION_LABEL: Record<CapHistory['action'], MessageKey> = {
   reidentified: 'history.reidentified',
 };
 
-const dateFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateFormat = () => new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', year: 'numeric' });
 
 export function formatDate(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFormat.format(d);
+  return Number.isNaN(d.getTime()) ? iso : dateFormat().format(d);
 }
 
 function value(v: unknown): string {

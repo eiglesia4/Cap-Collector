@@ -147,7 +147,13 @@ describe('capture flow', () => {
     await off.flow.shoot(TOP_PHOTO);
     await off.flow.skipUnderside();
     const [first] = vi.mocked(off.deps.analyse).mock.calls[0] as unknown as [AnalyseRequest];
-    expect(first).toEqual({ scanId: SCAN_ID, dhash: TOP_HASH, imageKeys: { top: ref('top').key }, useAi: false });
+    expect(first).toEqual({
+      scanId: SCAN_ID,
+      dhash: TOP_HASH,
+      imageKeys: { top: ref('top').key },
+      useAi: false,
+      language: 'en',
+    });
     expect(first).not.toHaveProperty('capId');
     expect(first).not.toHaveProperty('known');
     expect(AnalyseRequest.parse(first)).toEqual(first);
@@ -162,6 +168,7 @@ describe('capture flow', () => {
       dhashUnderside: UNDER_HASH,
       imageKeys: { top: ref('top').key, underside: ref('underside').key },
       useAi: true,
+      language: 'en',
       targetLocationCode: 'A·3·17',
     });
     expect(AnalyseRequest.parse(second)).toEqual(second);
