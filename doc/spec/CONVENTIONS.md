@@ -1,7 +1,12 @@
 # Conventions
 
 ## Language
-- Documentation and code in **English**. UI copy in English first; Spanish localisation later (i18n keys from day one).
+- Documentation and code in **English**.
+- UI (decided with Edu, 2026-11-23, CAP-95): **Spanish (`es`) by default**, English (`en`) available. Settings →
+  Language, remembered per device; the device language is not used as the default. Every string goes through i18n keys;
+  enum labels and country names are localised (country names via `Intl.DisplayNames`), and dates and numbers use the
+  selected locale. Data values are never translated (brand, variant, textOnCap, producer). The AI writes `description`
+  in the UI language (`AnalyseRequest.language`, contracts v0.4; exchange bundles use `exchangeInstructions(language)`).
 
 ## Documents
 - Markdown everywhere. One topic per file. File names `UPPER_SNAKE.md` for top-level docs, `kebab-case.md` inside `docs/`.

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CapCollector API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Contract between `app/` and `api/` (CAP-12 v0.1 → CAP-26 v0.2). Owned by the architect; changes are new versions.
     Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name

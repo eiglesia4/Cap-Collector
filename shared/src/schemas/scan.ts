@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 import { CapFields } from './cap.js';
-import { Confidence, DHash, Instant, Ulid } from './enums.js';
+import { Confidence, DHash, Instant, UiLanguage, Ulid } from './enums.js';
 
 /** The three outcomes every scan ends in (ADR-003). */
 export const ScanOutcome = z.enum(['duplicate', 'identified', 'unidentified']);
@@ -25,6 +25,8 @@ export const AnalyseRequest = z
     targetLocationCode: z.string().optional(),
     /** `false` skips Bedrock (settings "AI off"): duplicate check only, then manual / exchange. */
     useAi: z.boolean().default(true),
+    /** v0.4 (CAP-95): language of the AI's free text (`description`). Absent → English, as before v0.4. */
+    language: UiLanguage.optional(),
   })
   .strict();
 export type AnalyseRequest = z.infer<typeof AnalyseRequest>;

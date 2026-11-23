@@ -16,6 +16,22 @@
   review; pending requests; backup export/import (see exchange.md, ADR-007).
 - Settings: album definitions (name, sheets, pocket size & pitch), AI on/off.
 
+## Defaults when unsure (decided with Edu, 2026-11-23, CAP-95)
+Fill rather than leave blank, but show what is a guess:
+- **AI:** best guess with a low confidence instead of null (`exchangeInstructions`): `type` inferred from the
+  producer/brand/text (a brewery → beer), crown caps steel + pry-off unless the photo says otherwise; `year` stays null
+  unless printed or clearly dated. Fields below the confidence threshold are highlighted as unsure (as today).
+- **Form, new cap (AI review, Manual entry, batch):**
+  - `acquiredOn` = today when empty, editable, not flagged.
+  - `material` = steel and `closure` = pry-off when empty, marked "default — check", not flagged on their own.
+  - Manual entry with no AI: `type` pre-selected from the brand/producer/description text when it names a brewery
+    (cervecera, brewery, brauerei, brasserie, birra…) → beer, cider maker → cider, winery/bodega → wine; marked
+    "guessed — check".
+  - `year` is never defaulted (today's year would be wrong data).
+- **Status:** a new cap saved while an AI-unsure or text-guessed field is still untouched is saved as `needsReview`
+  ("to verify"); touching or confirming the field clears its mark. Defaults for `acquiredOn`, `material` and
+  `closure` alone don't make a cap `needsReview`.
+
 ## Phase 2 — worth it
 - Batch mode (ADR-009, SCREENS.md § Batch mode): tray photo → caps segmented on the device → user adjusts the circles →
   each cap is a normal scan (dHash before AI, three outcomes) with "4 of 11" progress, prefetch of the next 2,
