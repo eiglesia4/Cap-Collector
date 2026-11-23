@@ -1,6 +1,6 @@
 // Cost-allocation tag values from the target config (CAP-102, EP-09 self-hosting): `tags` is required, the app-level
 // tags, the budget filter and the `settings:bootstrap` tags follow it, `example` is a template that never synthesises,
-// and naeva/dev keeps EIM_CAP / eiglesia4 (CONVENTIONS § AWS tagging).
+// and test/dev keeps capcollector-test / tester (CONVENTIONS § AWS tagging).
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +19,7 @@ import {
 } from '../lib/config.js';
 import { budgetTagFilter } from '../lib/ops.js';
 import { bootstrapSettings, type Command, settingsTarget } from '../lib/settings.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
 const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_JANE_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
@@ -99,7 +100,7 @@ describe('cost-allocation tags from config', () => {
 
     // Nothing of the owner's values leaks into someone else's synth.
     const json = JSON.stringify([data.toJSON(), api.toJSON()]);
-    expect(json).not.toMatch(/EIM_CAP|eiglesia4/);
+    expect(json).not.toMatch(/capcollector-test|tester/);
 
     // settings:bootstrap tags each parameter it creates with the same values.
     const target = settingsTarget({ CAP_INSTALLATION: 'jane', CAP_STAGE: 'dev' }, dir);
@@ -132,17 +133,17 @@ describe('cost-allocation tags from config', () => {
     expect(() => settingsTarget({ CAP_INSTALLATION: 'example', CAP_STAGE: 'dev' })).toThrow(/is the template/);
   });
 
-  it('[T-infra-053] naeva/dev keeps project=EIM_CAP and UserName=eiglesia4, and its budget filter', () => {
-    const naeva = { installation: 'naeva', stage: 'dev' };
-    const config = loadInstallationConfig(naeva);
-    expect(config.tags).toEqual({ project: 'EIM_CAP', owner: 'eiglesia4' });
-    expect(deploymentTags(naeva, config)).toEqual({
-      project: 'EIM_CAP',
-      UserName: 'eiglesia4',
-      installation: 'naeva',
+  it('[T-infra-053] the fixture target test/dev carries its own tags and budget filter (no owner values in the repo)', () => {
+    const test = { installation: 'test', stage: 'dev' };
+    const config = loadInstallationConfig(test, FIXTURE_CONFIG_DIR);
+    expect(config.tags).toEqual({ project: 'capcollector-test', owner: 'tester' });
+    expect(deploymentTags(test, config)).toEqual({
+      project: 'capcollector-test',
+      UserName: 'tester',
+      installation: 'test',
       stage: 'dev',
       'cap:config_version': config.config_version,
     });
-    expect(budgetTagFilter(config.tags.project)).toBe('user:project$EIM_CAP');
+    expect(budgetTagFilter(config.tags.project)).toBe('user:project$capcollector-test');
   });
 });

@@ -118,7 +118,7 @@ export function showSettings(target: SettingsTarget, run: Runner): { name: strin
   });
 }
 
-/** One line per setting, e.g. `/cap/naeva/dev/session-secret  set`. */
+/** One line per setting, e.g. `/cap/mine/dev/session-secret  set`. */
 export const formatShow = (rows: readonly { name: string; state: SettingState }[]): string => {
   const width = Math.max(...rows.map((r) => r.name.length));
   return rows.map((r) => `${r.name.padEnd(width)}  ${r.state}`).join('\n');

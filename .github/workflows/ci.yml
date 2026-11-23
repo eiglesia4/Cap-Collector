@@ -10,7 +10,8 @@
 #   checks     lint (eslint + prettier) · typecheck (tsc per workspace) · catalog:check (TEST.md up to date,
 #              every test has a unique [T-<comp>-nnn] ID); docs-only PRs: prettier on the changed .md files only
 #   test       vitest, all workspaces, coverage ≥ 80 % — skipped on docs-only PRs
-#   synth      cdk synth naeva/dev without credentials (T-infra-002/003 guard stays silent with no account) —
+#   synth      cdk synth of the fixture target test/dev (infra/test/fixtures/config, CAP-105: real target configs
+#              are local) without credentials (T-infra-002/003 guard stays silent with no account) —
 #              skipped on docs-only PRs
 #   ci-gate    the ONLY check required by branch protection; aggregates the others (skipped counts as success,
 #              but a failed or cancelled `changes` fails the gate: a broken detector never skips everything)
@@ -206,8 +207,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: cdk synth naeva/dev
+      - name: cdk synth test/dev (fixture config)
         run: npm run synth
+        env:
+          CAP_INSTALLATION: test
+          CAP_STAGE: dev
+          CAP_CONFIG_DIR: ${{ github.workspace }}/infra/test/fixtures/config
 
   ci-gate:
     name: ci-gate

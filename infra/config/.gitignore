@@ -1,0 +1,4 @@
+# Target configs are private to whoever deploys them (CAP-105): only the template is committed. Tests and CI use
+# infra/test/fixtures/config/ (CAP_CONFIG_DIR). Copy example.dev.json to <inst>.<stage>.json and edit it.
+*.json
+!example.dev.json

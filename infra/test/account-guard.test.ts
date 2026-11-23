@@ -9,13 +9,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../lib/app.js';
 import { accountVarName, loadInstallationConfig, resolveDeployment } from '../lib/config.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
 // Fake account ids with the right shape, built rather than written (no 12-digit literals in the repo).
 const fakeAccount = (n: number) => String(n).padStart(12, '0');
 const ACCOUNT_A = fakeAccount(1);
 const ACCOUNT_B = fakeAccount(2);
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE', 'AWS_PROFILE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE', 'AWS_PROFILE'];
 const saved: Record<string, string | undefined> = {};
 
 const appFor = (installation: string, stage: string) => new App({ context: { installation, stage } });
@@ -37,53 +38,53 @@ afterEach(() => {
 describe('synth guard', () => {
   it('[T-infra-002] synth fails for an installation/stage or account not declared in config/', () => {
     // Target without a config file → refused, whatever the credentials.
-    expect(() => buildApp(appFor('naeva', 'prod'))).toThrow(/No config for naeva\/prod/);
-    expect(() => buildApp(appFor('acme', 'dev'))).toThrow(/No config for acme\/dev/);
+    expect(() => buildApp(appFor('test', 'prod'), FIXTURE_CONFIG_DIR)).toThrow(/No config for test\/prod/);
+    expect(() => buildApp(appFor('acme', 'dev'), FIXTURE_CONFIG_DIR)).toThrow(/No config for acme\/dev/);
 
     // Declared target, but the profile resolves a different account → refused, naming both accounts.
-    process.env.CAP_ACCOUNT_NAEVA_DEV = ACCOUNT_A;
+    process.env.CAP_ACCOUNT_TEST_DEV = ACCOUNT_A;
     process.env.CDK_DEFAULT_ACCOUNT = ACCOUNT_B;
     process.env.AWS_PROFILE = 'some-profile';
-    expect(() => buildApp(appFor('naeva', 'dev'))).toThrow(
-      new RegExp(`Wrong account for naeva/dev[\\s\\S]*${ACCOUNT_A}[\\s\\S]*some-profile[\\s\\S]*${ACCOUNT_B}`),
+    expect(() => buildApp(appFor('test', 'dev'), FIXTURE_CONFIG_DIR)).toThrow(
+      new RegExp(`Wrong account for test/dev[\\s\\S]*${ACCOUNT_A}[\\s\\S]*some-profile[\\s\\S]*${ACCOUNT_B}`),
     );
   });
 
   it('[T-infra-003] synth passes for a declared target, matching account or no credentials (CI)', () => {
     // No credentials at all: the guard has nothing to compare and stays silent.
-    const ci = buildApp(appFor('naeva', 'dev'));
-    expect(ci.data.stackName).toBe('cap-naeva-dev-data');
-    expect(ci.api.stackName).toBe('cap-naeva-dev-api');
+    const ci = buildApp(appFor('test', 'dev'), FIXTURE_CONFIG_DIR);
+    expect(ci.data.stackName).toBe('cap-test-dev-data');
+    expect(ci.api.stackName).toBe('cap-test-dev-api');
     expect(ci.data.region).toBe('eu-west-1');
     Template.fromStack(ci.data);
     Template.fromStack(ci.api);
 
     // Matching account. The guard runs before any stack is built, so this synth skips esbuild bundling: the full,
     // bundled synth above already covers the handlers (CAP-57: two bundled synths outgrew the CI timeout).
-    process.env.CAP_ACCOUNT_NAEVA_DEV = ACCOUNT_A;
+    process.env.CAP_ACCOUNT_TEST_DEV = ACCOUNT_A;
     process.env.CDK_DEFAULT_ACCOUNT = ACCOUNT_A;
-    const unbundled = new App({ context: { installation: 'naeva', stage: 'dev', 'aws:cdk:bundling-stacks': [] } });
-    expect(() => buildApp(unbundled)).not.toThrow();
+    const unbundled = new App({ context: { installation: 'test', stage: 'dev', 'aws:cdk:bundling-stacks': [] } });
+    expect(() => buildApp(unbundled, FIXTURE_CONFIG_DIR)).not.toThrow();
   });
 
   it('[T-infra-004] installation and stage are required and validated, from context or env', () => {
     expect(() => resolveDeployment(new App())).toThrow(/Missing installation/);
-    expect(() => resolveDeployment(new App({ context: { installation: 'naeva' } }))).toThrow(/Missing stage/);
+    expect(() => resolveDeployment(new App({ context: { installation: 'test' } }))).toThrow(/Missing stage/);
     expect(() => resolveDeployment(appFor('Naeva_X', 'dev'))).toThrow(/Invalid installation/);
-    expect(() => resolveDeployment(appFor('naeva', 'DEV'))).toThrow(/Invalid stage/);
+    expect(() => resolveDeployment(appFor('test', 'DEV'))).toThrow(/Invalid stage/);
 
-    process.env.CAP_INSTALLATION = 'naeva';
+    process.env.CAP_INSTALLATION = 'test';
     process.env.CAP_STAGE = 'dev';
-    expect(resolveDeployment(new App())).toEqual({ installation: 'naeva', stage: 'dev' });
-    expect(accountVarName({ installation: 'naeva', stage: 'pre-prod' })).toBe('CAP_ACCOUNT_NAEVA_PRE_PROD');
+    expect(resolveDeployment(new App())).toEqual({ installation: 'test', stage: 'dev' });
+    expect(accountVarName({ installation: 'test', stage: 'pre-prod' })).toBe('CAP_ACCOUNT_TEST_PRE_PROD');
   });
 
   it('[T-infra-005] a config file without region or config_version is rejected', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
-    const target = { installation: 'naeva', stage: 'dev' };
-    writeFileSync(join(dir, 'naeva.dev.json'), JSON.stringify({ config_version: '2026-10-31' }));
+    const target = { installation: 'test', stage: 'dev' };
+    writeFileSync(join(dir, 'test.dev.json'), JSON.stringify({ config_version: '2026-10-31' }));
     expect(() => loadInstallationConfig(target, dir)).toThrow(/"region" is required/);
-    writeFileSync(join(dir, 'naeva.dev.json'), JSON.stringify({ region: 'r' }));
+    writeFileSync(join(dir, 'test.dev.json'), JSON.stringify({ region: 'r' }));
     expect(() => loadInstallationConfig(target, dir)).toThrow(/"config_version" is required/);
   });
 });

@@ -21,8 +21,9 @@ import type { Deployment, InstallationConfig } from '../lib/config.js';
 import { type Route, ROUTES, SECRET_ENV, WIRING, wireRoutes } from '../lib/routes.js';
 import { handler as denyAll } from '../lib/stubs/authorizer-deny.js';
 import { handler as notImplemented } from '../lib/stubs/not-implemented.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) {
@@ -37,14 +38,14 @@ afterEach(() => {
   }
 });
 
-const deployment: Deployment = { installation: 'naeva', stage: 'dev' };
+const deployment: Deployment = { installation: 'test', stage: 'dev' };
 const config: InstallationConfig = {
   config_version: 'test',
   region: 'test-region-1',
   app_origins: ['capacitor://localhost', 'http://localhost:5173'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-  tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+  tags: { project: 'capcollector-test', owner: 'tester' },
 };
 /** Unit tests never run esbuild: the stack is checked, not the bundles (CI `npm run synth` bundles for real). */
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
@@ -305,12 +306,12 @@ describe('CollectorsApi stack', () => {
       ProtocolType: 'HTTP',
       CorsConfiguration: Match.objectLike({ AllowOrigins: ['*'], AllowCredentials: false }),
     });
-    expect(JSON.stringify(template.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
-    Template.fromStack(data).hasOutput('WebUrl', { Export: { Name: 'cap-naeva-dev-data-WebUrl' } });
+    expect(JSON.stringify(template.toJSON())).not.toContain('cap-test-dev-data-WebUrl');
+    Template.fromStack(data).hasOutput('WebUrl', { Export: { Name: 'cap-test-dev-data-WebUrl' } });
     template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
       DefaultRouteSettings: { ThrottlingRateLimit: THROTTLE.rateLimit, ThrottlingBurstLimit: THROTTLE.burstLimit },
     });
-    for (const key of ['ApiUrl', 'ApiId']) template.hasOutput(key, { Export: { Name: `cap-naeva-dev-api-${key}` } });
+    for (const key of ['ApiUrl', 'ApiId']) template.hasOutput(key, { Export: { Name: `cap-test-dev-api-${key}` } });
     // healthz, auth-apple, caps-get, caps-patch, uploads-create + authorizer + the 501 stub for everything else.
     expect(api.functions.size).toBe(7);
   });
@@ -327,7 +328,7 @@ describe('CollectorsApi stack', () => {
     const { data, template } = apiStack({ apiSrcDir: fakeApiSrc(['healthz', 'auth-apple']) });
     Template.fromStack(data).resourceCountIs('AWS::SSM::Parameter', 0);
     template.resourceCountIs('AWS::SSM::Parameter', 0);
-    expect(settingParameterName(deployment, 'allowedAppleSubs')).toBe('/cap/naeva/dev/allowed-apple-subs');
+    expect(settingParameterName(deployment, 'allowedAppleSubs')).toBe('/cap/test/dev/allowed-apple-subs');
 
     // The API stack takes them as SSM-typed CloudFormation parameters (re-resolved on every deploy); `alertEmail`
     // (CAP-40) is read by the stack for the alerts subscription, never passed to a function.
@@ -337,12 +338,15 @@ describe('CollectorsApi stack', () => {
     );
     expect(ssm.map((p) => p.Default).sort()).toEqual(
       ['alertEmail', 'allowedAppleSubs', 'appleClientIds', 'sessionSecret']
-        .map((n) => `/cap/naeva/dev/${n.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
+        .map((n) => `/cap/test/dev/${n.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
         .sort(),
     );
 
     // The real app wires it the same way and deploys data first.
-    const built = buildApp(new App({ context: { ...NO_BUNDLING, installation: 'naeva', stage: 'dev' } }));
+    const built = buildApp(
+      new App({ context: { ...NO_BUNDLING, installation: 'test', stage: 'dev' } }),
+      FIXTURE_CONFIG_DIR,
+    );
     expect(built.api.dependencies).toContain(built.data);
   });
 });

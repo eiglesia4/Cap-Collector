@@ -59,7 +59,7 @@ export const BUDGET_NOTIFICATIONS = [
 ] as const;
 
 /**
- * Cost-allocation tag filter of the budget: `user:project$<tags.project>` (naeva/dev: `user:project$EIM_CAP`; the tag
+ * Cost-allocation tag filter of the budget: `user:project$<tags.project>` (example: `user:project$capcollector`; the tag
  * must be activated in Billing once). The value comes from config (CAP-102).
  */
 export const budgetTagFilter = (project: string): string => `user:${TAG_KEYS.project}$${project}`;

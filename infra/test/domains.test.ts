@@ -12,8 +12,9 @@ import { buildApp } from '../lib/app.js';
 import { settingParameterName } from '../lib/collectors-data-stack.js';
 import { applyDomainsSwitch, type InstallationConfig, loadInstallationConfig } from '../lib/config.js';
 import { CERTIFICATE_SETTINGS } from '../lib/routes.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) {
@@ -28,14 +29,14 @@ afterEach(() => {
   }
 });
 
-const deployment = { installation: 'naeva', stage: 'dev' };
+const deployment = { installation: 'test', stage: 'dev' };
 /** Unit tests never run esbuild (CI `npm run synth` bundles for real). */
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
 
-/** A config dir holding only naeva.dev.json with the given content. */
+/** A config dir holding only test.dev.json with the given content. */
 function configDir(content: Record<string, unknown>): string {
   const dir = mkdtempSync(join(tmpdir(), 'cap-domains-'));
-  writeFileSync(join(dir, 'naeva.dev.json'), JSON.stringify(content));
+  writeFileSync(join(dir, 'test.dev.json'), JSON.stringify(content));
   return dir;
 }
 
@@ -45,9 +46,9 @@ const BASE = {
   app_origins: ['capacitor://localhost'],
   ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-  tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+  tags: { project: 'capcollector-test', owner: 'tester' },
 };
-const DOMAINS = { web: 'caps.naevatec.com', api: 'api.caps.naevatec.com' };
+const DOMAINS = { web: 'caps.example.com', api: 'api.caps.example.com' };
 
 function synth(opts: { domains?: typeof DOMAINS; context?: Record<string, unknown> } = {}) {
   const app = new App({ context: { ...NO_BUNDLING, ...deployment, ...opts.context } });
@@ -75,35 +76,35 @@ describe('custom domains', () => {
 
     // The certificate settings are read, never created (CAP-60); their names follow the settings convention.
     data.resourceCountIs('AWS::SSM::Parameter', 0);
-    expect(CERT_PARAMS).toEqual(['/cap/naeva/dev/web-certificate-arn', '/cap/naeva/dev/api-certificate-arn']);
+    expect(CERT_PARAMS).toEqual(['/cap/test/dev/web-certificate-arn', '/cap/test/dev/api-certificate-arn']);
 
     // CloudFront: alias + the us-east-1 certificate ARN resolved from SSM at deploy time (never a literal).
-    const [webCertParam] = ssmParams(data, ['/cap/naeva/dev/web-certificate-arn']);
+    const [webCertParam] = ssmParams(data, ['/cap/test/dev/web-certificate-arn']);
     expect(webCertParam).toBeDefined();
     data.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: Match.objectLike({
-        Aliases: ['caps.naevatec.com'],
+        Aliases: ['caps.example.com'],
         ViewerCertificate: Match.objectLike({ AcmCertificateArn: { Ref: webCertParam }, SslSupportMethod: 'sni-only' }),
       }),
     });
-    data.hasOutput('WebUrl', { Value: 'https://caps.naevatec.com', Export: { Name: 'cap-naeva-dev-data-WebUrl' } });
+    data.hasOutput('WebUrl', { Value: 'https://caps.example.com', Export: { Name: 'cap-test-dev-data-WebUrl' } });
     data.hasOutput('WebDomainTarget', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'DomainName'] } });
 
     // API Gateway: regional custom domain with the regional certificate from SSM, mapped to the default stage.
-    const [apiCertParam] = ssmParams(api, ['/cap/naeva/dev/api-certificate-arn']);
+    const [apiCertParam] = ssmParams(api, ['/cap/test/dev/api-certificate-arn']);
     expect(apiCertParam).toBeDefined();
     api.hasResourceProperties('AWS::ApiGatewayV2::DomainName', {
-      DomainName: 'api.caps.naevatec.com',
+      DomainName: 'api.caps.example.com',
       DomainNameConfigurations: [Match.objectLike({ CertificateArn: { Ref: apiCertParam }, EndpointType: 'REGIONAL' })],
     });
     api.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 1);
     api.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', { Stage: '$default' });
-    api.hasOutput('ApiUrl', { Value: 'https://api.caps.naevatec.com' });
+    api.hasOutput('ApiUrl', { Value: 'https://api.caps.example.com' });
     api.hasOutput('ApiDomainTarget', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'RegionalDomainName'] } });
 
     // CORS: any origin (CAP-62); the API never imports WebUrl (CDK's own table/bucket refs stay).
     expect(corsOrigins(api)).toEqual(['*']);
-    expect(JSON.stringify(api.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
+    expect(JSON.stringify(api.toJSON())).not.toContain('cap-test-dev-data-WebUrl');
 
     // The certificate ARNs never reach a Lambda: no function environment references their parameters.
     const certRefs = ssmParams(api, CERT_PARAMS);
@@ -133,7 +134,7 @@ describe('custom domains', () => {
     api.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     api.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
     expect(corsOrigins(api)).toEqual(['*']);
-    expect(JSON.stringify(api.toJSON())).not.toContain('cap-naeva-dev-data-WebUrl');
+    expect(JSON.stringify(api.toJSON())).not.toContain('cap-test-dev-data-WebUrl');
     api.hasOutput('ApiUrl', { Value: { 'Fn::GetAtt': [Match.anyValue(), 'ApiEndpoint'] } });
     expect(Object.keys(api.findOutputs('ApiDomainTarget'))).toEqual([]);
 
@@ -151,21 +152,21 @@ describe('custom domains', () => {
     expect(load({}).domains).toBeUndefined();
     expect(load({ domains: DOMAINS }).domains).toEqual(DOMAINS);
     for (const bad of [
-      { web: 'caps.naevatec.com' },
-      { api: 'api.caps.naevatec.com' },
-      { web: 'https://caps.naevatec.com', api: 'api.caps.naevatec.com' },
-      { web: 'caps.naevatec.com/', api: 'api.caps.naevatec.com' },
-      { web: 'Caps.Naevatec.com', api: 'api.caps.naevatec.com' },
-      { web: 'localhost', api: 'api.caps.naevatec.com' },
-      { web: 'caps.naevatec.com', api: 42 },
-      'caps.naevatec.com',
+      { web: 'caps.example.com' },
+      { api: 'api.caps.example.com' },
+      { web: 'https://caps.example.com', api: 'api.caps.example.com' },
+      { web: 'caps.example.com/', api: 'api.caps.example.com' },
+      { web: 'Caps.Example.com', api: 'api.caps.example.com' },
+      { web: 'localhost', api: 'api.caps.example.com' },
+      { web: 'caps.example.com', api: 42 },
+      'caps.example.com',
       null,
     ]) {
       expect(() => load({ domains: bad })).toThrow(/"domains\.(web|api)" must be a bare host name/);
     }
 
-    // The committed naeva.dev target declares the production hosts (story CAP-29).
-    expect(loadInstallationConfig(deployment).domains).toEqual(DOMAINS);
+    // The committed test.dev target declares the production hosts (story CAP-29).
+    expect(loadInstallationConfig(deployment, FIXTURE_CONFIG_DIR).domains).toEqual(DOMAINS);
 
     const config: InstallationConfig = { ...BASE, domains: DOMAINS };
     const withContext = (domains?: string) => new App({ context: domains === undefined ? {} : { domains } });

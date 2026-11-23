@@ -2,7 +2,7 @@
 
 exports[`web distribution > [T-infra-019] snapshot: CloudFront with OAC over a private bucket, HTTPS redirect, SPA error responses 1`] = `
 {
-  "Comment": "cap-naeva-dev-web — CapCollector web build",
+  "Comment": "cap-test-dev-web — CapCollector web build",
   "CustomErrorResponses": [
     {
       "ErrorCachingMinTTL": 0,
