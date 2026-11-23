@@ -2,7 +2,7 @@
 
 ## Language
 - Documentation and code in **English**.
-- UI (decided with Edu, 2026-11-23, CAP-95): **Spanish (`es`) by default**, English (`en`) available. Settings →
+- UI (decided with the owner, 2026-11-23, CAP-95): **Spanish (`es`) by default**, English (`en`) available. Settings →
   Language, remembered per device; the device language is not used as the default. Every string goes through i18n keys;
   enum labels and country names are localised (country names via `Intl.DisplayNames`), and dates and numbers use the
   selected locale. Data values are never translated (brand, variant, textOnCap, producer). The AI writes `description`
@@ -48,19 +48,19 @@ Every taggable resource in every stack carries, applied once at the CDK app leve
 
 | Tag | Value |
 |---|---|
-| `project` | `EIM_CAP` |
-| `UserName` | `eiglesia4` |
+| `project` | `tags.project` of the target config (`infra/config/<installation>.<stage>.json`, CAP-102) |
+| `UserName` | `tags.owner` of the target config |
 | `installation` | `<installation>` (e.g. `naeva`) |
 | `stage` | `<stage>` (e.g. `dev`) |
 
-These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_version`, the `config/*.json` version a deployment was synthesised from) are welcome. A synth test asserts the four on the table and on every bucket. Cost Explorer filters on `project = EIM_CAP`.
+These four are a minimum, not a maximum: extra `cap:*` tags (e.g. `cap:config_version`, the `config/*.json` version a deployment was synthesised from) are welcome. A synth test asserts the four on the table and on every bucket. Cost Explorer and the monthly budget filter on the target's `project` value.
 
 ## Deployment targets
 | installation.stage | Region | AWS profile (local) | Deployed by |
 |---|---|---|---|
-| `naeva.dev` | `eu-west-1` | `naevatecdev` | Edu, by hand (`npm run diff` → `npm run deploy`), never an agent |
+| `naeva.dev` | `eu-west-1` | the owner's profile (`.envrc.local`) | The owner, by hand (`npm run diff` → `npm run deploy`), never an agent |
 
-Region lives in `infra/config/<installation>.<stage>.json`; the profile and the account guard (`CAP_ACCOUNT_NAEVA_DEV`) live only in `.envrc.local` on Edu's machine. Nothing account-specific is ever committed.
+Region lives in `infra/config/<installation>.<stage>.json`; the profile and the account guard (`CAP_ACCOUNT_NAEVA_DEV`) live only in `.envrc.local` on the owner's machine. Nothing account-specific is ever committed.
 
 ## Cost rules
 - Stay serverless; no NAT, no VPC, no always-on compute.

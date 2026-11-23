@@ -1,6 +1,6 @@
 # Brand — CapCollector mark and icon
 
-Chosen by Edu on 2026-11-21 (option **B** of the icon review; CAP-74). Replaces the ring-and-dot mark of CAP-56.
+Chosen by the owner on 2026-11-21 (option **B** of the icon review; CAP-74). Replaces the ring-and-dot mark of CAP-56.
 
 The mark is a **copper crown cap seen from above**: 21 crimps, a radial copper gradient (`#D88A3C` → `#8A4A12`), a thin light inner ring (`#F3D9B8` at 55 %), and a centre disc. It is drawn on a 1024 × 1024 canvas: crimp radii 370 / 330, inner ring r 262, centre r 150.
 

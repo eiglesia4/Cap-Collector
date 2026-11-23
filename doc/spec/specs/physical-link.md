@@ -5,7 +5,7 @@
 ## The album
 Leuchtturm GRANDE binder with COMPART crown-cap sheets: 42 **round** pockets per sheet in a 6 × 7 grid
 (6 columns × 7 rows, portrait), black interleaf, ~10 sheets (~420 caps) per binder.
-Measured by Edu (2026-11-09, from photos; calliper check pending): pocket inner Ø ≈ 33 mm, centre-to-centre pitch
+Measured by the owner (2026-11-09, from photos; calliper check pending): pocket inner Ø ≈ 33 mm, centre-to-centre pitch
 ≈ 36 mm. Stored per album as `pocketMm` / `pitchMm` (asked for before the first print; suggestion 33 / 36).
 A 32 mm crown cap fills the pocket: nothing placed under it is readable while the cap is in place.
 
@@ -32,7 +32,7 @@ A4 at 1 : 1, so the grid is drawn as large as fits inside 10 mm margins (≈ 88 
 and the page prints its scale ("scale 88 %"). Can be printed with the discs (same PDF, after them) or alone.
 
 ## Initial layout (bulk placement)
-Decided with Edu on 2026-11-21 (CAP-75). For a first load (hundreds of caps scanned **without a location**), the app plans the physical albums afterwards instead of placing caps one by one.
+Decided with the owner on 2026-11-21 (CAP-75). For a first load (hundreds of caps scanned **without a location**), the app plans the physical albums afterwards instead of placing caps one by one.
 - Input: every cap with no location (or a filtered subset), and the albums chosen to fill, in order (e.g. `A`, then `B`).
 - Order: **type → country → brand** (then variant, then year; ties by `capId`). Unknown values go last within their level.
 - Gaps: a new **type** starts on a new sheet; a new **country** starts on a new row (the previous country's row is left partly empty for later additions). Brands within a country follow on without gaps.

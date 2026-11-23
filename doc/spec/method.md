@@ -10,7 +10,7 @@
 | **dev-app** | Claude Code, own worktree | `app/**` (Vite + Capacitor UI, client dHash, PDF, exchange bundles) and its tests | `shared/`, `api/`, `infra/`, `package.json` |
 | **dev-api** | Claude Code, own worktree | `api/**` (Lambda handlers, DynamoDB access, Bedrock call, presigned URLs, auth) and its tests | `shared/`, `app/`, `infra/`, `package.json` |
 | **Integrator** | Claude Code `/integrate` | `main` (rebase, checks, squash merge, `CHANGELOG.md`, tags), `infra/**` (CDK), `deploy/**`, `.github/**`, root `package.json`/workspaces | business logic |
-| **Edu** | Jira + PR review + device | decisions, GO on PRs, `cdk deploy`, App Store / TestFlight | — |
+| **The owner** | Jira + PR review + device | decisions, GO on PRs, `cdk deploy`, App Store / TestFlight | — |
 
 Rule: **code never changes a contract.** A story that needs a new field or endpoint → conservative choice, `// SPEC-GAP CAP-<n>: …` in code, listed under *Spec deviations* in the Jira closing comment; the architect versions the contract.
 
@@ -28,13 +28,13 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 ## Jira project `CAP`
 - Workflow (same as SESHET): **Backlog · Ready · In Progress · In Review · Blocked · Done**. Ready = can start now (no *is blocked by* link to anything not Done).
 - Epics = components (EP-01 … EP-10). Stories = commit-sized, testable, one territory each.
-- Labels: `area-app` · `area-api` · `area-infra` (dev-infra: CDK) · `area-integration` (integrator: dependencies, CI, housekeeping) · `design` (architect resolves) · `needs-human` (Edu's dashboard) · `deliverable-V0…V4` · `cap-<epic slug>`.
+- Labels: `area-app` · `area-api` · `area-infra` (dev-infra: CDK) · `area-integration` (integrator: dependencies, CI, housekeeping) · `design` (architect resolves) · `needs-human` (the owner's dashboard) · `deliverable-V0…V4` · `cap-<epic slug>`.
 - Versions (Kanban milestones): **V0 skeleton** · **V1 manual collection** · **V2 scan & AI** · **V3 album link** · **V4 phase 2**.
 - Story package before Ready: spec referenced (file + section), allowed paths, test IDs `T-<comp>-nnn` (`comp` ∈ `app · api · shared · infra · vision · print · exchange`), acceptance criteria, `area-*` label, deliverable label.
 - Closing comment (English, parsed by the dashboard): first line `[cap-status] agent=<name> ticket=CAP-<n> state=<in_progress|in_review|blocked|done>`, then **Done · Tests · Spec deviations · Pending · PR · Needs human**.
 
 ## Git
-- Repo `capcollector` (GitHub, private). Branch `CAP-<n>-<slug>` from `main`; one persistent worktree per dev agent (`../capcollector-wt/<agent>`, created by `.claude/scripts/agent-worktrees.sh`; each story is a branch inside it; idle = detached on `origin/main`); the integrator works in the main checkout on `main` (decided in CAP-70, 2026-11-20); one story = one PR; squash merge by the integrator only; author = Edu (no agent co-author lines); `pre-push` hook blocks direct push to `main`; `gitleaks` pre-commit.
+- Repo `capcollector` (GitHub, private). Branch `CAP-<n>-<slug>` from `main`; one persistent worktree per dev agent (`../capcollector-wt/<agent>`, created by `.claude/scripts/agent-worktrees.sh`; each story is a branch inside it; idle = detached on `origin/main`); the integrator works in the main checkout on `main` (decided in CAP-70, 2026-11-20); one story = one PR; squash merge by the integrator only; author = the owner (no agent co-author lines); `pre-push` hook blocks direct push to `main`; `gitleaks` pre-commit.
 - Commits `CAP-<n>: <what>` in English. PR body: Done · Tests · Spec covered · Deviations.
 - Tags per milestone: `v0.1.0-v0`, `v0.2.0-v1`, `v0.5.0-v2`, `v0.8.0-v3`, `v1.0.0-v4`.
 
@@ -49,5 +49,5 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 ## Start order of a batch
 1. Integrator: `/integrate` what is In Review (and `/next` on its `area-integration` story, if any); 2. its report says which stories became Ready; 3. only then open the dev terminals. WIP: 2 devs + 1 in review (one person reviewing).
 
-## Weekly (Edu, 15 min)
+## Weekly (the owner, 15 min)
 Read *Spec deviations* of closed stories → bump contracts if needed → move next stories to Ready → check `needs-human`.
