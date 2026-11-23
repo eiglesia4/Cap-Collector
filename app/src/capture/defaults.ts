@@ -1,0 +1,66 @@
+// Defaults when unsure (CAP-98, features.md § Defaults when unsure, decided with Edu 2026-11-23): what a new cap's form
+// fills in rather than leaving blank. `acquiredOn` = today (not marked), crown caps steel + pry-off (marked "default —
+// check"), and `type` guessed from the cap's text (marked "guessed — check"). `year` is never defaulted. DOM-free.
+import type { CapType, Closure, Material } from '@capcollector/shared';
+
+export const DEFAULT_MATERIAL: Material = 'steel';
+export const DEFAULT_CLOSURE: Closure = 'pry-off';
+
+/** How a value the user did not type got into a field. */
+export type Mark = 'default' | 'guessed';
+
+/** Today as the form's `acquiredOn` value (`YYYY-MM-DD`, the device's local date). */
+export function localDate(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Lower case without accents (`Bräu` → `brau`, `Tónica` → `tonica`); `ø` is kept, as NFD does not split it. */
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+interface Rule {
+  readonly type: CapType;
+  /** Matched anywhere in the text: also inside compounds (`Weissbier`, `Hofbräu`, `Cervecería`). */
+  readonly anywhere: readonly string[];
+  /** Matched only as a whole word: short words that hide inside others (`chocolate`, `Beaujolais`, `aguardiente`). */
+  readonly word: readonly string[];
+}
+
+/** First rule wins, beer first (CAP-98). Keywords are already folded. */
+const RULES: readonly Rule[] = [
+  {
+    type: 'beer',
+    anywhere: [
+      'cervecera',
+      'cerveceria',
+      'cerveza',
+      'brewery',
+      'brewing',
+      'brauerei',
+      'brau',
+      'brasserie',
+      'birrificio',
+    ],
+    word: ['birra', 'bier', 'beer', 'øl'],
+  },
+  { type: 'cider', anywhere: ['sidra', 'cider', 'cidre', 'sagardoa'], word: [] },
+  { type: 'wine', anywhere: ['bodega', 'winery'], word: ['vino', 'wine', 'cava'] },
+  { type: 'water', anywhere: ['mineral'], word: ['agua', 'water', 'eau'] },
+  { type: 'soft drink', anywhere: ['refresco', 'tonica', 'lemonade', 'limonada'], word: ['cola', 'soda'] },
+];
+
+/** Cap type named by the text (brand, producer, description, text on the cap), or undefined when nothing matches. */
+export function guessType(text: string): CapType | undefined {
+  const folded = fold(text);
+  const words = new Set(folded.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  for (const rule of RULES) {
+    // Compound words keep `bier` at the end (`Weissbier`, `Pilsbier`): a word ending in it counts too.
+    if (rule.anywhere.some((k) => folded.includes(k))) return rule.type;
+    if (rule.word.some((k) => words.has(k) || (k === 'bier' && [...words].some((w) => w.endsWith(k))))) {
+      return rule.type;
+    }
+  }
+  return undefined;
+}
