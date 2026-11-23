@@ -62,7 +62,7 @@ export class AppleSignInError extends Error {
  */
 export interface PlaceName {
   readonly locality?: string;
-  /** Province or region (`subAdministrativeArea ?? administrativeArea`), e.g. `Toledo`. */
+  /** Province or region (`subAdministrativeArea ?? administrativeArea`), e.g. `Segovia`. */
   readonly region?: string;
   /** ISO 3166-1 alpha-2 of the place. */
   readonly countryCode?: string;

@@ -296,7 +296,7 @@
 | T-app-196 | edit mode: no defaults, no marks and no automatic status | app | `app/test/form-defaults.test.ts` |
 | T-app-197 | formatPlace: \"Locality, Region\"; the country only when foreign; no repeats; cut to 120 | app | `app/test/place-defaults.test.ts` |
 | T-app-198 | an empty year → the current year, marked \"default\", not flagged (also after an AI review); edit mode gets nothing | app | `app/test/place-defaults.test.ts` |
-| T-app-199 | iPhone: currentPlace → \"Talavera de la Reina, Toledo\" filled and marked, saved and not flagged; null → empty | app | `app/test/place-defaults.test.ts` |
+| T-app-199 | iPhone: currentPlace (Segovia, Segovia) → \"Segovia\" filled and marked, saved and not flagged; null → empty | app | `app/test/place-defaults.test.ts` |
 | T-app-200 | a place typed before the answer arrives is kept; \"Looks right\" clears the mark | app | `app/test/place-defaults.test.ts` |
 | T-app-201 | batch: one place lookup for every cap of the batch, a new one for the next batch | app | `app/test/place-defaults.test.ts` |
 | T-app-202 | web: the last place used is pre-filled and marked (none stored → empty); a save stores it | app | `app/test/place-defaults.test.ts` |

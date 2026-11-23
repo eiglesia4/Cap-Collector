@@ -1,6 +1,7 @@
 // `acquiredWhere` default (CAP-100, features.md § Defaults when unsure and § Place from GPS): on the iPhone, the place
-// where the phone is now ("Talavera de la Reina, Toledo"), asked once per form and once per batch; on the web (Mac), the last
-// place used on this device, stored when a cap is saved with one. Only names are kept: never coordinates.
+// where the phone is now (the spec's example: "Segovia, Segovia"), asked once per form and once per batch; on the web
+// (Mac), the last place used on this device, stored when a cap is saved with one. Only names are kept: never
+// coordinates.
 import type { AppContext } from '../context.js';
 import { countryName } from '../i18n/countries.js';
 import type { KeyValueStore, PlaceName } from '../platform/platform.js';
@@ -24,6 +25,8 @@ export function regionOf(tag: string | undefined): string | undefined {
  * "Locality, Region" (a region equal to the locality is not repeated), plus the country name in the UI language only
  * when the place is outside the device's region; cut to 120 characters. Empty when nothing is named.
  */
+// SPEC-GAP CAP-104: features.md § Place from GPS gives "Segovia, Segovia" as the example result; this function writes a
+// region equal to the locality once ("Segovia"), as declared in CAP-100. Kept (no behaviour change in CAP-104).
 export function formatPlace(place: PlaceName, deviceRegion: string | undefined): string {
   const parts: string[] = [];
   for (const part of [place.locality, place.region]) {
