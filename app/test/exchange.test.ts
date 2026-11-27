@@ -5,6 +5,7 @@
 import {
   AnalyseRequest,
   CapInput,
+  CapPatch,
   EXCHANGE_FORMAT,
   EXCHANGE_INSTRUCTIONS,
   ExchangeBatchV1,
@@ -17,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient, RequestOptions } from '../src/api/client';
 import type { CaptureSession } from '../src/capture/context';
 import type { AppContext } from '../src/context';
+import { appendNotes, NOTES_MAX } from '../src/exchange/append-notes';
 import { photoMismatch, readAnswer, readUpload } from '../src/exchange/answer';
 import { batchZip, bundleItems, promptText, singleZip } from '../src/exchange/bundle';
 import { continueToReview } from '../src/exchange/continue';
@@ -543,5 +545,128 @@ describe('continue to review (CAP-45)', () => {
     expect(second.calls.filter((c) => c.path.startsWith('/exchange/requests/')).map((c) => c.body)).toEqual([
       { status: 'reviewed' },
     ]);
+  });
+});
+
+describe('answer notes for a stored cap (CAP-114)', () => {
+  const OLD_NOTES = 'Bought at the fair';
+  /** The exchange screen with a stored cap's request, the answer uploaded and Gemini picked, then Continue. */
+  async function capForm(response: unknown, notes: string = OLD_NOTES) {
+    const capPending = [pendingItem({ requestId: REQ_CAP, capId: CAP_ID, scanId: undefined, status: 'answered' })];
+    const env = await setup((path, method, body) => {
+      if (path === '/exchange/requests') return capPending;
+      if (path.startsWith('/exchange/requests/')) return { ...capPending[0], status: 'reviewed' };
+      if (path === `/caps/${CAP_ID}` && method === 'GET') return storedCap(7, { brand: 'Mahu', notes });
+      if (path === `/caps/${CAP_ID}` && method === 'PATCH') return storedCap(7, body as Record<string, unknown>);
+      return undefined;
+    });
+    env.ctx.now = () => NOW;
+    const { el } = view(env.ctx, { requestId: REQ_CAP });
+    await settle();
+    vi.mocked(env.platform.pickFiles).mockResolvedValueOnce([jsonFile('response.json', response)]);
+    click(el, '[data-action="pick-answer"]');
+    await settle();
+    click(el, '[data-provider="gemini"]');
+    click(el, '[data-action="continue"]');
+    await settle();
+    const save = async () => {
+      el.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+      await settle();
+      return env.calls.find((c) => c.path === `/caps/${CAP_ID}` && c.method === 'PATCH')?.body as
+        Record<string, unknown> | undefined;
+    };
+    return { ...env, el, save, tick: () => q<HTMLInputElement>(el, '[data-accept-notes]') };
+  }
+
+  it('[T-app-206] an existing cap plus an answer with notes shows the notes suggestion, unticked', async () => {
+    const { el, tick } = await capForm(bareResponse());
+    expect(q(el, 'form')).not.toBeNull();
+    expect(q(el, '[data-ai-notes] .ai-notes__text')?.textContent).toBe('Red cap with a star');
+    expect(tick()?.checked).toBe(false);
+    expect(tick()?.disabled).toBe(false);
+    expect(q<HTMLTextAreaElement>(el, '#cap-notes')?.value).toBe(OLD_NOTES);
+    // Notes alone (every field already stored) still open the form instead of "nothing new".
+    const notesOnly = await capForm({ ...bareResponse(), fields: { brand: 'Mahu', country: 'ES' } });
+    expect(q(notesOnly.el, '[data-ai-notes]')).not.toBeNull();
+    expect(q(notesOnly.el, '[data-accept]')).toBeNull();
+  });
+
+  it('[T-app-207] saving without the tick keeps the notes and sends no notes key', async () => {
+    const { el, save } = await capForm(bareResponse());
+    click(el, '[data-accept="brand"]');
+    const patch = await save();
+    expect(patch).toMatchObject({ brand: 'Mahou', source: 'external:gemini' });
+    expect(patch).not.toHaveProperty('notes');
+  });
+
+  it('[T-app-208] with the tick the AI notes are appended under a source/date header, old notes kept, AI as author', async () => {
+    const { tick, save } = await capForm(bareResponse());
+    tick()!.click();
+    const patch = await save();
+    expect(patch).toEqual({
+      notes: `${OLD_NOTES}\n\nexternal:gemini (2026-11-09):\nRed cap with a star`,
+      source: 'external:gemini',
+    });
+    expect(CapPatch.safeParse(patch).success).toBe(true);
+    // A cap with no notes yet: just the header and the text.
+    const empty = await capForm(bareResponse(), '');
+    empty.tick()!.click();
+    expect((await empty.save())?.notes).toBe('external:gemini (2026-11-09):\nRed cap with a star');
+  });
+
+  it('[T-app-209] ignored and unparseable values are part of the notes suggestion', async () => {
+    const { el, tick, save } = await capForm(bareResponse({ flavour: 'lemon', country: 'Atlantis' }));
+    const text = q(el, '[data-ai-notes] .ai-notes__text')?.textContent ?? '';
+    expect(text).toContain('Red cap with a star');
+    expect(text).toContain('ignored: flavour="lemon"');
+    expect(text).toContain('not understood: country: Atlantis');
+    tick()!.click();
+    expect(String((await save())?.notes)).toContain('ignored: flavour="lemon"');
+  });
+
+  it('[T-app-210] the 2000-character limit of notes: the addition is cut with "…" and the form says so', async () => {
+    expect(NOTES_MAX).toBe(2000);
+    expect(appendNotes('a', 'b', 'H:')).toEqual({ text: 'a\n\nH:\nb', truncated: false });
+    const cut = appendNotes('x'.repeat(1990), 'y'.repeat(50), 'H:');
+    expect(cut?.truncated).toBe(true);
+    expect(cut?.text).toHaveLength(2000);
+    expect(cut?.text.endsWith('y…')).toBe(true);
+    expect(cut?.text.startsWith('x'.repeat(1990))).toBe(true);
+    expect(appendNotes('x'.repeat(1998), 'y', 'H:')).toBeNull();
+    expect(appendNotes('', `${'y'.repeat(4)}😀z`, 'H:', 9)?.text).toBe('H:\nyyyy…'); // no half emoji
+
+    const long = 'z'.repeat(1960);
+    const { el, tick, save } = await capForm(bareResponse(), long);
+    expect(q(el, '[data-notes-fit]')?.hidden).toBe(false);
+    expect(q(el, '[data-notes-fit]')?.textContent).toContain('2000');
+    tick()!.click();
+    const notes = String((await save())?.notes);
+    expect(notes).toHaveLength(2000);
+    expect(notes.startsWith(long)).toBe(true);
+    expect(notes.endsWith('…')).toBe(true);
+    // Notes already at the limit: no room, the tick is disabled.
+    const full = await capForm(bareResponse(), 'z'.repeat(2000));
+    expect(full.tick()?.disabled).toBe(true);
+    expect(q(full.el, '[data-notes-fit]')?.hidden).toBe(false);
+    // Typing notes shorter brings the tick back.
+    const area = q<HTMLTextAreaElement>(full.el, '#cap-notes')!;
+    area.value = 'short';
+    area.dispatchEvent(new Event('input'));
+    expect(full.tick()?.disabled).toBe(false);
+    expect(q(full.el, '[data-notes-fit]')?.hidden).toBe(true);
+  });
+
+  it('[T-app-211] a new-scan exchange still pre-fills the notes and offers no notes suggestion (regression)', async () => {
+    const { ctx } = await setup(() => undefined);
+    ctx.capture.start({
+      scanId: NEW_SCAN,
+      useAi: false,
+      top: { photo: photo(TOP_HASH), ref: { key: `u1/${NEW_SCAN}/top.webp`, width: 1024, height: 1024 } },
+      response: { scanId: NEW_SCAN, outcome: 'identified', fields: { brand: 'Mahou' }, suggestions: [] },
+      exchange: { source: 'external:gemini', notes: 'Red cap with a star' },
+    });
+    const review = ScanReviewScreen(ctx, matchRoute('/scan/review') as never);
+    expect(q<HTMLTextAreaElement>(review, '#cap-notes')?.value).toBe('Red cap with a star');
+    expect(q(review, '[data-ai-notes]')).toBeNull();
   });
 });

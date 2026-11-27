@@ -21,6 +21,18 @@
   color: var(--color-muted);
 }
 
+/* An external answer's notes offered to a stored cap (CAP-114): the AI text, then the "Add to notes" tick. */
+.ai-notes {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border-left: 3px solid var(--color-accent);
+}
+
+.ai-notes__text {
+  margin: var(--space-1) 0;
+  white-space: pre-wrap;
+}
+
 .ai-buttons {
   display: flex;
   flex-wrap: wrap;
