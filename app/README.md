@@ -111,8 +111,9 @@ What App Store review reads from the project:
 
 ### Google sign-in
 
-Sign in with Google (ADR-011, CAP-111) shows on the web next to Apple. It's never offered on iOS, and Android gets its
-own native flow (CAP-113). The button only appears when the build has a Google client id.
+Sign in with Google (ADR-011, CAP-111) shows on the web next to Apple. It's never offered on iOS, and Android uses
+the native Credential Manager sheet (CAP-113, § Google sign-in on Android). The button only appears when the build has
+a Google client id.
 
 1. **Google Cloud → APIs & Services → OAuth consent screen:** user type _External_, publishing status **Testing**,
    with the owner's Google account as the only test user. No scopes beyond the default `openid email profile`.
@@ -146,8 +147,9 @@ cd app && npx cap sync android && npx cap open android      # Android Studio
   the coordinates are never stored). `collectors://cap/<id>` links open the cap, and the hardware back button goes back,
   leaving the app on the Collection.
 - **Permissions:** `INTERNET`, `CAMERA` and `ACCESS_COARSE_LOCATION` only. Backup is off (`allowBackup="false"`).
-- **Sign-in:** Android offers no Apple sign-in (ADR-011 §3). Google on Android comes in CAP-113; until then the sign-in
-  screen says no provider is available.
+- **Sign-in:** Google only, through the native Credential Manager sheet (ADR-011 §3, CAP-113, § Google sign-in on
+  Android below). There is no Apple sign-in on Android. A build without `VITE_GOOGLE_CLIENT_ID` offers no provider and
+  the sign-in screen says so.
 - **API origin:** the WebView's origin is `https://localhost` (Capacitor's default `androidScheme`). Add it to
   `app_origins` in your installation's config (infra/README.md), or the API's CORS refuses the app.
 
@@ -165,3 +167,24 @@ cd app && npx cap sync android && npx cap open android      # Android Studio
    like `*.jks` and `*.keystore`. Never commit them.
 3. Copy `android/app/release/app-release.apk` to the phone and install it (allow installs from that source once).
    Raise `versionCode` / `versionName` in `android/app/build.gradle` for each new APK.
+
+### Google sign-in on Android
+
+The Android app signs in with Google through Android Credential Manager (`GoogleSignInPlugin.kt`, CAP-113). It asks
+for an ID token for the **Web** client id, the same `VITE_GOOGLE_CLIENT_ID` as the web build, so the token's `aud` is
+the Web client id that the API already accepts in `google-client-ids`. Then the flow is the web one: a PKCE nonce,
+`POST /auth/google`, and the same `google-identities` mapping.
+
+1. **Google Cloud → Credentials → Create credentials → OAuth client ID → Android**, once per signing key: package name
+   `com.naevatec.collectors` and the key's SHA-1. This client is never referenced in code, but Google only issues
+   tokens to an app whose package and signature match one. Read the SHA-1 of the debug keystore and of your release
+   keystore:
+
+   ```bash
+   keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+   keytool -list -v -keystore ~/keys/capcollector.jks -alias capcollector
+   ```
+
+2. Build the app with `VITE_GOOGLE_CLIENT_ID` set (the Web client id), then sync: `npx cap sync android`.
+3. First sign-in: the API refuses it (403) and the screen shows your Google `sub`. If you already mapped it for the web,
+   it is the same `sub`, and the same collection opens.

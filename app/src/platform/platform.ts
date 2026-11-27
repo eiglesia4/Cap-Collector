@@ -75,8 +75,26 @@ export class GoogleSdkLoadError extends Error {
   override readonly name = 'GoogleSdkLoadError';
 }
 
-/** Sign in with Google where this platform offers it (ADR-011 §3; CAP-111 on the web). */
-export interface GoogleSignIn {
+/**
+ * Sign in with Google where this platform offers it (ADR-011 §3): Google's own button on the web (CAP-111), or the
+ * native Credential Manager sheet on Android behind the app's own button (CAP-113).
+ */
+export type GoogleSignIn = GoogleButtonSignIn | GoogleNativeSignIn;
+
+/** What the native sheet answers: an ID token, a cancel, or an error code (Credential Manager's type). Never throws. */
+export type GoogleNativeResult =
+  { readonly idToken: string } | { readonly cancelled: true } | { readonly error: string };
+
+/** Android (CAP-113): the screen draws the button and calls `signIn` from its tap. */
+export interface GoogleNativeSignIn {
+  readonly kind: 'native';
+  /** The Credential Manager sheet for one attempt; the ID token carries `nonce`. */
+  signIn(request: { readonly nonce: string }): Promise<GoogleNativeResult>;
+}
+
+/** The web (CAP-111): Google Identity Services renders its own button. */
+export interface GoogleButtonSignIn {
+  readonly kind: 'button';
   /**
    * Load Google's script (once) and render its button into `parent` for one attempt: the ID token Google returns
    * carries `nonce`, and `onCredential` receives it. Render again with a fresh nonce after every attempt. Rejects

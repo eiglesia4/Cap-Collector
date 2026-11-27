@@ -1,7 +1,7 @@
 // Capacitor implementation of the Platform adapter, for the iPhone and (CAP-112, ADR-011 §4) Android: Camera, Share,
 // Filesystem, Preferences, the native place plugin, deep links, and on iOS the native Sign in with Apple sheet
-// (ADR-001, ADR-008 §4, CAP-28; in-app plugin since CAP-65). Android offers no Apple sign-in (ADR-011 §3; Google comes
-// in CAP-113) and adds the hardware back button. Non-image file picks (e.g. an Exchange answer JSON) fall back to the
+// (ADR-001, ADR-008 §4, CAP-28; in-app plugin since CAP-65). Android offers Google through the native
+// Credential Manager plugin instead of Apple (ADR-011 §3, CAP-113) and adds the hardware back button. Non-image file picks (e.g. an Exchange answer JSON) fall back to the
 // web <input type=file> (the Files app on iOS, the system picker on Android).
 import { App } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
@@ -10,6 +10,7 @@ import { Preferences } from '@capacitor/preferences';
 import { Share } from '@capacitor/share';
 
 import { APPLE_CANCELLED, AppleSignIn, type AppleSignInPlugin } from './apple-sign-in-plugin.js';
+import { GoogleSignIn, type GoogleSignInPlugin } from './google-sign-in-plugin.js';
 import {
   PLACE_GUARD_MS,
   PlaceName as PlaceNamePlugin,
@@ -21,6 +22,8 @@ import {
   isCancel,
   type AppleCredential,
   type AppleSignInRequest,
+  type GoogleNativeResult,
+  type GoogleNativeSignIn,
   type PickOptions,
   type PlaceName,
   type Platform,
@@ -60,6 +63,7 @@ export interface CapacitorPlugins {
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
   readonly AppleSignIn: Pick<AppleSignInPlugin, 'authorize'>;
   readonly PlaceName: Pick<PlaceNameApi, 'currentPlace'>;
+  readonly GoogleSignIn: Pick<GoogleSignInPlugin, 'signIn'>;
   readonly App: Pick<typeof App, 'addListener' | 'exitApp' | 'getLaunchUrl'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
@@ -72,6 +76,7 @@ export const defaultPlugins = (): CapacitorPlugins => ({
   Preferences,
   AppleSignIn,
   PlaceName: PlaceNamePlugin,
+  GoogleSignIn,
   App,
   fetch: (input) => fetch(input),
 });
@@ -87,10 +92,35 @@ async function toBase64(file: Blob): Promise<string> {
   return btoa(binary);
 }
 
+/** The plugin's answer as a GoogleNativeResult: a token, a cancel, or an error code (anything else is an error). */
+export function googleResult(raw: Record<string, unknown> | null | undefined): GoogleNativeResult {
+  if (typeof raw?.idToken === 'string' && raw.idToken !== '') return { idToken: raw.idToken };
+  if (raw?.cancelled === true) return { cancelled: true };
+  return { error: typeof raw?.error === 'string' && raw.error !== '' ? raw.error : 'unknown' };
+}
+
+/** Android's Google sign-in (CAP-113): the native sheet for the Web client id, which is the ID token's `aud`. */
+function nativeGoogle(plugin: CapacitorPlugins['GoogleSignIn'], serverClientId: string): GoogleNativeSignIn {
+  return {
+    kind: 'native',
+    signIn: ({ nonce }) =>
+      plugin
+        .signIn({ serverClientId, nonce })
+        .then(googleResult)
+        .catch((error: unknown) => ({ error: error instanceof Error ? error.name : 'unknown' })),
+  };
+}
+
+export interface CapacitorPlatformOptions {
+  /** The Google **Web** client id (`VITE_GOOGLE_CLIENT_ID`), what Credential Manager asks for; none → no Google. */
+  readonly googleClientId?: string | null;
+}
+
 export function createCapacitorPlatform(
   fallback: Platform,
   plugins: CapacitorPlugins = defaultPlugins(),
   os: 'ios' | 'android' = 'ios',
+  options: CapacitorPlatformOptions = {},
 ): Platform {
   const android = os === 'android';
   async function fileFrom(webPath: string | undefined, name: string): Promise<File | null> {
@@ -170,8 +200,8 @@ export function createCapacitorPlatform(
       android ? Promise.reject(new AppleSignInUnavailableError('no Apple on Android')) : Promise.resolve(),
     signInWithApple,
     supportsNativeAppleSignIn: () => !android,
-    // ADR-011 §3: no Google on iOS; Android's native Credential Manager flow is CAP-113.
-    google: null,
+    // ADR-011 §3: no Google on iOS; on Android the native Credential Manager sheet (CAP-113), never the GIS script.
+    google: android && options.googleClientId ? nativeGoogle(plugins.GoogleSignIn, options.googleClientId) : null,
     onDeepLink,
     // Android only (CAP-112): iOS has no back button, so the listener simply never fires there.
     onBackButton(listener) {

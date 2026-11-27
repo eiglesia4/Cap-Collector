@@ -14,5 +14,5 @@ export async function selectPlatform(
   const web = createWebPlatform(win, { apple, google });
   if (!isNativePlatform()) return web;
   const { createCapacitorPlatform, defaultPlugins } = await import('./capacitor/capacitor-platform.js');
-  return createCapacitorPlatform(web, defaultPlugins(), nativeOs());
+  return createCapacitorPlatform(web, defaultPlugins(), nativeOs(), { googleClientId: google?.clientId ?? null });
 }

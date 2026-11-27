@@ -373,6 +373,8 @@
   "signIn.googleNotAllowedSub": "Tu id de usuario de Google (asígnalo a tu id de usuario en el ajuste google-identities del servidor):",
   "signIn.googleRetry": "El inicio de sesión con Google no se completó. Inténtalo de nuevo.",
   "signIn.googleUnavailable": "Ahora mismo no se puede iniciar sesión con Google. Puedes entrar con Apple.",
+  "signIn.googleButton": "Iniciar sesión con Google",
+  "signIn.googleError": "Error de Google: {code}",
   "signIn.noProvider": "El inicio de sesión aún no está disponible en este dispositivo.",
   "signIn.skip": "Continuar sin iniciar sesión (desarrollo)",
   "scan.enterManually": "Introducir a mano",

@@ -10,9 +10,11 @@
 // Apple's, same width. Google's script is loaded and the button rendered on the first render (fresh nonce per
 // attempt); a refusal shows the Google `sub` to add to `google-identities`, a 401 asks to retry, and a script that does
 // not load only hides Google — Apple stays usable. The platform adapter decides whether Google is offered at all.
-// CAP-112: Android offers no Apple sign-in (ADR-011 §3; Google there is CAP-113): with no provider the screen says so.
+// CAP-112: Android offers no Apple sign-in (ADR-011 §3): with no provider the screen says so. CAP-113: on Android the
+// Google button is the app's own and opens the native Credential Manager sheet; the rest of the flow is shared.
 import { finishGoogleSignIn, type GoogleSignInFailure } from '../auth/google-sign-in.js';
 import { createPkce, type Pkce } from '../auth/pkce.js';
+import type { GoogleNativeSignIn } from '../platform/platform.js';
 import { prepareSignIn, signIn, type PreparedSignIn, type SignInFailure } from '../auth/sign-in.js';
 import { BrandMark } from '../components/brand-mark.js';
 import type { Screen } from '../context.js';
@@ -170,9 +172,43 @@ export const SignInScreen: Screen = (ctx) => {
   googleStatus.hidden = true;
   let googleBusy = false;
 
+  /** Android (CAP-113): the app's button opens the native sheet for the attempt's nonce; a cancel is silent. */
+  function nativeGoogleButton(native: GoogleNativeSignIn, pkce: Pkce): HTMLElement {
+    const nativeButton = h(
+      'button',
+      {
+        class: 'button button--google',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            if (googleBusy) return;
+            nativeButton.disabled = true;
+            clearFailure();
+            void native.signIn({ nonce: pkce.nonce }).then((result) => {
+              nativeButton.disabled = false;
+              if ('idToken' in result) return onGoogle(pkce, result.idToken);
+              if ('error' in result) {
+                error.textContent = t('signIn.failed');
+                code.textContent = t('signIn.googleError', { code: result.error });
+                code.hidden = false;
+              }
+            });
+          },
+        },
+      },
+      h('span', { class: 'google-logo', attrs: { 'aria-hidden': 'true' } }),
+      h('span', {}, t('signIn.googleButton')),
+    );
+    return nativeButton;
+  }
+
   /** Fresh verifier and nonce, then Google's button for them; a script that fails to load hides Google only. */
   function prepareGoogle(): void {
     if (!google) return;
+    if (google.kind === 'native') {
+      void createPkce().then((pkce) => googleSlot.replaceChildren(nativeGoogleButton(google, pkce)));
+      return;
+    }
     void createPkce()
       .then((pkce) => google.renderButton(googleSlot, { nonce: pkce.nonce }, (idToken) => onGoogle(pkce, idToken)))
       .then(
