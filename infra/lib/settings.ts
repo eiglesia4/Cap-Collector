@@ -33,7 +33,7 @@ export interface SettingsTarget {
   readonly configVersion: string;
   /** Cost-allocation tag values from config (CAP-102): `settings:bootstrap` tags each parameter it creates. */
   readonly tags: TagsConfig;
-  /** The six parameter names of this target, in SETTINGS order. */
+  /** The eight parameter names of this target, in SETTINGS order. */
   readonly names: readonly string[];
 }
 
@@ -126,7 +126,7 @@ export const formatShow = (rows: readonly { name: string; state: SettingState }[
 
 /**
  * Overwrites settings from the JSON of `aws ssm get-parameters --with-decryption` (CAP-60 migration, step 4). Only
- * this target's six names are accepted; a saved `unset` is skipped (nothing to restore).
+ * this target's eight names are accepted; a saved `unset` is skipped (nothing to restore).
  */
 export function restoreSettings(
   target: SettingsTarget,

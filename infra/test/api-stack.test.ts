@@ -176,6 +176,42 @@ describe('CollectorsApi stack', () => {
     ]);
   });
 
+  it('[T-infra-059] auth-google is public, granted like auth-apple; the Google settings reach only auth-google and auth-refresh', () => {
+    // CAP-109 (ADR-011 §1–2): same grants and session secret as auth-apple, no authorizer, nothing else.
+    expect(ROUTES.find((r) => r.handler === 'auth-google')).toMatchObject({
+      method: 'POST',
+      path: '/auth/google',
+      auth: false,
+    });
+    expect(WIRING['auth-google']?.grants).toEqual(WIRING['auth-apple']?.grants);
+    expect(WIRING['auth-google']?.secrets).toEqual(['googleClientIds', 'googleIdentities', 'sessionSecret']);
+    // Refresh accepts the uids Google subs map to (architect note on CAP-109), so it reads the map, not the client ids.
+    expect(WIRING['auth-refresh']?.secrets).toEqual(['allowedAppleSubs', 'googleIdentities', 'sessionSecret']);
+    for (const [handler, wiring] of Object.entries(WIRING)) {
+      if (handler === 'auth-google' || handler === 'auth-refresh') continue;
+      expect(wiring.secrets ?? [], handler).not.toContain('googleClientIds');
+      expect(wiring.secrets ?? [], handler).not.toContain('googleIdentities');
+    }
+
+    // Synthesised: the route has no authorizer, the env holds exactly the wired settings, IAM equals auth-apple's.
+    const { template } = apiStack({ apiSrcDir: fakeApiSrc(['auth-apple', 'auth-google', 'auth-refresh'], true) });
+    const s = summarise(template);
+    expect(s.routes['POST /auth/google']).toBe('AuthGoogle NONE');
+    expect(s.functions.AuthGoogle?.env).toEqual(
+      expect.arrayContaining(['CAP_GOOGLE_CLIENT_IDS', 'CAP_GOOGLE_IDENTITIES', 'CAP_SESSION_SECRET']),
+    );
+    expect(s.functions.AuthGoogle?.env).not.toContain(SECRET_ENV.allowedAppleSubs);
+    expect(s.functions.AuthGoogle?.env).not.toContain(SECRET_ENV.appleClientIds);
+    expect(s.functions.AuthRefresh?.env).toContain('CAP_GOOGLE_IDENTITIES');
+    expect(s.functions.AuthRefresh?.env).not.toContain('CAP_GOOGLE_CLIENT_IDS');
+    for (const [fn, { env }] of Object.entries(s.functions)) {
+      if (fn === 'AuthGoogle' || fn === 'AuthRefresh') continue;
+      expect(env, fn).not.toContain('CAP_GOOGLE_CLIENT_IDS');
+      expect(env, fn).not.toContain('CAP_GOOGLE_IDENTITIES');
+    }
+    expect(s.policies.AuthGoogleServiceRole).toEqual(s.policies.AuthAppleServiceRole);
+  });
+
   it('[T-infra-027] every handler that returns a Cap can presign image GETs: images-get on list/get/create/patch/location-put', () => {
     // CAP-35: a Cap in a response carries presigned `imageUrls`; without s3:GetObject S3 refuses those URLs.
     // CAP-59: caps-location-put returns `{ cap, swapped? }` (CAP-50).
@@ -296,7 +332,9 @@ describe('CollectorsApi stack', () => {
     expect(s.policies.CapsPatchServiceRole?.filter((a) => a.startsWith('s3:'))).toEqual(['s3:GetObject']);
 
     // Settings only where the manifest says so.
-    expect(s.functions.AuthApple?.env).toEqual(expect.arrayContaining(Object.values(SECRET_ENV)));
+    const appleEnv = (WIRING['auth-apple']?.secrets ?? []).map((n) => SECRET_ENV[n]);
+    expect(s.functions.AuthApple?.env).toEqual(expect.arrayContaining(appleEnv));
+    expect(s.functions.AuthApple?.env).not.toContain(SECRET_ENV.googleClientIds);
     expect(s.functions.CapsGet?.env).not.toContain(SECRET_ENV.sessionSecret);
     expect(s.functions.Authorizer?.env).toContain(SECRET_ENV.sessionSecret);
     expect(s.functions.Authorizer?.env).not.toContain(SECRET_ENV.allowedAppleSubs);

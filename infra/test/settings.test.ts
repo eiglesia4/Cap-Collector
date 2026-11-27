@@ -40,9 +40,11 @@ afterEach(() => {
 });
 
 const deployment = { installation: 'test', stage: 'dev' };
-const SIX = [
+const EIGHT = [
   '/cap/test/dev/allowed-apple-subs',
   '/cap/test/dev/apple-client-ids',
+  '/cap/test/dev/google-client-ids',
+  '/cap/test/dev/google-identities',
   '/cap/test/dev/session-secret',
   '/cap/test/dev/web-certificate-arn',
   '/cap/test/dev/api-certificate-arn',
@@ -101,8 +103,8 @@ function fakeSsm(initial: Record<string, string>) {
 }
 
 describe('Settings', () => {
-  it('[T-infra-039] no stack creates an SSM parameter; the six settings appear only as SSM-typed template parameters', () => {
-    expect(SETTINGS.map((n) => settingParameterName(deployment, n))).toEqual(SIX);
+  it('[T-infra-039] no stack creates an SSM parameter; the eight settings appear only as SSM-typed template parameters', () => {
+    expect(SETTINGS.map((n) => settingParameterName(deployment, n))).toEqual(EIGHT);
     // With domains on (the committed test.dev config) every setting is read by one of the two stacks.
     const built = buildApp(new App({ context: { ...deployment, 'aws:cdk:bundling-stacks': [] } }), FIXTURE_CONFIG_DIR);
     const read = new Set<string>();
@@ -120,7 +122,7 @@ describe('Settings', () => {
       const { Parameters: _params, ...rest } = json;
       expect(JSON.stringify(rest)).not.toMatch(/\/cap\/test\/dev\//);
     }
-    expect([...read].sort()).toEqual([...SIX].sort());
+    expect([...read].sort()).toEqual([...EIGHT].sort());
   });
 
   it('[T-infra-040] bootstrap creates only the missing settings (unset, tagged) and leaves existing ones; restore overwrites from a backup', () => {
@@ -130,7 +132,7 @@ describe('Settings', () => {
 
     const first = bootstrapSettings(t, ssm.run);
     expect(first.skipped).toEqual(['/cap/test/dev/session-secret', '/cap/test/dev/alert-email']);
-    expect(first.created).toEqual(SIX.filter((n) => !first.skipped.includes(n)));
+    expect(first.created).toEqual(EIGHT.filter((n) => !first.skipped.includes(n)));
     expect(ssm.store.get('/cap/test/dev/session-secret')).toBe('real-secret');
     for (const n of first.created) {
       expect(ssm.store.get(n)).toBe(UNSET_PARAMETER_VALUE);
@@ -150,7 +152,7 @@ describe('Settings', () => {
       expect(c.args.join(' ')).not.toMatch(/unset|real-secret/);
     }
     // Idempotent: a second run creates nothing.
-    expect(bootstrapSettings(t, ssm.run)).toEqual({ created: [], skipped: SIX });
+    expect(bootstrapSettings(t, ssm.run)).toEqual({ created: [], skipped: EIGHT });
     // Any other CLI error is not swallowed.
     expect(() =>
       bootstrapSettings(t, () => {
@@ -195,6 +197,8 @@ describe('Settings', () => {
     expect(rows).toEqual([
       { name: '/cap/test/dev/allowed-apple-subs', state: 'set' },
       { name: '/cap/test/dev/apple-client-ids', state: 'missing' },
+      { name: '/cap/test/dev/google-client-ids', state: 'missing' },
+      { name: '/cap/test/dev/google-identities', state: 'missing' },
       { name: '/cap/test/dev/session-secret', state: 'set' },
       { name: '/cap/test/dev/web-certificate-arn', state: 'missing' },
       { name: '/cap/test/dev/api-certificate-arn', state: 'missing' },
@@ -203,11 +207,11 @@ describe('Settings', () => {
     const out = formatShow(rows);
     expect(out).not.toContain(secret);
     expect(out).not.toContain('001234.abcdef');
-    expect(out.split('\n')).toHaveLength(6);
+    expect(out.split('\n')).toHaveLength(8);
     expect(out).toMatch(/\/cap\/test\/dev\/session-secret\s+set/);
-    // It asks for the six names, without decryption.
+    // It asks for the eight names, without decryption.
     expect(ssm.calls[0]?.args).not.toContain('--with-decryption');
-    expect(ssm.calls[0]?.args).toEqual(expect.arrayContaining(SIX));
+    expect(ssm.calls[0]?.args).toEqual(expect.arrayContaining(EIGHT));
   });
 
   it('[T-infra-043] put-parameter input goes through a private temp file (0600, holds the value), removed after success and after a CLI failure', () => {
@@ -271,7 +275,7 @@ describe('Settings', () => {
       ],
     };
     restoreSettings(t, JSON.stringify(backup), ssm.run);
-    expect(ssm.calls).toHaveLength(SIX.length + values.length);
+    expect(ssm.calls).toHaveLength(EIGHT.length + values.length);
     const argv = ssm.calls.map((c) => [c.cmd, ...c.args].join(' ')).join('\n');
     for (const v of [...values, UNSET_PARAMETER_VALUE]) expect(argv).not.toContain(v);
     expect(argv).not.toContain('/dev/stdin');
