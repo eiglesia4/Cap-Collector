@@ -43,7 +43,7 @@ describe('UI language (CAP-97)', () => {
     }
     // Spain's Spanish with the collection's own words.
     expect(es['tabs.collection']).toBe('Colección');
-    expect(es['collection.countOne']).toMatch(/chapa/);
+    expect(es['collection.gridAll']).toBe('Todas');
   });
 
   it('[T-app-186] Spanish is the default with nothing stored; a stored choice wins; the device language is ignored', async () => {

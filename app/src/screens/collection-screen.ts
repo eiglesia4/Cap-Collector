@@ -1,6 +1,8 @@
-// Collection tab (SCREENS.md #1, CAP-23): header with the cap count, sort sheet and the "⋯" menu (Albums, Exchange,
-// Settings); search (debounced, `q`), filter chips (All · type · top countries · Needs review), the "Recently added"
-// strip, the 3-column grid with cursor-based infinite scroll, pull-to-refresh on iOS and the empty state. Filters,
+// Collection tab (SCREENS.md #1, CAP-23): header with the sort sheet and the "⋯" menu (Albums, Exchange, Settings);
+// search (debounced, `q`), filter chips (All · type · top countries · Needs review), the "Recently added" row (CAP-115:
+// only past 12 caps and unfiltered, a horizontal row of small thumbnails on a tinted band), the 3-column grid under its
+// own heading "All · N" (or the filter's name), with cursor-based infinite scroll, pull-to-refresh on iOS and the empty
+// state. Filters,
 // loaded pages and scroll live in collection/state.ts so coming back from a cap's detail restores them.
 // An album + sheet code typed in the search (`A·3`, CAP-52) offers "Open sheet A·3" and Enter opens the sheet view.
 // `/?brand=Mahou` (CAP-79, from Stats and Detail) filters by brand, shown as a removable chip. While a batch is
@@ -17,6 +19,7 @@ import {
   DEFAULT_QUERY,
   isFiltered,
   queryFromRoute,
+  RECENT_MIN_COLLECTION,
   RECENT_SIZE,
   SORTS,
   topCountries,
@@ -24,7 +27,7 @@ import {
   type Sort,
 } from '../collection/query.js';
 import { collectionState } from '../collection/state.js';
-import { CapTile } from '../components/cap-tile.js';
+import { CapThumbTile, CapTile } from '../components/cap-tile.js';
 import { BatchBanner } from '../components/batch-banner.js';
 import { ScreenHeader } from '../components/screen-header.js';
 import type { AppContext, Screen } from '../context.js';
@@ -50,15 +53,23 @@ const SORT_LABEL: Record<Sort, MessageKey> = {
 
 const numberFormat = () => new Intl.NumberFormat(locale('number'));
 
-function capsCount(n: number): string {
-  return n === 1 ? t('collection.countOne') : t('collection.count', { count: numberFormat().format(n) });
+/** "1,284" from `total`; without it "60+" while more pages remain, else the exact loaded count. */
+export function countLabel(state: Pick<PagerState, 'items' | 'total' | 'done'>): string {
+  if (state.total !== null) return numberFormat().format(state.total);
+  const loaded = numberFormat().format(state.items.length);
+  return state.done ? loaded : t('collection.countMore', { count: loaded });
 }
 
-/** "1,284 caps" from `total`; without it "60+ caps" while more pages remain, else the exact loaded count. */
-export function countLabel(state: Pick<PagerState, 'items' | 'total' | 'done'>): string {
-  if (state.total !== null) return capsCount(state.total);
-  if (!state.done) return t('collection.countMore', { count: numberFormat().format(state.items.length) });
-  return capsCount(state.items.length);
+/** What the grid shows (CAP-115): "All", or the active filters by name, e.g. "Beer, Belgium". */
+export function gridLabel(query: CollectionQuery): string {
+  const parts = [
+    query.q.trim() === '' ? null : t('collection.gridSearch', { q: query.q.trim() }),
+    query.brand,
+    query.type === null ? null : t(TYPE_LABEL[query.type]),
+    query.country === null ? null : countryName(query.country),
+    query.needsReview ? t('collection.chipNeedsReview') : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length === 0 ? t('collection.gridAll') : parts.join(t('collection.gridJoin'));
 }
 
 function fetchPage(ctx: AppContext, query: CollectionQuery) {
@@ -78,7 +89,6 @@ export const CollectionScreen: Screen = (ctx, route) => {
   const win = window;
 
   // ── header ──
-  const count = h('p', { class: 'collection-count muted', attrs: { 'aria-live': 'polite' } });
   const link = (route: 'albums' | 'exchange' | 'settings', label: string) =>
     h('a', { class: 'menu-item', attrs: { href: pathFor(route), 'data-link': true } }, label);
   const more = h(
@@ -227,19 +237,29 @@ export const CollectionScreen: Screen = (ctx, route) => {
   };
 
   // ── recently added, grid, footer ──
-  const recentList = h('ul', { class: 'cap-strip' });
+  const recentList = h('ul', { class: 'cap-strip', attrs: { 'aria-label': t('collection.recent') } });
   const recent = h(
     'section',
     { class: 'collection-recent' },
     h('h2', { class: 'section-title' }, t('collection.recent')),
     recentList,
   );
+  /** Collection size when known: the strip page's `total`, else the unfiltered grid once it holds every cap or > 12. */
+  const collectionSize = (): number | null => {
+    if (store.recentTotal !== null) return store.recentTotal;
+    if (isFiltered(store.query)) return null;
+    const { items, done } = store.pager.state();
+    return done || items.length > RECENT_MIN_COLLECTION ? items.length : null;
+  };
   const renderRecent = () => {
     const caps = store.recent ?? [];
-    recent.hidden = isFiltered(store.query) || caps.length === 0;
-    recentList.replaceChildren(...caps.map(CapTile));
+    const size = collectionSize();
+    // SCREENS.md #1 (CAP-115): with 12 caps or fewer the grid shows them all, so a second copy only confuses.
+    recent.hidden = isFiltered(store.query) || caps.length === 0 || size === null || size <= RECENT_MIN_COLLECTION;
+    recentList.replaceChildren(...(recent.hidden ? [] : caps.map(CapThumbTile)));
   };
 
+  const gridHeading = h('h2', { class: 'section-title collection-heading', attrs: { 'aria-live': 'polite' } });
   const grid = h('ul', { class: 'cap-grid', attrs: { 'aria-label': t('collection.title') } });
   let rendered: readonly Cap[] = [];
 
@@ -267,7 +287,11 @@ export const CollectionScreen: Screen = (ctx, route) => {
     );
 
   const render = (state: PagerState) => {
-    count.textContent = state.items.length === 0 && !state.done ? '' : countLabel(state);
+    gridHeading.textContent =
+      state.items.length === 0 && !state.done
+        ? ''
+        : t('collection.gridHeading', { label: gridLabel(store.query), count: countLabel(state) });
+    gridHeading.hidden = gridHeading.textContent === '';
     // A reset (new query) shrinks or replaces the list: rebuild; otherwise append only the new caps.
     const appended = rendered.length <= state.items.length && rendered.every((c, i) => state.items[i] === c);
     if (!appended) grid.replaceChildren();
@@ -297,6 +321,7 @@ export const CollectionScreen: Screen = (ctx, route) => {
     loadMore.hidden = state.done || state.error !== null || state.items.length === 0;
     loadMore.disabled = state.loading;
     renderChips();
+    renderRecent();
   };
 
   // ── data ──
@@ -307,6 +332,7 @@ export const CollectionScreen: Screen = (ctx, route) => {
       .then(() => ctx.api.request(capsPath(query, { limit: RECENT_SIZE }), { schema: CapPageSchema }))
       .then((page) => {
         store.recent = page.items.slice(0, RECENT_SIZE);
+        store.recentTotal = page.total ?? null;
         renderRecent();
       })
       // The strip is a convenience: a failure leaves it as it was; the grid reports errors.
@@ -334,11 +360,11 @@ export const CollectionScreen: Screen = (ctx, route) => {
     { class: 'screen collection' },
     ScreenHeader(t('collection.title'), h('span', { class: 'header-actions' }, sort, more)),
     BatchBanner(ctx),
-    count,
     search,
     sheetLink,
     chips,
     recent,
+    gridHeading,
     grid,
     message,
     loadMore,

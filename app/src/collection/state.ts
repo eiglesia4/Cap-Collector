@@ -14,6 +14,8 @@ export interface CollectionState {
   listener: ((state: PagerState) => void) | null;
   /** "Recently added" strip; null until loaded. */
   recent: readonly Cap[] | null;
+  /** Size of the whole collection, from the strip's unfiltered page (`total`); null when unknown (CAP-115). */
+  recentTotal: number | null;
   /** Country chips, from the last page loaded without a country filter (kept while reloading or filtering). */
   countries: readonly string[];
   scrollY: number;
@@ -32,6 +34,7 @@ export function collectionState(ctx: Pick<AppContext, 'api'>): CollectionState {
       pager: createPager((s) => created.listener?.(s)),
       listener: null,
       recent: null,
+      recentTotal: null,
       countries: [],
       scrollY: 0,
       started: false,
@@ -47,6 +50,7 @@ export function forgetCap(ctx: Pick<AppContext, 'api'>, capId: string): void {
   const state = collectionState(ctx);
   state.pager.remove(capId);
   if (state.recent !== null) state.recent = state.recent.filter((c) => c.capId !== capId);
+  if (state.recentTotal !== null) state.recentTotal = Math.max(0, state.recentTotal - 1);
 }
 
 /**
@@ -57,5 +61,6 @@ export function invalidateCollection(ctx: Pick<AppContext, 'api'>): void {
   const state = collectionState(ctx);
   state.started = false;
   state.recent = null;
+  state.recentTotal = null;
   state.scrollY = 0;
 }

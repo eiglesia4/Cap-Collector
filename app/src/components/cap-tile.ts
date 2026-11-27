@@ -1,4 +1,4 @@
-// One cap in the Collection grid and the "Recently added" strip (CAP-23, SCREENS.md § Visual system: caps are always
+// One cap in the Collection grid and, small, in the "Recently added" row (CAP-23, CAP-115; SCREENS.md § Visual system: caps are always
 // drawn as circles). Round thumbnail from the presigned `imageUrls.top` (contracts v0.2, CAP-20); without it — or
 // when the ≈5 min URL has expired — a placeholder circle tinted by a hash of the brand. Lines: brand · variant and
 // country · year; a "!" badge marks `needsReview`. Tapping opens the cap's detail (`/cap/:id`, CAP-24).
@@ -74,6 +74,20 @@ export function CapTile(cap: Cap): HTMLElement {
       ),
       h('span', { class: 'cap-title' }, capTitle(cap)),
       subtitle !== '' && h('span', { class: 'cap-subtitle muted' }, subtitle),
+    ),
+  );
+}
+
+/** A small tile of the "Recently added" row (CAP-115): the photo and the brand only, ≈ 64 px. */
+export function CapThumbTile(cap: Cap): HTMLElement {
+  return h(
+    'li',
+    { class: 'cap-thumb-tile' },
+    h(
+      'a',
+      { class: 'cap-link', attrs: { href: pathFor('capDetail', { id: cap.capId }), 'data-link': true } },
+      capImage(cap, 'top', 'cap-thumb cap-thumb--small'),
+      h('span', { class: 'cap-brand' }, cap.brand),
     ),
   );
 }
