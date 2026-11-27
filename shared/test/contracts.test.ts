@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Album,
   AppleSignInRequest,
+  GoogleSignInRequest,
   CapPatch,
   CONTRACTS_VERSION,
   DEFAULT_LANGUAGE,
@@ -198,6 +199,7 @@ describe('shared contracts', () => {
     const expected = [
       '/healthz',
       '/auth/apple',
+      '/auth/google',
       '/auth/refresh',
       '/uploads',
       '/caps',
@@ -249,7 +251,7 @@ describe('shared contracts v0.2 (CAP-26)', () => {
       ROUTES.filter((r) => !r.auth)
         .map((r) => r.handler)
         .sort(),
-    ).toEqual(['auth-apple', 'auth-refresh', 'healthz']);
+    ).toEqual(['auth-apple', 'auth-google', 'auth-refresh', 'healthz']);
     expect(new Set(ROUTES.map((r) => r.handler)).size).toBe(ROUTES.length);
     expect(routeByHandler('caps-get')?.path).toBe('/caps/{capId}');
     expect(toColonPath('/albums/{albumId}/sheets/{sheet}')).toBe('/albums/:albumId/sheets/:sheet');
@@ -319,7 +321,6 @@ describe('shared contracts v0.3 (CAP-76)', () => {
 
 describe('shared contracts v0.4 (CAP-95)', () => {
   it('[T-shared-009] v0.4: optional AnalyseRequest.language (es|en), Spanish default, language-aware AI instructions, version 0.4.0', () => {
-    expect(CONTRACTS_VERSION).toBe('0.4.0');
     expect(DEFAULT_LANGUAGE).toBe('es');
     const base = {
       scanId: '01JBF70A1B2C3D4E5F6G7H8J9K',
@@ -337,5 +338,21 @@ describe('shared contracts v0.4 (CAP-95)', () => {
       expect(text).toContain('`year`');
       expect(text).not.toMatch(/use null when unsure/i);
     }
+  });
+});
+
+describe('shared contracts v0.5 (CAP-107)', () => {
+  it('[T-shared-010] v0.5: POST /auth/google (public) with GoogleSignInRequest { idToken, codeVerifier }, version 0.5.0', () => {
+    expect(CONTRACTS_VERSION).toBe('0.5.0');
+    const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+    expect(GoogleSignInRequest.safeParse({ idToken: 't', codeVerifier: verifier }).success).toBe(true);
+    expect(GoogleSignInRequest.safeParse({ idToken: 't', codeVerifier: 'short' }).success).toBe(false);
+    expect(GoogleSignInRequest.safeParse({ idToken: '', codeVerifier: verifier }).success).toBe(false);
+    expect(GoogleSignInRequest.safeParse({ idToken: 't', codeVerifier: verifier, extra: 1 }).success).toBe(false);
+    expect(ROUTES.find((r) => r.path === '/auth/google')).toMatchObject({
+      method: 'POST',
+      handler: 'auth-google',
+      auth: false,
+    });
   });
 });

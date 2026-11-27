@@ -25,9 +25,10 @@ export const EXCHANGE_CURRENT_VERSION = 1 as const;
 const LANGUAGE_NAME: Record<UiLanguage, string> = { es: 'Spanish', en: 'English' };
 
 /**
- * Instructions for the vision model, Bedrock and external alike (ADR-007, ADR-008 §7). v0.4 (CAP-95, decided with Edu
+ * Instructions for the vision model, Bedrock and external alike (ADR-007, ADR-008 §7). v0.4 (CAP-95, decided with the owner
  * on 2026-11-23): best guesses with a low confidence instead of null, `type` inferred from the producer, the usual
- * crown-cap material/closure, never a guessed `year`, and `description` written in the user's language.
+ * crown-cap material/closure, never a guessed `year`, and `description` written in the user's language. v0.5 (CAP-107):
+ * brand, variant, producer and textOnCap are never translated; enum fields take the listed codes.
  */
 export function exchangeInstructions(language: UiLanguage = 'en'): string {
   return (
@@ -36,7 +37,8 @@ export function exchangeInstructions(language: UiLanguage = 'en'): string {
     'better than null. Infer `type` from the brand, producer or text (a brewery → beer, a cider maker → cider, a ' +
     'winery → wine). Crown caps are usually steel and pry-off unless the photo shows otherwise. Use null only when ' +
     'there is no basis at all, and for `year` unless a year is printed or the design clearly dates it. Keep brand, ' +
-    'variant and textOnCap exactly as printed. Country is ISO 3166-1 alpha-2. Write `description` in ' +
+    'variant and textOnCap exactly as printed, and producer as the company names itself; never translate them. The ' +
+    'enum fields take the codes listed in the schema. Country is ISO 3166-1 alpha-2. Write `description` in ' +
     `${LANGUAGE_NAME[language]}. Return ONLY the JSON of \`response\`.`
   );
 }

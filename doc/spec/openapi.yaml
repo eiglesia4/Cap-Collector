@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CapCollector API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Contract between `app/` and `api/` (CAP-12 v0.1 → CAP-26 v0.2). Owned by the architect; changes are new versions.
     Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name
@@ -10,6 +10,8 @@ info:
     (Sign in with Apple + PKCE, ADR-008). The route list, with handler names, is `shared/src/routes.ts` (T-shared-006).
     Errors are `Problem` (RFC 9457); 500 carries the request id in `detail` and in the `x-request-id` header.
     v0.3 (CAP-76): `brand` filter on `GET /caps`, `SheetPocket.thumbUrl` (both backward-compatible; no new routes).
+    v0.4 (CAP-95): optional `AnalyseRequest.language`, language-aware AI instructions (no new routes).
+    v0.5 (CAP-107, ADR-011): `POST /auth/google` (`GoogleSignInRequest`), same `Session` as `/auth/apple`.
     v0.2 (CAP-26): `security: []` markers, `/auth/apple` and `/auth/refresh` bodies, `/uploads` body without `capId`,
     `Cap.imageUrls`, `Location.albumId`, `CapPatch` semantics (no defaults, `null` clears), sort rules, examples.
 servers:
@@ -54,6 +56,27 @@ paths:
       responses:
         '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
         '403': { description: Apple `sub` not in the allow-list (single user) }
+  /auth/google:
+    post:
+      tags: [auth]
+      summary: Exchange a Google ID token (PKCE-bound nonce) for a session JWT + refresh token (v0.5, ADR-011)
+      security: []
+      description: |
+        Same binding as `/auth/apple`: the client requests the Google ID token with
+        `nonce = base64url(SHA-256(codeVerifier))` and posts the verifier. The API verifies the signature (Google JWKS),
+        `iss`, `aud` ∈ the `google-client-ids` setting, `exp`, `email_verified` and the nonce, then maps the Google
+        `sub` to a user id through the `google-identities` setting; an unmapped `sub` → 403 with the `sub` in the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleSignInRequest' }
+            example: { idToken: 'eyJhbGciOiJSUzI1NiIs…', codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk' }
+      responses:
+        '200': { description: session, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
+        '401': { description: ID token invalid (signature, iss, aud, exp, nonce or unverified e-mail) }
+        '403': { description: Google `sub` not mapped in `google-identities` }
+        '422': { description: body fails the zod schema }
   /auth/refresh:
     post:
       tags: [auth]
@@ -315,6 +338,7 @@ components:
     Source: { type: string, pattern: '^(manual|import|bedrock:.+|external:.+)$' }
 
     AppleSignInRequest: { description: 'zod `AppleSignInRequest` (http.ts)', type: object, required: [identityToken, codeVerifier] }
+    GoogleSignInRequest: { description: 'zod `GoogleSignInRequest` (http.ts, v0.5)', type: object, required: [idToken, codeVerifier] }
     RefreshRequest: { description: 'zod `RefreshRequest` (http.ts)', type: object, required: [refreshToken], properties: { refreshToken: { type: string } } }
     UploadRequest: { description: 'zod `UploadRequest` (http.ts)', type: object, required: [side, contentType, bytes] }
     UploadResponse: { description: 'zod `UploadResponse` (http.ts)', type: object, required: [key, url, expiresAt] }
