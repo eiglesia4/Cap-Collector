@@ -10,3 +10,8 @@ TEST.md
 # Written by `npx cap sync` (CAP-21): the copied web bundle and the generated Capacitor config.
 app/ios/App/App/public/
 app/ios/App/App/capacitor.config.json
+# Xcode build output (gitignored; prettier doesn't read nested .gitignore files).
+app/ios/DerivedData/
+# Written by Gradle and `npx cap sync android` (CAP-112): build output and the copied web bundle.
+app/android/**/build/
+app/android/app/src/main/assets/
