@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../lib/app.js';
 import { LOG_RETENTION_DAYS, loadInstallationConfig } from '../lib/config.js';
 import { BUDGET_NOTIFICATIONS, LAMBDA_ERRORS_PER_ALARM, OPS_ALARMS } from '../lib/ops.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) {
@@ -27,15 +28,15 @@ afterEach(() => {
   }
 });
 
-const deployment = { installation: 'naeva', stage: 'dev' };
-/** The committed naeva.dev target with the real api/src handlers, without running esbuild. */
+const deployment = { installation: 'test', stage: 'dev' };
+/** The committed test.dev target with the real api/src handlers, without running esbuild. */
 const CONTEXT = { ...deployment, 'aws:cdk:bundling-stacks': [] };
-const config = loadInstallationConfig(deployment);
+const config = loadInstallationConfig(deployment, FIXTURE_CONFIG_DIR);
 
 let cached: { data: Template; api: Template } | undefined;
 function templates() {
   if (!cached) {
-    const built = buildApp(new App({ context: CONTEXT }));
+    const built = buildApp(new App({ context: CONTEXT }), FIXTURE_CONFIG_DIR);
     cached = { data: Template.fromStack(built.data), api: Template.fromStack(built.api) };
   }
   return cached;
@@ -75,7 +76,7 @@ describe('Operations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-ops-'));
     const load = (ops?: unknown) => {
       writeFileSync(
-        join(dir, 'naeva.dev.json'),
+        join(dir, 'test.dev.json'),
         JSON.stringify({
           config_version: 'v',
           region: 'r',
@@ -155,7 +156,7 @@ describe('Operations', () => {
     expect(covered.sort()).toEqual([...fnIds].sort());
   });
 
-  it('[T-infra-034] monthly budget: ops.budgetEur filtered by project=EIM_CAP, 80 % actual / 100 % forecast to the alert e-mail under HasAlertEmail', () => {
+  it('[T-infra-034] monthly budget: ops.budgetEur filtered by project=capcollector-test, 80 % actual / 100 % forecast to the alert e-mail under HasAlertEmail', () => {
     const { api } = templates();
     const budgets = resources(api).filter(([, r]) => r.Type === 'AWS::Budgets::Budget');
     expect(budgets).toHaveLength(1);
@@ -164,7 +165,7 @@ describe('Operations', () => {
       BudgetType: 'COST',
       TimeUnit: 'MONTHLY',
       BudgetLimit: { Amount: config.ops.budgetEur, Unit: 'USD' },
-      CostFilters: { TagKeyValue: ['user:project$EIM_CAP'] },
+      CostFilters: { TagKeyValue: ['user:project$capcollector-test'] },
     });
 
     // Notifications exist only when the e-mail parameter is not `unset` (same condition as the alerts subscription).
@@ -198,8 +199,11 @@ describe('Operations', () => {
     const props = budget.Properties ?? {};
     // A fixed name collides when CloudFormation creates the replacement before deleting the old budget (CAP-69).
     expect(props.Budget).not.toHaveProperty('BudgetName');
-    expect(props.Budget).toMatchObject({ TimeUnit: 'MONTHLY', CostFilters: { TagKeyValue: ['user:project$EIM_CAP'] } });
-    expect(props.ResourceTags).toContainEqual({ Key: 'Name', Value: 'cap-naeva-dev-monthly' });
+    expect(props.Budget).toMatchObject({
+      TimeUnit: 'MONTHLY',
+      CostFilters: { TagKeyValue: ['user:project$capcollector-test'] },
+    });
+    expect(props.ResourceTags).toContainEqual({ Key: 'Name', Value: 'cap-test-dev-monthly' });
     expect(api.toJSON().Outputs).toHaveProperty('MonthlyBudgetName.Value', ref(id));
   });
 
@@ -219,8 +223,8 @@ describe('Operations', () => {
       'AWS::SNS::Subscription',
     ]);
     const expected = {
-      project: 'EIM_CAP',
-      UserName: 'eiglesia4',
+      project: 'capcollector-test',
+      UserName: 'tester',
       installation: deployment.installation,
       stage: deployment.stage,
     };

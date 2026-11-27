@@ -1,7 +1,12 @@
 # infra/config
 
 One file per deployment target: `<installation>.<stage>.json`. `cdk synth` refuses any installation/stage pair
-without a file here (T-infra-002), so a typo in `--context` never creates a parallel set of resources.
+without a file (T-infra-002, T-infra-057), so a typo in `--context` never creates a parallel set of resources.
+
+**Target configs are local** (CAP-105): this directory's `.gitignore` keeps every `*.json` out of git except
+`example.dev.json`, because a real config carries the owner's domains and tag values. Back yours up with your other
+private settings. `CAP_CONFIG_DIR` reads the configs from another directory instead (CI points it at
+`infra/test/fixtures/config/`, the neutral `test/dev` target the tests synthesise).
 
 **Your own target:** copy [`example.dev.json`](example.dev.json) to `<you>.<stage>.json` and edit it (region, model,
 tags; add `domains` only once you have the certificates). `example` is the template: synth refuses it as an
@@ -15,8 +20,8 @@ installation name (CAP-102, T-infra-052).
 | `domains`        | Optional, CAP-29. `{ "web": "<host>", "api": "<host>" }`, both required: CloudFront alias and API Gateway custom domain. Certificate ARNs come from SSM, never from this file; see [`../README.md` § Custom domains](../README.md#custom-domains-cap-29-once-per-target)                                                                                                                                                                                                                                                                                                |
 | `ai`             | Required, CAP-40. `{ "modelId": "<bedrock model or eu./us. inference profile id>", "dhashThreshold": 10 }`: the vision model scans-analyse may invoke (never an ARN) and the dHash Hamming threshold (ADR-004, 0–64)                                                                                                                                                                                                                                                                                                                                                    |
 | `ops`            | Required, CAP-51 / CAP-57. `{ "budgetEur": 10, "logRetentionDays": 30, "backupRetentionDays": 35 }`: monthly AWS Budget filtered by the `project` tag value of `tags`, the retention of every Lambda log group (a value CloudWatch Logs accepts: 1, 3, 5, 7, 14, 30, 60, 90…; never "never expire"), and the days AWS Backup keeps each daily recovery point of the table (whole days ≥ 1; README § Backups). The Budgets API only takes USD: `budgetEur` is sent as the same number of USD, on purpose (1 EUR ≥ 1 USD, so the budget fires slightly early, never late) |
-| `tags`           | Required, CAP-102. `{ "project": "<value>", "owner": "<value>" }`: the values of the cost-allocation tags `project` and `UserName` that every resource carries (the keys are fixed; activate them once in Billing → Cost allocation tags). The monthly budget filters on `project`. Each value: 1–256 letters, digits, spaces or `_ . : / = + - @`. naeva/dev: `EIM_CAP` / `eiglesia4`                                                                                                                                                                                  |
+| `tags`           | Required, CAP-102. `{ "project": "<value>", "owner": "<value>" }`: the values of the cost-allocation tags `project` and `UserName` that every resource carries (the keys are fixed; activate them once in Billing → Cost allocation tags). The monthly budget filters on `project`. Each value: 1–256 letters, digits, spaces or `_ . : / = + - @`. Example: `capcollector` / `me`                                                                                                                                                                                      |
 
 The **account number never goes in the repo**. Declare it in `.envrc.local` as `CAP_ACCOUNT_<INSTALLATION>_<STAGE>`
-(e.g. `CAP_ACCOUNT_NAEVA_DEV`); synth fails when the active profile resolves to a different account. Without the
+(e.g. `CAP_ACCOUNT_JANE_DEV` for `jane.dev.json`); synth fails when the active profile resolves to a different account. Without the
 variable or without credentials (CI) the guard stays silent, so synth keeps working on every PR.

@@ -6,7 +6,7 @@
  * the region from `config/<installation>.<stage>.json`; the expected account from `.envrc.local`.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { App } from 'aws-cdk-lib';
@@ -39,7 +39,7 @@ const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]
  * `project`, `UserName`, `installation` and `stage`, applied once at app level in app.ts, plus `cap:config_version`
  * (which config file a resource came from). The keys are fixed (they are the cost-allocation keys activated in
  * Billing); the `project` and `UserName` values come from the target's `tags` in config (CAP-102, 2026-11-23), so a
- * self-hosted copy never tags its resources with the owner's values. naeva/dev keeps `EIM_CAP` / `eiglesia4`.
+ * self-hosted copy never tags its resources with the owner's values.
  */
 export const TAG_KEYS = {
   project: 'project',
@@ -74,6 +74,16 @@ export function deploymentTags(
 
 /** Directory holding `<installation>.<stage>.json` files. */
 export const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'config');
+
+/**
+ * Where target configs are read from: `CAP_CONFIG_DIR` when set (resolved against the working directory), else
+ * `infra/config/`. Only `example.dev.json` is committed there; each owner keeps their `<inst>.<stage>.json` locally
+ * (gitignored), and tests and CI point this at `infra/test/fixtures/config/` (CAP-105, 2026-11-23).
+ */
+export function configDir(env: NodeJS.ProcessEnv = process.env): string {
+  const dir = env.CAP_CONFIG_DIR;
+  return dir === undefined || dir === '' ? CONFIG_DIR : resolve(dir);
+}
 
 export interface Deployment {
   readonly installation: string;
@@ -116,7 +126,7 @@ export interface OpsConfig {
   readonly budgetEur: number;
   /** Retention of every Lambda log group: one of the values CloudWatch Logs accepts (1, 3, 5, 7, 14, 30…). */
   readonly logRetentionDays: RetentionDays;
-  /** Days AWS Backup keeps each daily recovery point of the table (CAP-57; naeva.dev: 35). Whole days, ≥ 1. */
+  /** Days AWS Backup keeps each daily recovery point of the table (CAP-57; example: 35). Whole days, ≥ 1. */
   readonly backupRetentionDays: number;
 }
 
@@ -139,9 +149,9 @@ export const isInferenceProfile = (modelId: string): boolean => INFERENCE_PROFIL
 export const foundationModelId = (modelId: string): string => modelId.replace(INFERENCE_PROFILE_PREFIX_RE, '');
 
 export interface Domains {
-  /** Host of the web build on CloudFront, e.g. `caps.naevatec.com` (certificate in us-east-1). */
+  /** Host of the web build on CloudFront, e.g. `caps.example.com` (certificate in us-east-1). */
   readonly web: string;
-  /** Host of the HTTP API, e.g. `api.caps.naevatec.com` (regional certificate, same region as the stack). */
+  /** Host of the HTTP API, e.g. `api.caps.example.com` (regional certificate, same region as the stack). */
   readonly api: string;
 }
 
@@ -185,15 +195,18 @@ export function validateDeployment(installation: string | undefined, stage: stri
 }
 
 /**
- * Loads `config/<installation>.<stage>.json`. A target without a file is not a deployable target: synth fails
- * here instead of inventing a region or creating a parallel set of resources (T-infra-002).
+ * Loads `<installation>.<stage>.json` from `configDir()`. A target without a file is not a deployable target: synth
+ * fails here instead of inventing a region or creating a parallel set of resources (T-infra-002), and says how to
+ * create one (T-infra-057).
  */
-export function loadInstallationConfig(deployment: Deployment, dir: string = CONFIG_DIR): InstallationConfig {
-  const file = join(dir, `${deployment.installation}.${deployment.stage}.json`);
+export function loadInstallationConfig(deployment: Deployment, dir: string = configDir()): InstallationConfig {
+  const name = `${deployment.installation}.${deployment.stage}.json`;
+  const file = join(dir, name);
   if (!existsSync(file)) {
     throw new Error(
       `No config for ${deployment.installation}/${deployment.stage}: ${file} does not exist.\n` +
-        '  Only targets declared in infra/config/ can be synthesized.',
+        `  Copy infra/config/example.dev.json to ${join(dir, name)} and edit it (infra/config/README.md).\n` +
+        '  Target configs are local and gitignored; CAP_CONFIG_DIR points at another directory.',
     );
   }
   const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<InstallationConfig>;

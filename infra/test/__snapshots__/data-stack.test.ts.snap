@@ -93,19 +93,19 @@ exports[`CollectorsData stack > [T-infra-008] synthesised table matches data-mod
   "PointInTimeRecoverySpecification": {
     "PointInTimeRecoveryEnabled": true,
   },
-  "TableName": "cap-naeva-dev-table",
+  "TableName": "cap-test-dev-table",
   "Tags": [
     {
       "Key": "cap:config_version",
-      "Value": "2026-11-08",
+      "Value": "2026-11-23",
     },
     {
       "Key": "installation",
-      "Value": "naeva",
+      "Value": "test",
     },
     {
       "Key": "project",
-      "Value": "EIM_CAP",
+      "Value": "capcollector-test",
     },
     {
       "Key": "stage",
@@ -113,7 +113,7 @@ exports[`CollectorsData stack > [T-infra-008] synthesised table matches data-mod
     },
     {
       "Key": "UserName",
-      "Value": "eiglesia4",
+      "Value": "tester",
     },
   ],
   "TimeToLiveSpecification": {

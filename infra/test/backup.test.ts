@@ -17,8 +17,9 @@ import {
   IMAGES_NONCURRENT_EXPIRY_DAYS,
 } from '../lib/collectors-data-stack.js';
 import { loadInstallationConfig } from '../lib/config.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) {
@@ -33,17 +34,17 @@ afterEach(() => {
   }
 });
 
-const deployment = { installation: 'naeva', stage: 'dev' };
-const config = loadInstallationConfig(deployment);
+const deployment = { installation: 'test', stage: 'dev' };
+const config = loadInstallationConfig(deployment, FIXTURE_CONFIG_DIR);
 
-/** The committed naeva.dev target, built through the app (so the tags are the real ones). */
-const devTemplate = () => Template.fromStack(buildApp(new App({ context: deployment })).data);
+/** The committed test.dev target, built through the app (so the tags are the real ones). */
+const devTemplate = () => Template.fromStack(buildApp(new App({ context: deployment }), FIXTURE_CONFIG_DIR).data);
 
 /** A stage / retention without a config file in the repo, built directly. */
 const stackFor = (stage: string, backupRetentionDays: number) =>
   Template.fromStack(
     new CollectorsDataStack(new App(), 'CollectorsData', {
-      deployment: { installation: 'naeva', stage },
+      deployment: { installation: 'test', stage },
       config: { ...config, ops: { ...config.ops, backupRetentionDays } },
     }),
   );
@@ -60,12 +61,12 @@ describe('Backups', () => {
     dev.resourceCountIs('AWS::Backup::BackupVault', 1);
     dev.resourceCountIs('AWS::Backup::BackupPlan', 1);
     dev.resourceCountIs('AWS::Backup::BackupSelection', 1);
-    dev.hasResourceProperties('AWS::Backup::BackupVault', { BackupVaultName: 'cap-naeva-dev' });
-    expect(backupName(deployment)).toBe('cap-naeva-dev');
+    dev.hasResourceProperties('AWS::Backup::BackupVault', { BackupVaultName: 'cap-test-dev' });
+    expect(backupName(deployment)).toBe('cap-test-dev');
     const [vaultId] = Object.keys(dev.findResources('AWS::Backup::BackupVault'));
     dev.hasResourceProperties('AWS::Backup::BackupPlan', {
       BackupPlan: {
-        BackupPlanName: 'cap-naeva-dev',
+        BackupPlanName: 'cap-test-dev',
         BackupPlanRule: [
           {
             RuleName: 'daily',
@@ -80,7 +81,7 @@ describe('Backups', () => {
     expect(BACKUP_SCHEDULE).toEqual({ hour: 3, minute: 0 });
     // The selection targets the table through its construct reference, never a literal ARN.
     dev.hasResourceProperties('AWS::Backup::BackupSelection', {
-      BackupSelection: { Resources: [tableRef(dev)], SelectionName: 'cap-naeva-dev-table' },
+      BackupSelection: { Resources: [tableRef(dev)], SelectionName: 'cap-test-dev-table' },
     });
     // PITR stays on.
     dev.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -93,7 +94,7 @@ describe('Backups', () => {
     prod.hasResource('AWS::Backup::BackupVault', { DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain' });
     prod.hasResourceProperties('AWS::Backup::BackupPlan', {
       BackupPlan: {
-        BackupPlanName: 'cap-naeva-prod',
+        BackupPlanName: 'cap-test-prod',
         BackupPlanRule: [Match.objectLike({ Lifecycle: { DeleteAfterDays: 90 } })],
       },
     });
@@ -107,7 +108,7 @@ describe('Backups', () => {
         ...(backupRetentionDays !== undefined && { backupRetentionDays }),
       };
       writeFileSync(
-        join(dir, 'naeva.dev.json'),
+        join(dir, 'test.dev.json'),
         JSON.stringify({ config_version: 'v', region: 'r', ai: config.ai, ops, tags: config.tags }),
       );
       return loadInstallationConfig(deployment, dir);
@@ -148,8 +149,8 @@ describe('Backups', () => {
   it('[T-infra-038] tags: the Backup vault, plan and selection role carry project, UserName, installation, stage', () => {
     const dev = devTemplate();
     const expected = {
-      project: 'EIM_CAP',
-      UserName: 'eiglesia4',
+      project: 'capcollector-test',
+      UserName: 'tester',
       installation: deployment.installation,
       stage: deployment.stage,
     };

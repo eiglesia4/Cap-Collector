@@ -24,12 +24,13 @@ import {
   loadInstallationConfig,
 } from '../lib/config.js';
 import { AI_ENV } from '../lib/routes.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const deployment = { installation: 'naeva', stage: 'dev' };
+const deployment = { installation: 'test', stage: 'dev' };
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
 const PLAIN_MODEL = 'anthropic.claude-haiku-test-v1:0';
 const PROFILE_MODEL = `eu.${PLAIN_MODEL}`;
-/** The model committed for naeva/dev since CAP-73 (ADR-008 §7: tuning the model is a config change). */
+/** The model committed for test/dev since CAP-73 (ADR-008 §7: tuning the model is a config change). */
 const HAIKU_5_5_PROFILE = 'eu.anthropic.claude-haiku-5-5';
 
 const configWith = (modelId: string): InstallationConfig => ({
@@ -38,7 +39,7 @@ const configWith = (modelId: string): InstallationConfig => ({
   app_origins: [],
   ai: { modelId, dhashThreshold: 10 },
   ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-  tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+  tags: { project: 'capcollector-test', owner: 'tester' },
 });
 
 // esbuild wants entries under the project root, so fixtures live in the git-ignored infra/cdk.out/ — in a directory
@@ -156,12 +157,12 @@ describe('scans infra (CAP-40)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-ai-'));
     const load = (ai?: unknown) => {
       writeFileSync(
-        join(dir, 'naeva.dev.json'),
+        join(dir, 'test.dev.json'),
         JSON.stringify({
           config_version: 'v',
           region: 'r',
           ops: { budgetEur: 1, logRetentionDays: 1, backupRetentionDays: 1 },
-          tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+          tags: { project: 'capcollector-test', owner: 'tester' },
           ...(ai !== undefined && { ai }),
         }),
       );
@@ -191,14 +192,14 @@ describe('scans infra (CAP-40)', () => {
       );
     }
 
-    // The committed naeva.dev target: the EU inference profile of Claude Haiku 5.5 (CAP-73), threshold 10 (ADR-004).
-    const committed = loadInstallationConfig(deployment).ai;
+    // The committed test.dev target: the EU inference profile of Claude Haiku 5.5 (CAP-73), threshold 10 (ADR-004).
+    const committed = loadInstallationConfig(deployment, FIXTURE_CONFIG_DIR).ai;
     expect(committed.dhashThreshold).toBe(10);
     expect(committed.modelId).toBe(HAIKU_5_5_PROFILE);
   });
 
   it('[T-infra-046] Claude Haiku 5.5 profile: grant on the EU profile + the foundation model in any region; alarm on the profile id', () => {
-    // CAP-73: the committed naeva.dev model id, run through the same grant and alarm as any other configured model.
+    // CAP-73: the committed test.dev model id, run through the same grant and alarm as any other configured model.
     expect(isInferenceProfile(HAIKU_5_5_PROFILE)).toBe(true);
     expect(foundationModelId(HAIKU_5_5_PROFILE)).toBe('anthropic.claude-haiku-5-5');
 
@@ -215,7 +216,7 @@ describe('scans infra (CAP-40)', () => {
     expect(resources).not.toContain('haiku-4-5');
 
     api.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      AlarmName: 'cap-naeva-dev-bedrock-invocations',
+      AlarmName: 'cap-test-dev-bedrock-invocations',
       Dimensions: [{ Name: 'ModelId', Value: HAIKU_5_5_PROFILE }],
     });
     expect(functions(api).get('ScansAnalyse')?.env).toMatchObject({ [AI_ENV.bedrockModelId]: HAIKU_5_5_PROFILE });
@@ -224,10 +225,10 @@ describe('scans infra (CAP-40)', () => {
   it('[T-infra-031] cost guard: daily Bedrock invocations alarm → alerts topic; e-mail subscribed only when set', () => {
     const { data, api } = synth();
 
-    api.hasResourceProperties('AWS::SNS::Topic', { TopicName: 'cap-naeva-dev-alerts' });
+    api.hasResourceProperties('AWS::SNS::Topic', { TopicName: 'cap-test-dev-alerts' });
     const topicId = Object.keys(api.findResources('AWS::SNS::Topic'))[0];
     api.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      AlarmName: 'cap-naeva-dev-bedrock-invocations',
+      AlarmName: 'cap-test-dev-bedrock-invocations',
       Namespace: 'AWS/Bedrock',
       MetricName: 'Invocations',
       Dimensions: [{ Name: 'ModelId', Value: PLAIN_MODEL }],
@@ -246,7 +247,7 @@ describe('scans infra (CAP-40)', () => {
     // subscription.
     data.resourceCountIs('AWS::SSM::Parameter', 0);
     const params = api.toJSON().Parameters as Record<string, { Default?: string }>;
-    const emailParam = Object.keys(params).find((k) => params[k]?.Default === '/cap/naeva/dev/alert-email');
+    const emailParam = Object.keys(params).find((k) => params[k]?.Default === '/cap/test/dev/alert-email');
     expect(emailParam).toBeDefined();
     api.hasCondition('HasAlertEmail', {
       'Fn::Not': [{ 'Fn::Equals': [{ Ref: emailParam }, UNSET_PARAMETER_VALUE] }],

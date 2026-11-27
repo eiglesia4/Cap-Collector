@@ -69,7 +69,7 @@ export const UNSET_PARAMETER_VALUE = 'unset';
 export const dataExportName = (deployment: Deployment, key: string): string =>
   `${resourceName(deployment, 'data')}-${key}`;
 
-/** `/cap/<installation>/<stage>/<setting>`, e.g. `/cap/naeva/dev/session-secret`. */
+/** `/cap/<installation>/<stage>/<setting>`, e.g. `/cap/mine/dev/session-secret`. */
 export const settingParameterName = (deployment: Deployment, name: SettingName): string =>
   `/cap/${deployment.installation}/${deployment.stage}/${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
 

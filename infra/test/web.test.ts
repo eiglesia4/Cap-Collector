@@ -5,18 +5,19 @@ import { describe, expect, it } from 'vitest';
 
 import { CollectorsDataStack, SPA_FALLBACK_STATUSES } from '../lib/collectors-data-stack.js';
 import { type Command, deployWeb, readWebOutputs, webTarget } from '../lib/web-deploy.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
 const dataTemplate = () =>
   Template.fromStack(
     new CollectorsDataStack(new App(), 'CollectorsData', {
-      deployment: { installation: 'naeva', stage: 'dev' },
+      deployment: { installation: 'test', stage: 'dev' },
       config: {
         config_version: 'test',
         region: 'test-region-1',
         app_origins: ['capacitor://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
         ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-        tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+        tags: { project: 'capcollector-test', owner: 'tester' },
       },
     }),
   );
@@ -81,7 +82,7 @@ describe('web distribution', () => {
     expect(origins2).toContain('https://');
     expect(origins2).toContain('DomainName');
     expect(origins2).not.toContain('WebsiteURL');
-    template.hasOutput('WebUrl', { Export: { Name: 'cap-naeva-dev-data-WebUrl' } });
+    template.hasOutput('WebUrl', { Export: { Name: 'cap-test-dev-data-WebUrl' } });
   });
 
   it('[T-infra-020] deploy:web resolves bucket and distribution from stack outputs, dry-run runs nothing, refuses without CAP_STAGE', () => {
@@ -101,20 +102,20 @@ describe('web distribution', () => {
       calls.push(c);
       return c.args[0] === 'cloudformation' ? describe : '';
     };
-    const env = { CAP_INSTALLATION: 'naeva', CAP_STAGE: 'dev' };
+    const env = { CAP_INSTALLATION: 'test', CAP_STAGE: 'dev' };
 
-    const dry = deployWeb({ env, run, dryRun: true });
-    expect(dry.target).toMatchObject({ stackName: 'cap-naeva-dev-data', region: 'eu-west-1' });
+    const dry = deployWeb({ env, run, dryRun: true, configDir: FIXTURE_CONFIG_DIR });
+    expect(dry.target).toMatchObject({ stackName: 'cap-test-dev-data', region: 'eu-west-1' });
     expect(dry.outputs).toEqual({
       bucket: 'cap-web-bucket',
       distributionId: 'E123EXAMPLE',
       webUrl: 'https://d111.cloudfront.net',
     });
-    // Only the read-only describe-stacks ran; the region comes from infra/config, never from code.
+    // Only the read-only describe-stacks ran; the region comes from the target config, never from code.
     expect(calls).toEqual([
       {
         cmd: 'aws',
-        args: ['cloudformation', 'describe-stacks', '--stack-name', 'cap-naeva-dev-data', '--region', 'eu-west-1'],
+        args: ['cloudformation', 'describe-stacks', '--stack-name', 'cap-test-dev-data', '--region', 'eu-west-1'],
       },
     ]);
     expect(dry.plan.map((c) => `${c.cmd} ${c.args.join(' ')}`)).toEqual([
@@ -126,19 +127,21 @@ describe('web distribution', () => {
 
     // A real run executes the plan, in order, after the lookup.
     calls.length = 0;
-    deployWeb({ env, run, dryRun: false });
+    deployWeb({ env, run, dryRun: false, configDir: FIXTURE_CONFIG_DIR });
     expect(calls.map((c) => c.args[0])).toEqual(['cloudformation', 'run', 'run', 's3', 'cloudfront']);
 
     // No stage (or installation) → refuses before any AWS call; unknown target → no config file.
     calls.length = 0;
-    expect(() => deployWeb({ env: { CAP_INSTALLATION: 'naeva' }, run, dryRun: true })).toThrow(/Missing stage/);
+    expect(() => deployWeb({ env: { CAP_INSTALLATION: 'test' }, run, dryRun: true })).toThrow(/Missing stage/);
     expect(() => webTarget({ CAP_STAGE: 'dev' })).toThrow(/Missing installation/);
-    expect(() => webTarget({ CAP_INSTALLATION: 'naeva', CAP_STAGE: 'prod' })).toThrow(/No config for naeva\/prod/);
+    expect(() => webTarget({ CAP_INSTALLATION: 'test', CAP_STAGE: 'prod' }, FIXTURE_CONFIG_DIR)).toThrow(
+      /No config for test\/prod/,
+    );
     expect(calls).toEqual([]);
 
     // A stack deployed before CAP-16 has no DistributionId: clear message.
     const old = () => JSON.stringify({ Stacks: [{ Outputs: [{ OutputKey: 'WebBucketName', OutputValue: 'b' }] }] });
-    expect(() => readWebOutputs(webTarget(env), old)).toThrow(/has no output DistributionId/);
-    expect(() => readWebOutputs(webTarget(env), () => '{}')).toThrow(/has no output WebBucketName/);
+    expect(() => readWebOutputs(webTarget(env, FIXTURE_CONFIG_DIR), old)).toThrow(/has no output DistributionId/);
+    expect(() => readWebOutputs(webTarget(env, FIXTURE_CONFIG_DIR), () => '{}')).toThrow(/has no output WebBucketName/);
   });
 });

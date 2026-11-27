@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../lib/app.js';
 import { CollectorsDataStack, IMAGES_IA_AFTER_DAYS } from '../lib/collectors-data-stack.js';
 import { loadInstallationConfig } from '../lib/config.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -30,20 +31,20 @@ afterEach(() => {
 });
 
 const devTemplate = () =>
-  Template.fromStack(buildApp(new App({ context: { installation: 'naeva', stage: 'dev' } })).data);
+  Template.fromStack(buildApp(new App({ context: { installation: 'test', stage: 'dev' } }), FIXTURE_CONFIG_DIR).data);
 
 /** A stage without a config file in the repo, built directly so no prod target has to exist yet. */
 const stackFor = (stage: string) =>
   Template.fromStack(
     new CollectorsDataStack(new App(), 'CollectorsData', {
-      deployment: { installation: 'naeva', stage },
+      deployment: { installation: 'test', stage },
       config: {
         config_version: 'test',
         region: 'test-region-1',
         app_origins: ['capacitor://localhost'],
         ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
         ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-        tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+        tags: { project: 'capcollector-test', owner: 'tester' },
       },
     }),
   );
@@ -135,7 +136,7 @@ describe('CollectorsData stack', () => {
     });
     expect(Object.keys(tlsDeny)).toHaveLength(2);
     for (const key of ['TableName', 'TableArn', 'ImagesBucketName', 'WebBucketName', 'WebUrl', 'DistributionId']) {
-      template.hasOutput(key, { Export: { Name: `cap-naeva-dev-data-${key}` } });
+      template.hasOutput(key, { Export: { Name: `cap-test-dev-data-${key}` } });
     }
   });
 
@@ -155,11 +156,11 @@ describe('CollectorsData stack', () => {
   });
 
   it('[T-infra-014] every stack carries project, UserName, installation and stage on the table and both buckets', () => {
-    const built = buildApp(new App({ context: { installation: 'naeva', stage: 'dev' } }));
+    const built = buildApp(new App({ context: { installation: 'test', stage: 'dev' } }), FIXTURE_CONFIG_DIR);
     const expected = [
-      { Key: 'project', Value: 'EIM_CAP' },
-      { Key: 'UserName', Value: 'eiglesia4' },
-      { Key: 'installation', Value: 'naeva' },
+      { Key: 'project', Value: 'capcollector-test' },
+      { Key: 'UserName', Value: 'tester' },
+      { Key: 'installation', Value: 'test' },
       { Key: 'stage', Value: 'dev' },
     ];
     const data = Template.fromStack(built.data);
@@ -171,22 +172,27 @@ describe('CollectorsData stack', () => {
     // Applied at app level, so the (still empty) API stack inherits them too: checked on the stack's own tags.
     for (const stack of [built.data, built.api]) {
       const tags = stack.tags.tagValues();
-      expect(tags).toMatchObject({ project: 'EIM_CAP', UserName: 'eiglesia4', installation: 'naeva', stage: 'dev' });
+      expect(tags).toMatchObject({
+        project: 'capcollector-test',
+        UserName: 'tester',
+        installation: 'test',
+        stage: 'dev',
+      });
     }
   });
 
   it('[T-infra-012] app_origins in config/ is optional and must be a list of bare origins', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
-    const target = { installation: 'naeva', stage: 'dev' };
+    const target = { installation: 'test', stage: 'dev' };
     const write = (extra: Record<string, unknown>) =>
       writeFileSync(
-        join(dir, 'naeva.dev.json'),
+        join(dir, 'test.dev.json'),
         JSON.stringify({
           config_version: 'v',
           region: 'r',
           ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
           ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-          tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+          tags: { project: 'capcollector-test', owner: 'tester' },
           ...extra,
         }),
       );
@@ -205,17 +211,17 @@ describe('CollectorsData stack', () => {
 
   it('[T-infra-042] app_origins accepts http(s) origins and exactly capacitor://localhost; API CORS is * without credentials, the bucket keeps the explicit list', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
-    const target = { installation: 'naeva', stage: 'dev' };
+    const target = { installation: 'test', stage: 'dev' };
     const load = (app_origins: unknown) => {
       writeFileSync(
-        join(dir, 'naeva.dev.json'),
+        join(dir, 'test.dev.json'),
         JSON.stringify({
           config_version: 'v',
           region: 'r',
           app_origins,
           ai: { modelId: 'anthropic.claude-test-v1:0', dhashThreshold: 10 },
           ops: { budgetEur: 10, logRetentionDays: 30, backupRetentionDays: 35 },
-          tags: { project: 'EIM_CAP', owner: 'eiglesia4' },
+          tags: { project: 'capcollector-test', owner: 'tester' },
         }),
       );
       return loadInstallationConfig(target, dir).app_origins;
@@ -237,11 +243,14 @@ describe('CollectorsData stack', () => {
       expect(() => load([bad]), bad).toThrow(/http\(s\) origins without a path/);
     }
 
-    // Committed naeva/dev config (architect decision 2026-11-09, ADR-008 note): the HTTP API allows any origin with
+    // Committed test/dev config (architect decision 2026-11-09, ADR-008 note): the HTTP API allows any origin with
     // no credentials (bearer token, no cookies), so no non-http(s) origin ever reaches API Gateway; the images bucket
     // keeps app_origins + the web origin, explicit.
-    expect(loadInstallationConfig(target).app_origins).toEqual(['capacitor://localhost', 'http://localhost:5173']);
-    const built = buildApp(new App({ context: { ...target, 'aws:cdk:bundling-stacks': [] } }));
+    expect(loadInstallationConfig(target, FIXTURE_CONFIG_DIR).app_origins).toEqual([
+      'capacitor://localhost',
+      'http://localhost:5173',
+    ]);
+    const built = buildApp(new App({ context: { ...target, 'aws:cdk:bundling-stacks': [] } }), FIXTURE_CONFIG_DIR);
     Template.fromStack(built.api).hasResourceProperties('AWS::ApiGatewayV2::Api', {
       CorsConfiguration: {
         AllowOrigins: ['*'],
@@ -255,7 +264,7 @@ describe('CollectorsData stack', () => {
       CorsConfiguration: {
         CorsRules: [
           Match.objectLike({
-            AllowedOrigins: ['capacitor://localhost', 'http://localhost:5173', 'https://caps.naevatec.com'],
+            AllowedOrigins: ['capacitor://localhost', 'http://localhost:5173', 'https://caps.example.com'],
           }),
         ],
       },

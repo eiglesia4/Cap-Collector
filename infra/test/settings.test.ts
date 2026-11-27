@@ -22,8 +22,9 @@ import {
   settingsTarget,
   showSettings,
 } from '../lib/settings.js';
+import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
-const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_NAEVA_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
+const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
 const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   for (const k of ENV_KEYS) {
@@ -38,16 +39,16 @@ afterEach(() => {
   }
 });
 
-const deployment = { installation: 'naeva', stage: 'dev' };
+const deployment = { installation: 'test', stage: 'dev' };
 const SIX = [
-  '/cap/naeva/dev/allowed-apple-subs',
-  '/cap/naeva/dev/apple-client-ids',
-  '/cap/naeva/dev/session-secret',
-  '/cap/naeva/dev/web-certificate-arn',
-  '/cap/naeva/dev/api-certificate-arn',
-  '/cap/naeva/dev/alert-email',
+  '/cap/test/dev/allowed-apple-subs',
+  '/cap/test/dev/apple-client-ids',
+  '/cap/test/dev/session-secret',
+  '/cap/test/dev/web-certificate-arn',
+  '/cap/test/dev/api-certificate-arn',
+  '/cap/test/dev/alert-email',
 ];
-const target = () => settingsTarget({ CAP_INSTALLATION: 'naeva', CAP_STAGE: 'dev' });
+const target = () => settingsTarget({ CAP_INSTALLATION: 'test', CAP_STAGE: 'dev' }, FIXTURE_CONFIG_DIR);
 
 /** What a put-parameter call saw in its `--cli-input-json file://…` while the CLI ran. */
 interface InputFile {
@@ -102,8 +103,8 @@ function fakeSsm(initial: Record<string, string>) {
 describe('Settings', () => {
   it('[T-infra-039] no stack creates an SSM parameter; the six settings appear only as SSM-typed template parameters', () => {
     expect(SETTINGS.map((n) => settingParameterName(deployment, n))).toEqual(SIX);
-    // With domains on (the committed naeva.dev config) every setting is read by one of the two stacks.
-    const built = buildApp(new App({ context: { ...deployment, 'aws:cdk:bundling-stacks': [] } }));
+    // With domains on (the committed test.dev config) every setting is read by one of the two stacks.
+    const built = buildApp(new App({ context: { ...deployment, 'aws:cdk:bundling-stacks': [] } }), FIXTURE_CONFIG_DIR);
     const read = new Set<string>();
     for (const stack of [built.data, built.api]) {
       const t = Template.fromStack(stack);
@@ -117,27 +118,27 @@ describe('Settings', () => {
       }
       // A setting name is never written anywhere else in the template (no resource property, no output).
       const { Parameters: _params, ...rest } = json;
-      expect(JSON.stringify(rest)).not.toMatch(/\/cap\/naeva\/dev\//);
+      expect(JSON.stringify(rest)).not.toMatch(/\/cap\/test\/dev\//);
     }
     expect([...read].sort()).toEqual([...SIX].sort());
   });
 
   it('[T-infra-040] bootstrap creates only the missing settings (unset, tagged) and leaves existing ones; restore overwrites from a backup', () => {
-    const ssm = fakeSsm({ '/cap/naeva/dev/session-secret': 'real-secret', '/cap/naeva/dev/alert-email': 'unset' });
+    const ssm = fakeSsm({ '/cap/test/dev/session-secret': 'real-secret', '/cap/test/dev/alert-email': 'unset' });
     const t = target();
     expect(t.region).toBe('eu-west-1');
 
     const first = bootstrapSettings(t, ssm.run);
-    expect(first.skipped).toEqual(['/cap/naeva/dev/session-secret', '/cap/naeva/dev/alert-email']);
+    expect(first.skipped).toEqual(['/cap/test/dev/session-secret', '/cap/test/dev/alert-email']);
     expect(first.created).toEqual(SIX.filter((n) => !first.skipped.includes(n)));
-    expect(ssm.store.get('/cap/naeva/dev/session-secret')).toBe('real-secret');
+    expect(ssm.store.get('/cap/test/dev/session-secret')).toBe('real-secret');
     for (const n of first.created) {
       expect(ssm.store.get(n)).toBe(UNSET_PARAMETER_VALUE);
       expect(ssm.tags.get(n)).toEqual(
         expect.arrayContaining([
-          { Key: 'project', Value: 'EIM_CAP' },
-          { Key: 'UserName', Value: 'eiglesia4' },
-          { Key: 'installation', Value: 'naeva' },
+          { Key: 'project', Value: 'capcollector-test' },
+          { Key: 'UserName', Value: 'tester' },
+          { Key: 'installation', Value: 'test' },
           { Key: 'stage', Value: 'dev' },
         ]),
       );
@@ -160,23 +161,23 @@ describe('Settings', () => {
     // Restore: get-parameters JSON → overwrite; a saved `unset` is skipped; another target's name is refused.
     const backup = {
       Parameters: [
-        { Name: '/cap/naeva/dev/apple-client-ids', Type: 'String', Value: 'com.naevatec.collectors' },
-        { Name: '/cap/naeva/dev/web-certificate-arn', Type: 'String', Value: 'unset' },
+        { Name: '/cap/test/dev/apple-client-ids', Type: 'String', Value: 'com.testtec.collectors' },
+        { Name: '/cap/test/dev/web-certificate-arn', Type: 'String', Value: 'unset' },
       ],
       InvalidParameters: [],
     };
     ssm.calls.length = 0;
     ssm.inputs.length = 0;
     expect(restoreSettings(t, JSON.stringify(backup), ssm.run)).toEqual({
-      restored: ['/cap/naeva/dev/apple-client-ids'],
-      skipped: ['/cap/naeva/dev/web-certificate-arn'],
+      restored: ['/cap/test/dev/apple-client-ids'],
+      skipped: ['/cap/test/dev/web-certificate-arn'],
     });
-    expect(ssm.store.get('/cap/naeva/dev/apple-client-ids')).toBe('com.naevatec.collectors');
+    expect(ssm.store.get('/cap/test/dev/apple-client-ids')).toBe('com.testtec.collectors');
     expect(ssm.calls).toHaveLength(1);
     expect(JSON.parse(ssm.inputs[0]?.body ?? '{}')).toMatchObject({ Overwrite: true });
-    expect(ssm.calls[0]?.args.join(' ')).not.toContain('com.naevatec.collectors');
-    const foreign = { Parameters: [{ Name: '/cap/naeva/prod/session-secret', Value: 'x' }] };
-    expect(() => restoreSettings(t, JSON.stringify(foreign), ssm.run)).toThrow(/not a setting of naeva\/dev/);
+    expect(ssm.calls[0]?.args.join(' ')).not.toContain('com.testtec.collectors');
+    const foreign = { Parameters: [{ Name: '/cap/test/prod/session-secret', Value: 'x' }] };
+    expect(() => restoreSettings(t, JSON.stringify(foreign), ssm.run)).toThrow(/not a setting of test\/dev/);
     expect(() => restoreSettings(t, '{}', ssm.run)).toThrow(/no "Parameters" list/);
 
     // The target comes from CAP_INSTALLATION / CAP_STAGE only.
@@ -186,24 +187,24 @@ describe('Settings', () => {
   it('[T-infra-041] show reports set / unset / missing for each setting and never prints a value', () => {
     const secret = 'super-secret-value-123';
     const ssm = fakeSsm({
-      '/cap/naeva/dev/session-secret': secret,
-      '/cap/naeva/dev/allowed-apple-subs': '001234.abcdef',
-      '/cap/naeva/dev/alert-email': 'unset',
+      '/cap/test/dev/session-secret': secret,
+      '/cap/test/dev/allowed-apple-subs': '001234.abcdef',
+      '/cap/test/dev/alert-email': 'unset',
     });
     const rows = showSettings(target(), ssm.run);
     expect(rows).toEqual([
-      { name: '/cap/naeva/dev/allowed-apple-subs', state: 'set' },
-      { name: '/cap/naeva/dev/apple-client-ids', state: 'missing' },
-      { name: '/cap/naeva/dev/session-secret', state: 'set' },
-      { name: '/cap/naeva/dev/web-certificate-arn', state: 'missing' },
-      { name: '/cap/naeva/dev/api-certificate-arn', state: 'missing' },
-      { name: '/cap/naeva/dev/alert-email', state: 'unset' },
+      { name: '/cap/test/dev/allowed-apple-subs', state: 'set' },
+      { name: '/cap/test/dev/apple-client-ids', state: 'missing' },
+      { name: '/cap/test/dev/session-secret', state: 'set' },
+      { name: '/cap/test/dev/web-certificate-arn', state: 'missing' },
+      { name: '/cap/test/dev/api-certificate-arn', state: 'missing' },
+      { name: '/cap/test/dev/alert-email', state: 'unset' },
     ]);
     const out = formatShow(rows);
     expect(out).not.toContain(secret);
     expect(out).not.toContain('001234.abcdef');
     expect(out.split('\n')).toHaveLength(6);
-    expect(out).toMatch(/\/cap\/naeva\/dev\/session-secret\s+set/);
+    expect(out).toMatch(/\/cap\/test\/dev\/session-secret\s+set/);
     // It asks for the six names, without decryption.
     expect(ssm.calls[0]?.args).not.toContain('--with-decryption');
     expect(ssm.calls[0]?.args).toEqual(expect.arrayContaining(SIX));
@@ -213,7 +214,7 @@ describe('Settings', () => {
     const t = target();
     const secret = 'temp-file-secret-value';
     const input = JSON.stringify({
-      Name: '/cap/naeva/dev/session-secret',
+      Name: '/cap/test/dev/session-secret',
       Value: secret,
       Type: 'String',
       Overwrite: true,
@@ -261,12 +262,12 @@ describe('Settings', () => {
     const t = target();
     const ssm = fakeSsm({});
     bootstrapSettings(t, ssm.run);
-    const values = ['com.naevatec.collectors,com.naevatec.collectors.web', 's3cr3t+/=base64', 'ops@example.org'];
+    const values = ['com.testtec.collectors,com.testtec.collectors.web', 's3cr3t+/=base64', 'ops@example.org'];
     const backup = {
       Parameters: [
-        { Name: '/cap/naeva/dev/apple-client-ids', Value: values[0] },
-        { Name: '/cap/naeva/dev/session-secret', Value: values[1] },
-        { Name: '/cap/naeva/dev/alert-email', Value: values[2] },
+        { Name: '/cap/test/dev/apple-client-ids', Value: values[0] },
+        { Name: '/cap/test/dev/session-secret', Value: values[1] },
+        { Name: '/cap/test/dev/alert-email', Value: values[2] },
       ],
     };
     restoreSettings(t, JSON.stringify(backup), ssm.run);
