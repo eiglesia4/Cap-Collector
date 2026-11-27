@@ -17,7 +17,7 @@ import { createSessionStore } from './session/session-store.js';
 
 async function start(root: HTMLElement): Promise<void> {
   const config = loadConfig(import.meta.env, __APP_VERSION__);
-  const platform = await selectPlatform(window, config.apple);
+  const platform = await selectPlatform(window, config.apple, config.google);
   const session = createSessionStore(platform.store);
   const apiUrl = createApiUrlSetting(config, platform.store);
   await Promise.all([session.load(), apiUrl.load(), loadLanguage(platform.store)]);

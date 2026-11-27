@@ -70,6 +70,25 @@ export interface PlaceName {
   readonly deviceRegion?: string;
 }
 
+/** Google Identity Services could not be loaded (offline, blocked) — CAP-111. */
+export class GoogleSdkLoadError extends Error {
+  override readonly name = 'GoogleSdkLoadError';
+}
+
+/** Sign in with Google where this platform offers it (ADR-011 §3; CAP-111 on the web). */
+export interface GoogleSignIn {
+  /**
+   * Load Google's script (once) and render its button into `parent` for one attempt: the ID token Google returns
+   * carries `nonce`, and `onCredential` receives it. Render again with a fresh nonce after every attempt. Rejects
+   * with GoogleSdkLoadError when the script cannot be loaded.
+   */
+  renderButton(
+    parent: HTMLElement,
+    request: { readonly nonce: string },
+    onCredential: (idToken: string) => void,
+  ): Promise<void>;
+}
+
 export interface Platform {
   /** `native` = Capacitor iPhone app; `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
   readonly kind: 'web' | 'native';
@@ -97,6 +116,11 @@ export interface Platform {
   signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null>;
   /** True when signInWithApple uses the native iOS sheet rather than the web flow. */
   supportsNativeAppleSignIn(): boolean;
+  /**
+   * Sign in with Google, or null where it is not offered (ADR-011 §3): the web with a Google client id configured;
+   * never on iOS; Android brings its own native flow in CAP-113.
+   */
+  readonly google: GoogleSignIn | null;
   /**
    * URLs that opened the app (`collectors://…` on iOS, CAP-33), also the one it was cold-launched with. Returns an
    * unsubscribe. The web build never receives any: its links are ordinary HTTPS URLs.

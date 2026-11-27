@@ -1,7 +1,8 @@
 // App configuration, validated at load (CLAUDE.md § conventions): API base URL from VITE_API_URL, optionally
 // overridden from Settings in development builds (CAP-21), the build version, and the Sign in with Apple web
 // client (CAP-22: VITE_APPLE_SERVICE_ID + VITE_APPLE_REDIRECT_URI, see doc/plans/CAP-22-sign-in.md) and the public
-// web origin that share links point at (CAP-31: VITE_WEB_URL, ADR-008 §5 as amended 2026-11-07).
+// web origin that share links point at (CAP-31: VITE_WEB_URL, ADR-008 §5 as amended 2026-11-07), and the Google
+// Identity Services web client (CAP-111, ADR-011 §3: VITE_GOOGLE_CLIENT_ID, optional).
 
 export class ConfigError extends Error {
   override readonly name = 'ConfigError';
@@ -17,6 +18,13 @@ export interface AppConfig {
   readonly apple: AppleConfig | null;
   /** Public HTTPS origin of the web build (`https://caps.example.com`), or null when the build has none. */
   readonly webUrl: string | null;
+  /** Google web OAuth client (ADR-011), or null when the build has none (no Google button then). */
+  readonly google: GoogleConfig | null;
+}
+
+/** The Web client id from Google Cloud (`<n>-<id>.apps.googleusercontent.com`); not a secret (ADR-011). */
+export interface GoogleConfig {
+  readonly clientId: string;
 }
 
 /** Apple Services ID and the return URL registered for it (the CloudFront web URL, CAP-16). */
@@ -30,6 +38,7 @@ export interface ConfigEnv {
   readonly VITE_APPLE_SERVICE_ID?: string | undefined;
   readonly VITE_APPLE_REDIRECT_URI?: string | undefined;
   readonly VITE_WEB_URL?: string | undefined;
+  readonly VITE_GOOGLE_CLIENT_ID?: string | undefined;
   readonly DEV: boolean;
 }
 
@@ -85,6 +94,16 @@ export function parseWebUrl(value: string | undefined): string | null {
   return url.origin;
 }
 
+/** `''`/undefined → null; a Google OAuth client id (`….apps.googleusercontent.com`) → config; anything else throws. */
+export function parseGoogleConfig(value: string | undefined): GoogleConfig | null {
+  const clientId = value?.trim() ?? '';
+  if (clientId === '') return null;
+  if (!/^[\w-]+\.apps\.googleusercontent\.com$/.test(clientId)) {
+    throw new ConfigError(`Google client id must end in .apps.googleusercontent.com: ${clientId}`);
+  }
+  return { clientId };
+}
+
 export function loadConfig(env: ConfigEnv, version: string): AppConfig {
   return {
     apiUrl: parseApiUrl(env.VITE_API_URL),
@@ -92,6 +111,7 @@ export function loadConfig(env: ConfigEnv, version: string): AppConfig {
     dev: env.DEV,
     apple: parseAppleConfig(env.VITE_APPLE_SERVICE_ID, env.VITE_APPLE_REDIRECT_URI),
     webUrl: parseWebUrl(env.VITE_WEB_URL),
+    google: parseGoogleConfig(env.VITE_GOOGLE_CLIENT_ID),
   };
 }
 

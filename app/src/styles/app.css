@@ -251,6 +251,19 @@ body {
   margin: 0 auto;
 }
 
+/* Google's own button (CAP-111): an iframe of at most 400 px, centred under Apple's; the slot keeps its height while
+   it loads so the screen does not jump. */
+.google-button {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.google-button[aria-busy='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .button--apple {
   gap: var(--space-2);
   background: #000;

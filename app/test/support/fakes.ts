@@ -35,6 +35,7 @@ export function fakePlatform(kind: 'web' | 'native' = 'native', store = memorySt
     prepareAppleSignIn: vi.fn(async () => undefined),
     signInWithApple: vi.fn(async () => null),
     supportsNativeAppleSignIn: () => false,
+    google: null,
     onDeepLink: vi.fn(() => () => undefined),
     currentPlace: vi.fn(async () => null),
   };
@@ -52,6 +53,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     request: vi.fn(),
     healthz: vi.fn(async () => ({ status: 'ok' as const })),
     signInWithApple: vi.fn(async () => TEST_SESSION),
+    signInWithGoogle: vi.fn(async () => TEST_SESSION),
     refresh: vi.fn(async () => true),
     ...overrides,
   };
@@ -63,6 +65,7 @@ export const TEST_CONFIG: AppConfig = {
   dev: true,
   apple: null,
   webUrl: null,
+  google: null,
 };
 
 export async function shellContext(

@@ -1,8 +1,10 @@
 // Browser implementation of the Platform adapter: <input type=file> for camera and files, Web Share API,
 // localStorage (with an in-memory fallback when storage is blocked) — ADR-001, CAP-21 — and Sign in with Apple JS
-// (CAP-22; prepared before the tap since CAP-64).
-import type { AppleConfig } from '../../config.js';
+// (CAP-22; prepared before the tap since CAP-64), plus Google Identity Services when configured (CAP-111).
+import type { AppleConfig, GoogleConfig } from '../../config.js';
 import { createAppleWebSignIn, scriptLoader, type AppleIdAuth } from './apple-sign-in.js';
+import { language } from '../../i18n/i18n.js';
+import { createGoogleWebSignIn, gisLoader, type GoogleAccountsId } from './google-sign-in.js';
 import { isCancel, type KeyValueStore, type PickOptions, type Platform, type ShareRequest } from '../platform.js';
 
 const IMAGES = 'image/*';
@@ -60,6 +62,10 @@ export interface WebPlatformOptions {
   readonly apple?: AppleConfig | null;
   /** Loads `AppleID.auth` (tests inject a fake; default injects Apple's script). */
   readonly loadAppleSdk?: () => Promise<AppleIdAuth>;
+  /** Google web client (CAP-111); without it the web offers no Google button. */
+  readonly google?: GoogleConfig | null;
+  /** Loads `google.accounts.id` (tests inject a fake; default injects Google's script). */
+  readonly loadGoogleSdk?: () => Promise<GoogleAccountsId>;
 }
 
 export function createWebPlatform(win: Window, options: WebPlatformOptions = {}): Platform {
@@ -69,6 +75,9 @@ export function createWebPlatform(win: Window, options: WebPlatformOptions = {})
     prepareAppleSignIn: apple.prepare,
     signInWithApple: apple.signIn,
     supportsNativeAppleSignIn: () => false,
+    google: options.google
+      ? createGoogleWebSignIn(options.google, options.loadGoogleSdk ?? gisLoader(win), language)
+      : null,
     onDeepLink: () => () => undefined,
     // No geolocation on the web (features.md § Place from GPS): the form uses the last place used instead.
     currentPlace: () => Promise.resolve(null),
