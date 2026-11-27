@@ -34,6 +34,13 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 - Mac/web: identical bundle; Scan becomes "Upload photo"; Exchange gets a drag-and-drop zone;
   bulk edit and export live here.
 
+## Sign-in (ADR-011, 2026-11-27)
+- **Web:** "Sign in with Apple" and "Sign in with Google" (Google Identity Services button), stacked, same width.
+- **Android:** "Sign in with Google" only (Credential Manager bottom sheet). **iOS:** Apple only, as before.
+- Refused (403): the screen shows the provider and the `sub` to add (`allowed-apple-subs` or `google-identities`),
+  with a copy button, as the Apple refusal does today.
+- Android hardware back: back through the navigation stack; on the Collection it leaves the app.
+
 ## Language (CAP-95)
 - Settings → **Language**: Español (default) · English. Applies immediately, without reloading the page or the app.
 

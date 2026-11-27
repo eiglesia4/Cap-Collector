@@ -25,7 +25,7 @@ cp "$CAP_DOCS/CONVENTIONS.md" doc/spec/CONVENTIONS.md
 | `specs/physical-link.md` | Agreed 2026-10-12, amended 2026-11-09 (discs + sheet index) | V0 / V3 |
 | `specs/data-model.md` | **Agreed 2026-10-31** (CAP-12), v0.2 additions 2026-11-02 | V0–V1 |
 | `design/SCREENS.md` | Proposed 2026-10-18 | V0 |
-| `decisions/ADR-000…010` | ADR-001…010 Accepted (009 batch capture, 2026-11-21; 010 WebP on WebKit + crop check, 2026-11-22) | V0 · V4 |
+| `decisions/ADR-000…011` | ADR-001…011 Accepted (009 batch capture; 010 WebP on WebKit + crop check; 011 Google sign-in + Android, 2026-11-27) | V0 · V4 |
 | `openapi.yaml` | v0.3.0 (CAP-76, repo-only) | V1–V3 |
 
 ## Contracts (owned by the architect, `OWNERSHIP.md`)

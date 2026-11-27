@@ -25,6 +25,7 @@ export const ROUTES: readonly RouteDef[] = [
   r('GET', '/healthz', 'healthz', false),
 
   r('POST', '/auth/apple', 'auth-apple', false),
+  r('POST', '/auth/google', 'auth-google', false),
   r('POST', '/auth/refresh', 'auth-refresh', false),
 
   r('POST', '/uploads', 'uploads-create'),

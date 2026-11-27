@@ -21,7 +21,7 @@ export type Problem = z.infer<typeof Problem>;
 export const Healthz = z.object({ status: z.literal('ok') });
 export type Healthz = z.infer<typeof Healthz>;
 
-/** Session issued by `/auth/apple` and `/auth/refresh`. */
+/** Session issued by `/auth/apple`, `/auth/google` (v0.5) and `/auth/refresh`. */
 export const Session = z.object({
   accessToken: z.string().min(1),
   refreshToken: z.string().min(1),
@@ -45,6 +45,18 @@ export const AppleSignInRequest = z
   })
   .strict();
 export type AppleSignInRequest = z.infer<typeof AppleSignInRequest>;
+
+/**
+ * Body of `POST /auth/google` (v0.5, ADR-011): a Google ID token requested with
+ * `nonce = base64url(SHA-256(codeVerifier))`, plus the verifier, the same PKCE binding as `/auth/apple`.
+ */
+export const GoogleSignInRequest = z
+  .object({
+    idToken: z.string().min(1).max(8192),
+    codeVerifier: CodeVerifier,
+  })
+  .strict();
+export type GoogleSignInRequest = z.infer<typeof GoogleSignInRequest>;
 
 /** Body of `POST /auth/refresh` (decided in CAP-19/CAP-21): the refresh token as JSON, not a cookie or header. */
 export const RefreshRequest = z.object({ refreshToken: z.string().min(1).max(1024) }).strict();

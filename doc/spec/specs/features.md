@@ -35,7 +35,8 @@ Fill rather than leave blank, but show what is a guess:
   don't make a cap `needsReview`.
 
 ### Place from GPS (decided with the owner, 2026-11-23)
-- iPhone only: an in-app native plugin (like the Sign in with Apple one, no new dependency) asks for "when in use"
+- iPhone and Android (ADR-011: the Android twin uses coarse location and `android.location.Geocoder`): an in-app
+  native plugin (like the Sign in with Apple one, no new dependency) asks for "when in use"
   location with **reduced accuracy**, and reverse-geocodes it **on the device** with Apple's `CLGeocoder` (free, no
   API key, no server, nothing stored but the name). Result: `"<locality>, <province or region>"`, e.g.
   "Cuéllar, Segovia"; a region equal to the locality is written once ("Segovia"), and the country is added only
