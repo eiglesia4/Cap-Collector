@@ -48,3 +48,46 @@ export function allowedAppleSubs(env: NodeJS.ProcessEnv = process.env): Readonly
 export function appleClientIds(env: NodeJS.ProcessEnv = process.env): string[] {
   return parse(list('CAP_APPLE_CLIENT_IDS'), env.CAP_APPLE_CLIENT_IDS);
 }
+
+// Google settings (CAP-108, ADR-011 §1–2). Unlike the Apple ones, an unset Google setting is not an error: it
+// disables Sign in with Google (no client id → every token 401, no identity → every sub 403), never a 500.
+const unsetOrEmpty = (v: string | undefined) => v === undefined || v.trim() === '' || v.trim() === UNSET;
+
+/** Accepted `aud` of Google ID tokens (web and Android OAuth client ids); empty when unset. */
+export function googleClientIds(env: NodeJS.ProcessEnv = process.env): string[] {
+  const v = env.CAP_GOOGLE_CLIENT_IDS;
+  return unsetOrEmpty(v) ? [] : parse(list('CAP_GOOGLE_CLIENT_IDS'), v);
+}
+
+const PAIR = /^([^=\s]+)\s*=\s*([^=\s]+)$/;
+
+/**
+ * Google `sub` → uid (`googleSub=uid` pairs, comma-separated, whitespace trimmed): the Google allow-list. A malformed
+ * pair, or a sub mapped twice to different uids, is a configuration error naming the variable only (never a sub).
+ * Empty when unset.
+ */
+export function googleIdentities(env: NodeJS.ProcessEnv = process.env): ReadonlyMap<string, string> {
+  const v = env.CAP_GOOGLE_IDENTITIES;
+  const map = new Map<string, string>();
+  if (unsetOrEmpty(v)) return map;
+  const pairs = parse(list('CAP_GOOGLE_IDENTITIES'), v);
+  pairs.forEach((pair, i) => {
+    const m = PAIR.exec(pair);
+    if (!m) throw new Error(`Invalid auth configuration: CAP_GOOGLE_IDENTITIES pair ${i + 1} is not googleSub=uid`);
+    const [, sub, uid] = m as unknown as [string, string, string];
+    if (map.has(sub) && map.get(sub) !== uid) {
+      throw new Error(`Invalid auth configuration: CAP_GOOGLE_IDENTITIES maps pair ${i + 1}'s sub twice`);
+    }
+    map.set(sub, uid);
+  });
+  return map;
+}
+
+/**
+ * Every uid allowed to hold a session: the Apple subs plus the uids Google subs map to (ADR-011 §2: one collection
+ * across providers; a Google-only installation has no Apple subs). Used by /auth/refresh.
+ */
+export function allowedUids(env: NodeJS.ProcessEnv = process.env): ReadonlySet<string> {
+  const apple = unsetOrEmpty(env.CAP_ALLOWED_APPLE_SUBS) ? [] : [...allowedAppleSubs(env)];
+  return new Set([...apple, ...googleIdentities(env).values()]);
+}
