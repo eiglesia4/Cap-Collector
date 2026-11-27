@@ -1,6 +1,8 @@
 // Typed API client (CAP-21): fetch wrapper with the base URL from config, bearer token from the session store,
 // one refresh-and-retry on 401 (then sign-out), bodies parsed with contract schemas (never `as`) and RFC 9457
 // problems surfaced as ProblemError. Routes and bodies: doc/spec/openapi.yaml.
+import type { GoogleSignInRequest } from '@capcollector/shared';
+
 import type { SessionStore } from '../session/session-store.js';
 import {
   HttpError,
@@ -35,6 +37,8 @@ export interface ApiClient {
   healthz(): Promise<Healthz>;
   /** POST /auth/apple → Session (not stored here: the sign-in flow saves it). 403 = Apple ID not allowed. */
   signInWithApple(body: AppleSignInBody): Promise<Session>;
+  /** POST /auth/google → Session (ADR-011, CAP-111). 403 = Google account not mapped in `google-identities`. */
+  signInWithGoogle(body: GoogleSignInRequest): Promise<Session>;
   /**
    * POST /auth/refresh with the stored refresh token, shared with any in-flight 401 retry. True when a new session
    * was saved; false when there is no session or the API refused the token; throws ApiError when unreachable.
@@ -137,6 +141,7 @@ export function createApiClient({
     request,
     healthz: () => request('/healthz', { schema: HealthzSchema, auth: false }),
     signInWithApple: (body) => request('/auth/apple', { method: 'POST', body, schema: SessionSchema, auth: false }),
+    signInWithGoogle: (body) => request('/auth/google', { method: 'POST', body, schema: SessionSchema, auth: false }),
     refresh: refreshOnce,
   };
 }

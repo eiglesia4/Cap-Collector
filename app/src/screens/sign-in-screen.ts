@@ -6,6 +6,12 @@
 // again after every attempt; the button stays disabled ("Loading…") until then, so the tap opens Apple's popup
 // synchronously. A failed preparation (SDK blocked, offline, not configured) shows why, with Retry. Apple's
 // `popup_blocked_by_browser` has its own message; other Apple codes are shown in small print.
+// CAP-111 (ADR-011 §3, SCREENS.md § Sign-in): on the web with a Google client id, Google's own button sits under
+// Apple's, same width. Google's script is loaded and the button rendered on the first render (fresh nonce per
+// attempt); a refusal shows the Google `sub` to add to `google-identities`, a 401 asks to retry, and a script that does
+// not load only hides Google — Apple stays usable. The platform adapter decides whether Google is offered at all.
+import { finishGoogleSignIn, type GoogleSignInFailure } from '../auth/google-sign-in.js';
+import { createPkce, type Pkce } from '../auth/pkce.js';
 import { prepareSignIn, signIn, type PreparedSignIn, type SignInFailure } from '../auth/sign-in.js';
 import { BrandMark } from '../components/brand-mark.js';
 import type { Screen } from '../context.js';
@@ -20,11 +26,27 @@ const FAILURE_MESSAGE: Readonly<Record<SignInFailure, MessageKey>> = {
   failed: 'signIn.failed',
 };
 
+const GOOGLE_FAILURE_MESSAGE: Readonly<Record<GoogleSignInFailure, MessageKey>> = {
+  'not-allowed': 'signIn.googleNotAllowed',
+  retry: 'signIn.googleRetry',
+  network: 'signIn.network',
+  failed: 'signIn.failed',
+};
+
 /**
  * CAP-28: on a refused Apple ID, its `sub` (decoded locally from the identity token) with a copy action, so it can be
  * added to the server allow-list. Copy uses the Clipboard API; where it is unavailable the id is selected instead.
+ * CAP-111: the same panel for a refused Google account, with its own label (`google-identities`).
  */
-function AppleSubPanel(sub: string): HTMLElement {
+const SUB_LABEL: Readonly<Record<Provider, MessageKey>> = {
+  apple: 'signIn.notAllowedSub',
+  google: 'signIn.googleNotAllowedSub',
+};
+type Provider = 'apple' | 'google';
+const APPLE: Provider = 'apple';
+const GOOGLE: Provider = 'google';
+
+function SubPanel(sub: string, provider: Provider): HTMLElement {
   const code = h('code', { class: 'apple-sub__value' }, sub);
   const copy = h(
     'button',
@@ -42,7 +64,13 @@ function AppleSubPanel(sub: string): HTMLElement {
     },
     t('signIn.copy'),
   );
-  return h('div', { class: 'apple-sub' }, h('p', { class: 'muted' }, t('signIn.notAllowedSub')), code, copy);
+  return h(
+    'div',
+    { class: 'apple-sub', attrs: { 'data-sub-provider': provider } },
+    h('p', { class: 'muted' }, t(SUB_LABEL[provider])),
+    code,
+    copy,
+  );
 }
 
 export const SignInScreen: Screen = (ctx) => {
@@ -118,7 +146,9 @@ export const SignInScreen: Screen = (ctx) => {
             if (result.kind === 'cancelled') ctx.cancelPendingRoute?.();
             if (result.kind === 'failed') {
               showFailure(result.reason, result.appleError);
-              if (result.appleSub !== undefined) subSlot.replaceChildren(AppleSubPanel(result.appleSub));
+              if (result.appleSub !== undefined) {
+                subSlot.replaceChildren(SubPanel(result.appleSub, APPLE));
+              }
             }
             // A fresh state and nonce for the next attempt.
             prepare();
@@ -130,6 +160,50 @@ export const SignInScreen: Screen = (ctx) => {
     label,
   );
   prepare();
+
+  // ── Sign in with Google (CAP-111) ──
+  const google = ctx.platform.google;
+  const googleSlot = h('div', { class: 'google-button', attrs: { 'data-google': '' } });
+  const googleStatus = h('p', { class: 'muted', attrs: { 'data-google-status': '' } });
+  googleStatus.hidden = true;
+  let googleBusy = false;
+
+  /** Fresh verifier and nonce, then Google's button for them; a script that fails to load hides Google only. */
+  function prepareGoogle(): void {
+    if (!google) return;
+    void createPkce()
+      .then((pkce) => google.renderButton(googleSlot, { nonce: pkce.nonce }, (idToken) => onGoogle(pkce, idToken)))
+      .then(
+        () => {
+          googleStatus.hidden = true;
+        },
+        () => {
+          googleSlot.replaceChildren();
+          googleStatus.textContent = t('signIn.googleUnavailable');
+          googleStatus.hidden = false;
+        },
+      );
+  }
+
+  function onGoogle(pkce: Pkce, idToken: string): void {
+    if (googleBusy) return;
+    googleBusy = true;
+    googleSlot.setAttribute('aria-busy', 'true');
+    clearFailure();
+    void finishGoogleSignIn(ctx, pkce, idToken).then((result) => {
+      googleBusy = false;
+      googleSlot.removeAttribute('aria-busy');
+      if (result.kind === 'failed') {
+        error.textContent = t(GOOGLE_FAILURE_MESSAGE[result.reason]);
+        if (result.googleSub !== undefined) {
+          subSlot.replaceChildren(SubPanel(result.googleSub, GOOGLE));
+        }
+        // A fresh nonce for the next attempt (one ID token per verifier).
+        prepareGoogle();
+      }
+    });
+  }
+  prepareGoogle();
 
   return h(
     'section',
@@ -145,6 +219,8 @@ export const SignInScreen: Screen = (ctx) => {
       'div',
       { class: 'sign-in__actions' },
       button,
+      google && googleSlot,
+      google && googleStatus,
       error,
       code,
       retrySlot,

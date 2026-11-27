@@ -132,6 +132,8 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     prepareAppleSignIn: () => Promise.resolve(),
     signInWithApple,
     supportsNativeAppleSignIn: () => true,
+    // ADR-011 §3: no Google on iOS; Android's native Credential Manager flow is CAP-113.
+    google: null,
     // `appUrlOpen` (CAP-33). The iOS plugin retains the event until a listener consumes it, so the URL a cold launch
     // came with arrives here too (SceneDelegate forwards it through SceneDelegateProxy).
     onDeepLink(listener) {

@@ -96,6 +96,22 @@ What App Store review reads from the project:
   iPhone and the Services ID for the web), and only the Apple `sub`s in `/cap/<inst>/<stage>/allowed-apple-subs`
   (infra/README.md § Settings).
 
+### Google sign-in
+
+Sign in with Google (ADR-011, CAP-111) shows on the web next to Apple. It's never offered on iOS, and Android gets its
+own native flow (CAP-113). The button only appears when the build has a Google client id.
+
+1. **Google Cloud → APIs & Services → OAuth consent screen:** user type _External_, publishing status **Testing**,
+   with the owner's Google account as the only test user. No scopes beyond the default `openid email profile`.
+2. **Credentials → Create credentials → OAuth client ID → Web application:** add the web origin(s) as **Authorized
+   JavaScript origins** (the stack's `<WebUrl>`, plus `http://localhost:5173` for `npm run dev`). No redirect URIs:
+   Google Identity Services returns the ID token in a popup, without a redirect.
+3. Put the client id (`<n>-<id>.apps.googleusercontent.com`, not a secret) in `VITE_GOOGLE_CLIENT_ID` for the web
+   build. The API accepts it once it is in SSM `/cap/<inst>/<stage>/google-client-ids` (infra/README.md § Settings).
+4. First sign-in: the API refuses it (403), and the screen shows your Google `sub` with a copy button. Add
+   `<googleSub>=<uid>` to `/cap/<inst>/<stage>/google-identities`, where `<uid>` is your Apple `sub` (one collection
+   for both providers). Then redeploy and sign in again.
+
 ### Network (ATS)
 
 The app talks only to the API (`<ApiUrl>`, an HTTPS stack output) and to S3 presigned HTTPS URLs for the images, so App

@@ -22,12 +22,13 @@ describe('config', () => {
       dev: false,
       apple: null,
       webUrl: null,
+      google: null,
     });
     expect(() => loadConfig({ VITE_API_URL: 'nope', DEV: true }, '0')).toThrow(ConfigError);
 
     const store = memoryStore({ [DEV_API_URL_KEY]: 'http://localhost:4000' });
     const dev = createApiUrlSetting(
-      { apiUrl: 'https://api.test', version: '0', dev: true, apple: null, webUrl: null },
+      { apiUrl: 'https://api.test', version: '0', dev: true, apple: null, webUrl: null, google: null },
       store,
     );
     expect(dev.current()).toBe('https://api.test');
@@ -43,7 +44,7 @@ describe('config', () => {
 
     const corrupt = memoryStore({ [DEV_API_URL_KEY]: 'garbage' });
     const devCorrupt = createApiUrlSetting(
-      { apiUrl: null, version: '0', dev: true, apple: null, webUrl: null },
+      { apiUrl: null, version: '0', dev: true, apple: null, webUrl: null, google: null },
       corrupt,
     );
     await devCorrupt.load();
@@ -51,7 +52,7 @@ describe('config', () => {
     expect(corrupt.data.has(DEV_API_URL_KEY)).toBe(false);
 
     const prod = createApiUrlSetting(
-      { apiUrl: 'https://api.test', version: '0', dev: false, apple: null, webUrl: null },
+      { apiUrl: 'https://api.test', version: '0', dev: false, apple: null, webUrl: null, google: null },
       memoryStore({ [DEV_API_URL_KEY]: 'http://localhost:4000' }),
     );
     await prod.load();
