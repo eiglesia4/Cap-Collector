@@ -7,7 +7,7 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 ## Screen inventory
 | # | Screen | Purpose |
 |---|---|---|
-| 1 | Collection (tab) | grid, search, filter chips, sort; recently added strip |
+| 1 | Collection (tab) | grid, search, filter chips, sort; recently added strip (only past 12 caps, unfiltered; a horizontal row of small thumbnails on a tinted band, visibly not part of the grid); the grid has its own heading "All · N" (CAP-115) |
 | 2 | Scan (tab, full-screen) | camera with circular guide; single / batch; library; "Enter manually" |
 | 3 | AI review | pre-filled form, unsure fields highlighted; save / underside photo / ask again |
 | 4 | Already in collection | warning, side-by-side photos, opt-in field diff; update / variant / discard |
