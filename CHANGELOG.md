@@ -96,6 +96,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Added
 
+- CAP-111: Sign in with Google on the web, under the Apple button. Google Identity Services loads lazily on the first render, the S256 PKCE nonce is drawn per attempt, and `POST /auth/google` is called with `{ idToken, codeVerifier }`. A 403 shows the Google sub to map, with a copy button. The button appears only with `VITE_GOOGLE_CLIENT_ID` and never on iOS. Setup in `app/README.md` § Google sign-in (T-app-212…218).
 - CAP-109: `auth-google` wired like `auth-apple` (public route, table grant, session secret). New SSM settings `google-client-ids` and `google-identities` (created `unset`; `auth-refresh` also reads the identities), and `https://localhost` in the example and fixture `app_origins` for Android (T-infra-059). Existing targets run `settings:bootstrap` before the next deploy.
 - CAP-108: `POST /auth/google` verifies the Google ID token (RS256 against Google's JWKS, cached with a 60 s floor between unknown-`kid` refetches; `iss`, `aud`, `exp`, `email_verified`, PKCE nonce), maps the Google `sub` to a uid through `google-identities` (unmapped → 403 with the sub) and issues the same session as Apple.
 - CAP-107: contracts v0.5.0 for ADR-011 (Sign in with Google and the Android build): `GoogleSignInRequest` and `POST /auth/google` in `ROUTES` and the openapi; the exchange instructions never translate brand, variant, producer or text on the cap, and enum fields take codes (T-shared-010).
@@ -116,6 +117,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-115: the Collection's "recently added" row shows only without filters and past 12 caps: 8 small thumbnails in a horizontal row on its own band. The grid gets a heading ("All · N", or the active filters) that replaces the count line, so a small collection no longer shows the same cap twice (T-app-219…222).
 - CAP-105: the owner's target config (`infra/config/<inst>.<stage>.json`) is no longer tracked; `infra/config/.gitignore` keeps only `example.dev.json`. `CAP_CONFIG_DIR` overrides the config directory, a missing config points to the template, and infra tests and CI synth use the neutral fixture `infra/test/fixtures/config/test.dev.json`. A grep guard keeps owner details out of `infra/` (T-infra-056…058).
 - CAP-104: neutral app repo: the place examples use the spec's Segovia; the Apple Team ID moved out of `project.pbxproj` into a gitignored `app/ios/App/Local.xcconfig` (included from the tracked `CapCollector.xcconfig`, with an `.example`); the app docs use `<ApiUrl>` / `<WebUrl>` placeholders (T-app-205).
 - CAP-103: CI publishes a dynamic coverage badge. After every green push to `main`, the `coverage-badge` job writes a shields.io endpoint JSON ("97% lines · 88% branches", floored) to the orphan `badges` branch. Only that job gets `contents: write`; it is not part of `ci-gate` and has no third-party service (`tools/ci/coverage-badge.ts`, T-infra-054/055).
