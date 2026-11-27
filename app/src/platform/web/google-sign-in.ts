@@ -4,7 +4,7 @@
 // to the callback directly, without a redirect. The script is loaded when the sign-in screen first renders, not on
 // the tap, so the click opens Google's popup inside the user gesture (the CAP-64 lesson for Safari).
 import type { GoogleConfig } from '../../config.js';
-import { GoogleSdkLoadError, type GoogleSignIn } from '../platform.js';
+import { GoogleSdkLoadError, type GoogleButtonSignIn } from '../platform.js';
 
 /** Google's hosted Identity Services client. */
 export const GOOGLE_GIS_URL = 'https://accounts.google.com/gsi/client';
@@ -63,8 +63,9 @@ export function createGoogleWebSignIn(
   config: GoogleConfig,
   load: () => Promise<GoogleAccountsId>,
   locale?: () => string,
-): GoogleSignIn {
+): GoogleButtonSignIn {
   return {
+    kind: 'button',
     async renderButton(parent, request, onCredential) {
       const id = await load();
       // Only `openid email profile` are implied; no scopes, no stored Google tokens (ADR-011 §1).

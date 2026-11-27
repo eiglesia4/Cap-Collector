@@ -84,7 +84,11 @@ describe('Android shell (CAP-112)', () => {
 
   it('[T-app-224] the manifest asks only for internet, camera and coarse location, opens collectors://cap links and turns backup off', () => {
     const manifest = read(MAIN, 'AndroidManifest.xml');
-    const permissions = tags(manifest, 'uses-permission').map((p) => attr(p, 'name'));
+    const declared = tags(manifest, 'uses-permission');
+    // CAP-113: permissions merged in by libraries are stripped with tools:node="remove".
+    const removed = declared.filter((p) => p.includes('tools:node="remove"')).map((p) => attr(p, 'name'));
+    expect(removed.sort()).toEqual(['android.permission.USE_BIOMETRIC', 'android.permission.USE_FINGERPRINT']);
+    const permissions = declared.filter((p) => !p.includes('tools:node="remove"')).map((p) => attr(p, 'name'));
     expect(permissions.sort()).toEqual([
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.CAMERA',
@@ -220,7 +224,8 @@ describe('Android shell (CAP-112)', () => {
     expect(read(MAIN, 'java', 'com', 'naevatec', 'collectors', 'MainActivity.java')).toContain(
       'registerPlugin(PlaceNamePlugin.class)',
     );
-    expect(read(ANDROID, 'app', 'build.gradle')).not.toContain('play-services');
+    // Place needs no Play services (CAP-113's Google sign-in brings credentials-play-services-auth, not location).
+    expect(read(ANDROID, 'app', 'build.gradle')).not.toContain('play-services-location');
   });
 
   it('[T-app-228] no Apple button on Android: the sign-in screen says no provider is available yet', async () => {
