@@ -1,6 +1,8 @@
-// Capacitor (iPhone) implementation of the Platform adapter: Camera, Share, Filesystem, Preferences and the native
-// Sign in with Apple sheet (ADR-001, ADR-008 §4, CAP-28; in-app plugin since CAP-65). Non-image file picks (e.g. an Exchange answer JSON) fall
-// back to the web <input type=file>, which WKWebView presents with the Files app.
+// Capacitor implementation of the Platform adapter, for the iPhone and (CAP-112, ADR-011 §4) Android: Camera, Share,
+// Filesystem, Preferences, the native place plugin, deep links, and on iOS the native Sign in with Apple sheet
+// (ADR-001, ADR-008 §4, CAP-28; in-app plugin since CAP-65). Android offers no Apple sign-in (ADR-011 §3; Google comes
+// in CAP-113) and adds the hardware back button. Non-image file picks (e.g. an Exchange answer JSON) fall back to the
+// web <input type=file> (the Files app on iOS, the system picker on Android).
 import { App } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Directory, Filesystem } from '@capacitor/filesystem';
@@ -15,6 +17,7 @@ import {
 } from './place-name-plugin.js';
 import {
   AppleSignInError,
+  AppleSignInUnavailableError,
   isCancel,
   type AppleCredential,
   type AppleSignInRequest,
@@ -57,12 +60,12 @@ export interface CapacitorPlugins {
   readonly Preferences: Pick<typeof Preferences, 'get' | 'set' | 'remove'>;
   readonly AppleSignIn: Pick<AppleSignInPlugin, 'authorize'>;
   readonly PlaceName: Pick<PlaceNameApi, 'currentPlace'>;
-  readonly App: Pick<typeof App, 'addListener'>;
+  readonly App: Pick<typeof App, 'addListener' | 'exitApp' | 'getLaunchUrl'>;
   /** Reads a plugin `webPath` into a Blob. */
   readonly fetch: (input: string) => Promise<Response>;
 }
 
-const defaultPlugins = (): CapacitorPlugins => ({
+export const defaultPlugins = (): CapacitorPlugins => ({
   Camera,
   Share,
   Filesystem,
@@ -84,7 +87,12 @@ async function toBase64(file: Blob): Promise<string> {
   return btoa(binary);
 }
 
-export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPlugins = defaultPlugins()): Platform {
+export function createCapacitorPlatform(
+  fallback: Platform,
+  plugins: CapacitorPlugins = defaultPlugins(),
+  os: 'ios' | 'android' = 'ios',
+): Platform {
+  const android = os === 'android';
   async function fileFrom(webPath: string | undefined, name: string): Promise<File | null> {
     if (!webPath) return null;
     const blob = await (await plugins.fetch(webPath)).blob();
@@ -95,6 +103,7 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
   // exactly as on the web (openapi.yaml § AppleSignInRequest); Apple does not echo `state` natively, so the request's
   // own is returned for the CAP-22 check. A coded failure becomes AppleSignInError, shown with its code (CAP-64).
   async function signInWithApple(request: AppleSignInRequest): Promise<AppleCredential | null> {
+    if (android) throw new AppleSignInUnavailableError('Sign in with Apple is not offered on Android (ADR-011 §3)');
     try {
       const { identityToken, authorizationCode } = await plugins.AppleSignIn.authorize({ nonce: request.nonce });
       return {
@@ -125,20 +134,53 @@ export function createCapacitorPlatform(fallback: Platform, plugins: CapacitorPl
     }
   }
 
-  return {
-    kind: 'native',
-    currentPlace,
-    // The native sheet needs no SDK and keeps no popup to protect (CAP-64 is the web flow).
-    prepareAppleSignIn: () => Promise.resolve(),
-    signInWithApple,
-    supportsNativeAppleSignIn: () => true,
-    // ADR-011 §3: no Google on iOS; Android's native Credential Manager flow is CAP-113.
-    google: null,
+  /** Every URL once: Android reports a cold-launch link through getLaunchUrl, and may also send it as appUrlOpen. */
+  function onDeepLink(listener: (url: string) => void): () => void {
+    const seen = new Set<string>();
+    const deliver = (url: string) => {
+      if (seen.has(url)) return;
+      seen.add(url);
+      listener(url);
+    };
+    let active = true;
     // `appUrlOpen` (CAP-33). The iOS plugin retains the event until a listener consumes it, so the URL a cold launch
     // came with arrives here too (SceneDelegate forwards it through SceneDelegateProxy).
-    onDeepLink(listener) {
-      const handle = plugins.App.addListener('appUrlOpen', (event) => listener(event.url));
+    const handle = plugins.App.addListener('appUrlOpen', (event) => deliver(event.url));
+    // Android (CAP-112): the intent the app was started with is read once.
+    if (android) {
+      void plugins.App.getLaunchUrl()
+        .then((launch) => {
+          if (active && launch?.url) deliver(launch.url);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      active = false;
+      void handle.then((h) => h.remove());
+    };
+  }
+
+  return {
+    kind: 'native',
+    os,
+    features: { camera: true, appleSignIn: !android, nativePlace: true, batch: true },
+    currentPlace,
+    // The native sheet needs no SDK and keeps no popup to protect (CAP-64 is the web flow).
+    prepareAppleSignIn: () =>
+      android ? Promise.reject(new AppleSignInUnavailableError('no Apple on Android')) : Promise.resolve(),
+    signInWithApple,
+    supportsNativeAppleSignIn: () => !android,
+    // ADR-011 §3: no Google on iOS; Android's native Credential Manager flow is CAP-113.
+    google: null,
+    onDeepLink,
+    // Android only (CAP-112): iOS has no back button, so the listener simply never fires there.
+    onBackButton(listener) {
+      if (!android) return () => undefined;
+      const handle = plugins.App.addListener('backButton', (event) => listener({ canGoBack: event.canGoBack }));
       return () => void handle.then((h) => h.remove());
+    },
+    exitApp() {
+      if (android) void plugins.App.exitApp();
     },
     async camera() {
       try {

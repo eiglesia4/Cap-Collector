@@ -10,6 +10,7 @@
 // Apple's, same width. Google's script is loaded and the button rendered on the first render (fresh nonce per
 // attempt); a refusal shows the Google `sub` to add to `google-identities`, a 401 asks to retry, and a script that does
 // not load only hides Google — Apple stays usable. The platform adapter decides whether Google is offered at all.
+// CAP-112: Android offers no Apple sign-in (ADR-011 §3; Google there is CAP-113): with no provider the screen says so.
 import { finishGoogleSignIn, type GoogleSignInFailure } from '../auth/google-sign-in.js';
 import { createPkce, type Pkce } from '../auth/pkce.js';
 import { prepareSignIn, signIn, type PreparedSignIn, type SignInFailure } from '../auth/sign-in.js';
@@ -159,7 +160,8 @@ export const SignInScreen: Screen = (ctx) => {
     h('span', { class: 'apple-logo', attrs: { 'aria-hidden': 'true' } }),
     label,
   );
-  prepare();
+  const appleOffered = ctx.platform.features.appleSignIn;
+  if (appleOffered) prepare();
 
   // ── Sign in with Google (CAP-111) ──
   const google = ctx.platform.google;
@@ -218,9 +220,10 @@ export const SignInScreen: Screen = (ctx) => {
     h(
       'div',
       { class: 'sign-in__actions' },
-      button,
+      appleOffered && button,
       google && googleSlot,
       google && googleStatus,
+      !appleOffered && !google && h('p', { class: 'muted', attrs: { 'data-no-provider': '' } }, t('signIn.noProvider')),
       error,
       code,
       retrySlot,

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ink (SCREENS.md § Visual system), the background layer of the adaptive icon (CAP-112). -->
+    <color name="ic_launcher_background">#1B1A17</color>
+    <!-- Ground, the launch screen (CAP-112). -->
+    <color name="splash_background">#FAFAF7</color>
+</resources>

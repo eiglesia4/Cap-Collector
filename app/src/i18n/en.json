@@ -373,6 +373,7 @@
   "signIn.googleNotAllowedSub": "Your Google user id (map it to your user id in the server's google-identities setting):",
   "signIn.googleRetry": "Google sign-in didn't go through. Try again.",
   "signIn.googleUnavailable": "Google sign-in is unavailable right now. You can still sign in with Apple.",
+  "signIn.noProvider": "Sign-in isn't available on this device yet.",
   "signIn.skip": "Continue without signing in (development)",
   "scan.enterManually": "Enter manually",
   "form.brand": "Brand",

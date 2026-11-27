@@ -28,6 +28,8 @@ export function memoryStore(initial: Record<string, string> = {}): KeyValueStore
 export function fakePlatform(kind: 'web' | 'native' = 'native', store = memoryStore()): Platform {
   return {
     kind,
+    os: kind === 'web' ? 'web' : 'ios',
+    features: { camera: kind === 'native', appleSignIn: true, nativePlace: kind === 'native', batch: true },
     camera: vi.fn(async () => null),
     pickFiles: vi.fn(async () => []),
     share: vi.fn(async () => false),
@@ -37,6 +39,8 @@ export function fakePlatform(kind: 'web' | 'native' = 'native', store = memorySt
     supportsNativeAppleSignIn: () => false,
     google: null,
     onDeepLink: vi.fn(() => () => undefined),
+    onBackButton: vi.fn(() => () => undefined),
+    exitApp: vi.fn(),
     currentPlace: vi.fn(async () => null),
   };
 }

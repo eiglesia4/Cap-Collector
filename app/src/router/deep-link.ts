@@ -1,6 +1,6 @@
-// `collectors://` deep links on the iPhone (CAP-33; CONVENTIONS § Domain vocabulary, ADR-008 §5): a link to a cap,
-// `collectors://cap/<capId>`, opens its detail. Anything else is ignored, never a crash: the links come from outside
-// the app (printed insert cards in V3, Notes, Messages).
+// `collectors://` deep links on the iPhone and Android (CAP-33, CAP-112; CONVENTIONS § Domain vocabulary, ADR-008
+// §5): a link to a cap, `collectors://cap/<capId>`, opens its detail. Anything else is ignored, never a crash: the
+// links come from outside the app (printed insert cards in V3, Notes, Messages).
 import { Ulid } from '@capcollector/shared';
 
 import type { Platform } from '../platform/platform.js';

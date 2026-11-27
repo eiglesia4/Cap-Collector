@@ -89,9 +89,26 @@ export interface GoogleSignIn {
   ): Promise<void>;
 }
 
+/** Where the bundle runs (ADR-001, ADR-011 §4): the browser, or the Capacitor shell on iOS or Android. */
+export type PlatformOs = 'web' | 'ios' | 'android';
+
+/** What each platform offers (CAP-112, ADR-011 §3–§4). */
+export interface PlatformFeatures {
+  /** Takes photos with the camera; the web uploads a photo instead ("Upload photo", ADR-001). */
+  readonly camera: boolean;
+  /** Sign in with Apple is offered: the JS popup on the web, the native sheet on iOS; never on Android. */
+  readonly appleSignIn: boolean;
+  /** "Where acquired" from the device's location (features.md § Place from GPS): the native place plugins. */
+  readonly nativePlace: boolean;
+  /** Batch capture of a tray (ADR-009), on every platform ("Upload tray photo" on the web). */
+  readonly batch: boolean;
+}
+
 export interface Platform {
-  /** `native` = Capacitor iPhone app; `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
+  /** `native` = Capacitor app (iPhone or Android); `web` = browser (Mac: Scan becomes "Upload photo", ADR-001). */
   readonly kind: 'web' | 'native';
+  readonly os: PlatformOs;
+  readonly features: PlatformFeatures;
   /** Take one photo; null when the user cancels. */
   camera(): Promise<File | null>;
   /** Pick files; empty when the user cancels. */
@@ -126,6 +143,13 @@ export interface Platform {
    * unsubscribe. The web build never receives any: its links are ordinary HTTPS URLs.
    */
   onDeepLink(listener: (url: string) => void): () => void;
+  /**
+   * The Android hardware back button (CAP-112, SCREENS.md § Sign-in): `canGoBack` is the WebView's history. Returns an
+   * unsubscribe. Never fires on the web or iOS.
+   */
+  onBackButton(listener: (event: { readonly canGoBack: boolean }) => void): () => void;
+  /** Leave the app (Android back on the Collection); does nothing on the web and iOS. */
+  exitApp(): void;
   /**
    * Where the phone is now (CAP-100): asks for "when in use" location the first time, ≈ 3 s at most. Null on denial,
    * timeout, error or no result, and always on the web (no geolocation there). Never rejects.
