@@ -61,16 +61,16 @@ describe('config', () => {
   it('[T-app-061] VITE_WEB_URL is optional and, when set, must be a bare https origin (trailing slash allowed)', () => {
     expect(parseWebUrl(undefined)).toBeNull();
     expect(parseWebUrl(' ')).toBeNull();
-    expect(parseWebUrl('https://caps.naevatec.com')).toBe('https://caps.naevatec.com');
-    expect(parseWebUrl(' https://caps.naevatec.com/ ')).toBe('https://caps.naevatec.com');
+    expect(parseWebUrl('https://caps.example.com')).toBe('https://caps.example.com');
+    expect(parseWebUrl(' https://caps.example.com/ ')).toBe('https://caps.example.com');
     expect(parseWebUrl('https://localhost:5173')).toBe('https://localhost:5173');
-    expect(() => parseWebUrl('caps.naevatec.com')).toThrow(/not a valid URL/);
-    expect(() => parseWebUrl('http://caps.naevatec.com')).toThrow(/must be https/);
-    for (const bad of ['https://caps.naevatec.com/app', 'https://caps.naevatec.com/?x=1', 'https://u:p@caps.test']) {
+    expect(() => parseWebUrl('caps.example.com')).toThrow(/not a valid URL/);
+    expect(() => parseWebUrl('http://caps.example.com')).toThrow(/must be https/);
+    for (const bad of ['https://caps.example.com/app', 'https://caps.example.com/?x=1', 'https://u:p@caps.test']) {
       expect(() => parseWebUrl(bad)).toThrow(/origin without path/);
     }
-    expect(loadConfig({ VITE_WEB_URL: 'https://caps.naevatec.com/', DEV: false }, '1').webUrl).toBe(
-      'https://caps.naevatec.com',
+    expect(loadConfig({ VITE_WEB_URL: 'https://caps.example.com/', DEV: false }, '1').webUrl).toBe(
+      'https://caps.example.com',
     );
     expect(() => loadConfig({ VITE_WEB_URL: 'http://caps.test', DEV: false }, '1')).toThrow(ConfigError);
   });

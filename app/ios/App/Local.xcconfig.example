@@ -1,0 +1,2 @@
+// Copy to Local.xcconfig (gitignored) and put your Apple Developer Team ID (Membership details). CAP-104.
+DEVELOPMENT_TEAM = <your team id>

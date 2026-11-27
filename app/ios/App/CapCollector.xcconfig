@@ -1,0 +1,5 @@
+// Build settings of the CapCollector target (CAP-104): no personal values in the tracked project. The signing team
+// comes from Local.xcconfig next to this file (gitignored; copy Local.xcconfig.example and put your Apple Team ID).
+// Without it the project still builds for the simulator, but Xcode asks for a team before signing for a device.
+// CAPACITOR_DEBUG (Debug) still comes from ../debug.xcconfig at the project level.
+#include? "Local.xcconfig"

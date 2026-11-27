@@ -15,7 +15,7 @@ export interface AppConfig {
   readonly dev: boolean;
   /** Sign in with Apple web client, or null when the build has none (the sign-in screen then says so). */
   readonly apple: AppleConfig | null;
-  /** Public HTTPS origin of the web build (`https://caps.naevatec.com`), or null when the build has none. */
+  /** Public HTTPS origin of the web build (`https://caps.example.com`), or null when the build has none. */
   readonly webUrl: string | null;
 }
 
