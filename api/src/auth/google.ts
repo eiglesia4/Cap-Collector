@@ -18,6 +18,8 @@ export const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.c
 export const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 export const GOOGLE_JWKS_TIMEOUT_MS = 3000;
 export const GOOGLE_CLOCK_SKEW_SECONDS = 60;
+/** Minimum gap between refetches caused by an unknown `kid` (architect review of CAP-108, 2026-11-27). */
+export const GOOGLE_JWKS_MIN_REFETCH_MS = 60_000;
 
 /** Why a token was refused; logged as a reason code, never with the token. */
 export type GoogleRejection =
@@ -42,6 +44,7 @@ export interface HttpGoogleKeysOptions {
   /** Epoch milliseconds. */
   clock?: () => number;
   timeoutMs?: number;
+  minRefetchMs?: number;
 }
 
 /** `max-age` of a Cache-Control header in seconds; 0 (don't cache) when absent or unparsable. */
@@ -50,24 +53,33 @@ export function maxAgeSeconds(cacheControl: string | null): number {
   return m ? Number(m[1]) : 0;
 }
 
-/** Google's JWKS over HTTPS, cached in the container for as long as Google's Cache-Control allows. */
+/**
+ * Google's JWKS over HTTPS, cached in the container for as long as Google's Cache-Control allows. An unknown `kid`
+ * refetches at most once per GOOGLE_JWKS_MIN_REFETCH_MS, so a flood of junk tokens is answered from the cache instead
+ * of calling Google every time.
+ */
 export class HttpGoogleKeys implements GoogleKeys {
-  private cache: { keys: Map<string, JsonWebKey>; expiresAt: number } | undefined;
+  private cache: { keys: Map<string, JsonWebKey>; expiresAt: number; fetchedAt: number } | undefined;
   private readonly url: string;
   private readonly fetchFn: typeof globalThis.fetch;
   private readonly clock: () => number;
   private readonly timeoutMs: number;
+  private readonly minRefetchMs: number;
 
   constructor(opts: HttpGoogleKeysOptions = {}) {
     this.url = opts.url ?? GOOGLE_JWKS_URL;
     this.fetchFn = opts.fetch ?? globalThis.fetch;
     this.clock = opts.clock ?? Date.now;
     this.timeoutMs = opts.timeoutMs ?? GOOGLE_JWKS_TIMEOUT_MS;
+    this.minRefetchMs = opts.minRefetchMs ?? GOOGLE_JWKS_MIN_REFETCH_MS;
   }
 
   async key(kid: string): Promise<JsonWebKey | undefined> {
-    const fresh = this.cache && this.cache.expiresAt > this.clock();
-    if (fresh && this.cache!.keys.has(kid)) return this.cache!.keys.get(kid);
+    const now = this.clock();
+    const cache = this.cache && this.cache.expiresAt > now ? this.cache : undefined;
+    if (cache?.keys.has(kid)) return cache.keys.get(kid);
+    // A fresh cache that lacks the kid was fetched less than minRefetchMs ago: the kid is junk, not a rotation.
+    if (cache && now - cache.fetchedAt < this.minRefetchMs) return undefined;
     // Expired, never fetched, or an unknown kid (Google rotated its keys): fetch once, then answer from that.
     await this.refresh();
     return this.cache!.keys.get(kid);
@@ -82,7 +94,8 @@ export class HttpGoogleKeys implements GoogleKeys {
     for (const k of body.keys as (JsonWebKey & { kid?: unknown })[]) {
       if (typeof k.kid === 'string' && k.kty === 'RSA') keys.set(k.kid, k);
     }
-    this.cache = { keys, expiresAt: this.clock() + maxAgeSeconds(res.headers.get('cache-control')) * 1000 };
+    const fetchedAt = this.clock();
+    this.cache = { keys, fetchedAt, expiresAt: fetchedAt + maxAgeSeconds(res.headers.get('cache-control')) * 1000 };
   }
 }
 

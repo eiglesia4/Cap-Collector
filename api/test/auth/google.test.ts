@@ -164,12 +164,14 @@ describe('Google ID token', () => {
     await k.key('google-1');
     expect(calls.n).toBe(2); // expired → refetched
 
+    now += 60_000; // past the minimum refetch interval, cache still fresh
     expect(await k.key('unknown')).toBeUndefined();
     expect(calls.n).toBe(3); // exactly one refetch for the unknown kid
 
-    // Google rotates: the new kid appears in the refetch and is found.
+    // Google rotates: the new kid appears in the next allowed refetch and is found.
     const rotated = await generateKeyPair('RS256');
     jwks = { keys: [...jwks.keys, { ...(await exportJWK(rotated.publicKey)), kid: 'google-2', alg: 'RS256' }] };
+    now += 60_000;
     expect(await k.key('google-2')).toMatchObject({ kty: 'RSA' });
     expect(calls.n).toBe(4);
     const token = await idToken({}, { kid: 'google-2', key: rotated });
@@ -206,6 +208,41 @@ describe('Google ID token', () => {
     await expect(hanging.key('google-1')).rejects.toBeDefined();
     expect(seen?.aborted).toBe(true);
     expect(new HttpGoogleKeys()).toBeInstanceOf(HttpGoogleKeys); // defaults: Google URL, 3 s
+  });
+});
+
+describe('JWKS refetch floor', () => {
+  it('[T-api-101] a flood of unknown kids within 60 s of the last fetch is answered from the cache, not from Google', async () => {
+    let now = 5_000_000;
+    const { fetch, calls } = fakeFetch('public, max-age=21600');
+    const k = new HttpGoogleKeys({ fetch, clock: () => now });
+    expect(await k.key('google-1')).toBeDefined();
+    expect(calls.n).toBe(1);
+    for (let i = 0; i < 50; i++) expect(await k.key(`junk-${i}`)).toBeUndefined();
+    expect(calls.n).toBe(1); // no call to Google for junk within the floor
+    now += 59_999;
+    expect(await k.key('junk-late')).toBeUndefined();
+    expect(calls.n).toBe(1);
+    now += 1;
+    expect(await k.key('junk-after-floor')).toBeUndefined();
+    expect(calls.n).toBe(2); // one refetch once the floor has passed…
+    expect(await k.key('junk-again')).toBeUndefined();
+    expect(calls.n).toBe(2); // …and the floor restarts from it
+    expect(await k.key('google-1')).toBeDefined(); // known kids keep being served
+
+    // Through the verifier: unknown-kid tokens are still 401 `unknown-kid`.
+    const token = await idToken({}, { kid: 'junk-kid' });
+    await expect(
+      verifyGoogleIdentity({ idToken: token, codeVerifier: VERIFIER }, { clientIds: [WEB_CLIENT], keys: k }),
+    ).rejects.toMatchObject({ reason: 'unknown-kid' });
+    expect(calls.n).toBe(2);
+
+    // An expired cache is always refetched, floor or not (max-age 0).
+    const nc = fakeFetch('no-cache');
+    const k2 = new HttpGoogleKeys({ fetch: nc.fetch, clock: () => now, minRefetchMs: 60_000 });
+    await k2.key('junk');
+    await k2.key('junk');
+    expect(nc.calls.n).toBe(2);
   });
 });
 
