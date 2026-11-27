@@ -8,6 +8,7 @@
 import type { AppContext } from './context.js';
 import { TabBar } from './components/tab-bar.js';
 import { onLanguageChange, t } from './i18n/i18n.js';
+import { handleBackButton } from './router/back-button.js';
 import { handleDeepLinks } from './router/deep-link.js';
 import { createRouter, type Router } from './router/router.js';
 import { pathFor } from './router/routes.js';
@@ -80,10 +81,13 @@ export function renderApp(root: HTMLElement, ctx: ShellContext, win: Window = wi
   });
   // `collectors://cap/<id>` opens the cap (CAP-33); signed out, the guard above still sends it to Sign in.
   const stopDeepLinks = handleDeepLinks(ctx.platform, full.navigate);
+  // Android back button (CAP-112): back, or leave the app on the Collection.
+  const stopBack = handleBackButton(ctx.platform, router, win);
   return {
     router,
     destroy: () => {
       stopDeepLinks();
+      stopBack();
       stopLanguage();
       stopMenus();
       unsubscribe();

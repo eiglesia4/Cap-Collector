@@ -72,6 +72,8 @@ export function createWebPlatform(win: Window, options: WebPlatformOptions = {})
   const apple = createAppleWebSignIn(options.apple ?? null, options.loadAppleSdk ?? scriptLoader(win));
   return {
     kind: 'web',
+    os: 'web',
+    features: { camera: false, appleSignIn: true, nativePlace: false, batch: true },
     prepareAppleSignIn: apple.prepare,
     signInWithApple: apple.signIn,
     supportsNativeAppleSignIn: () => false,
@@ -79,6 +81,8 @@ export function createWebPlatform(win: Window, options: WebPlatformOptions = {})
       ? createGoogleWebSignIn(options.google, options.loadGoogleSdk ?? gisLoader(win), language)
       : null,
     onDeepLink: () => () => undefined,
+    onBackButton: () => () => undefined,
+    exitApp: () => undefined,
     // No geolocation on the web (features.md § Place from GPS): the form uses the last place used instead.
     currentPlace: () => Promise.resolve(null),
     async camera() {

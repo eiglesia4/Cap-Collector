@@ -1,7 +1,8 @@
 # @capcollector/app
 
-One Vite + TypeScript bundle (ADR-001): wrapped with Capacitor for the iPhone (bundle `com.naevatec.collectors`, name
-CapCollector) and served statically for the Mac browser. Configuration comes from `app/.env.local` (see
+One Vite + TypeScript bundle (ADR-001): wrapped with Capacitor for the iPhone and Android (bundle / applicationId
+`com.naevatec.collectors`, name CapCollector; Android since CAP-112, ADR-011 §4) and served statically for the Mac
+browser. Configuration comes from `app/.env.local` (see
 `.env.example`): `VITE_API_URL`, `VITE_APPLE_SERVICE_ID` + `VITE_APPLE_REDIRECT_URI`, `VITE_WEB_URL`.
 
 ```bash
@@ -19,7 +20,12 @@ SCREENS.md § Visual system (`#FAFAF7` ground, `#1B1A17` ink, `#B8651B` copper):
 - `splash.svg` / `splash-dark.svg` → `Splash.imageset` — 2732² universal for every scale, light and dark appearance;
   `LaunchScreen.storyboard` shows it with aspect fill, so only background is cropped.
 
-After editing an SVG, re-render and commit the PNGs (needs `rsvg-convert`: `brew install librsvg`):
+- Android (CAP-112): an adaptive icon — the ink background (`values/ic_launcher_background.xml`), the copper cap as
+  a vector foreground and a white monochrome layer for themed icons (`drawable/ic_launcher_{foreground,monochrome}.xml`,
+  the paths of `icon.svg`), plus legacy square and round PNGs in `mipmap-*`. The launch screen is the ground colour
+  with the cap (Android 12+ SplashScreen API, `values/styles.xml`).
+
+After editing an SVG, re-render and commit the outputs (needs `rsvg-convert`: `brew install librsvg`):
 
 ```bash
 npx tsx app/design/render.ts
@@ -32,6 +38,13 @@ those keep the name `App` (renaming them breaks `cap sync` / `cap open`). The na
 (`CapCollector.app`, Swift module `CapCollector`) and the shared scheme
 (`App.xcodeproj/xcshareddata/xcschemes/CapCollector.xcscheme`, also `ios.scheme` in `capacitor.config.ts`) are
 `CapCollector` (CAP-94). The home-screen name is `CFBundleDisplayName` in `Info.plist`.
+
+## Android names
+
+Capacitor's CLI expects the Gradle module `android/app` (and `MainActivity` in the `applicationId` package), so those
+keep their names, as `App.xcodeproj` does on iOS (CAP-94). The Gradle root project (`rootProject.name` in
+`android/settings.gradle`), `app_name` and `title_activity_main` (`res/values/strings.xml`) are **CapCollector**
+(CAP-112). The `applicationId` is `com.naevatec.collectors`, from `capacitor.config.ts`.
 
 ## Signing team
 
@@ -116,3 +129,39 @@ own native flow (CAP-113). The button only appears when the build has a Google c
 
 The app talks only to the API (`<ApiUrl>`, an HTTPS stack output) and to S3 presigned HTTPS URLs for the images, so App
 Transport Security needs no exception: `Info.plist` has no `NSAppTransportSecurity` entry and must not get one.
+
+## Android
+
+The Android app is the same bundle in Capacitor's Android shell (ADR-011 §4), side-loaded as a signed APK: no Play
+Store. It runs on Android 8+ (`minSdkVersion` from Capacitor 8, `android/variables.gradle`). CI has no Android SDK, so
+the build is a manual check, like the iPhone one.
+
+```bash
+npm run build:shared && npm run build -w @capcollector/app   # dist/
+cd app && npx cap sync android && npx cap open android      # Android Studio
+```
+
+- **What's native:** camera, files, share and preferences come from the Capacitor plugins. The place for "Where
+  acquired" comes from `PlaceNamePlugin.kt` (coarse location and the on-device `Geocoder`, no Google Play services;
+  the coordinates are never stored). `collectors://cap/<id>` links open the cap, and the hardware back button goes back,
+  leaving the app on the Collection.
+- **Permissions:** `INTERNET`, `CAMERA` and `ACCESS_COARSE_LOCATION` only. Backup is off (`allowBackup="false"`).
+- **Sign-in:** Android offers no Apple sign-in (ADR-011 §3). Google on Android comes in CAP-113; until then the sign-in
+  screen says no provider is available.
+- **API origin:** the WebView's origin is `https://localhost` (Capacitor's default `androidScheme`). Add it to
+  `app_origins` in your installation's config (infra/README.md), or the API's CORS refuses the app.
+
+### Release APK
+
+1. Create a keystore once, outside the repo, and keep it and its passwords safe (every update must be signed with
+   the same key):
+
+   ```bash
+   keytool -genkeypair -v -keystore ~/keys/capcollector.jks -alias capcollector -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. In Android Studio: **Build → Generate Signed App Bundle / APK → APK**, choose that keystore, variant `release`. If
+   you keep the passwords in `android/keystore.properties` for your own Gradle signing config, that file is gitignored,
+   like `*.jks` and `*.keystore`. Never commit them.
+3. Copy `android/app/release/app-release.apk` to the phone and install it (allow installs from that source once).
+   Raise `versionCode` / `versionName` in `android/app/build.gradle` for each new APK.
