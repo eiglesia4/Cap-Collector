@@ -7,7 +7,8 @@ import { brandHue } from '../src/components/cap-tile';
 import type { AppContext } from '../src/context';
 import { t } from '../src/i18n/i18n';
 import { matchRoute } from '../src/router/routes';
-import { CollectionScreen, countLabel, SEARCH_DEBOUNCE_MS } from '../src/screens/collection-screen';
+import { RECENT_SIZE } from '../src/collection/query';
+import { CollectionScreen, countLabel, gridLabel, SEARCH_DEBOUNCE_MS } from '../src/screens/collection-screen';
 import { ulid, wireCap, wirePage } from './support/caps';
 import { fakeApi, flush, shellContext } from './support/fakes';
 
@@ -43,7 +44,7 @@ async function mount(respond: Responder, kind: 'web' | 'native' = 'native') {
 
 const grid = (el: HTMLElement) => [...el.querySelectorAll('.cap-grid .cap-tile')];
 const gridParams = (paths: string[]) =>
-  paths.map((p) => new URL(p, 'https://x').searchParams).filter((s) => s.get('limit') !== '3');
+  paths.map((p) => new URL(p, 'https://x').searchParams).filter((s) => s.get('limit') !== String(RECENT_SIZE));
 
 afterEach(() => {
   vi.useRealTimers();
@@ -114,10 +115,12 @@ describe('collection screen', () => {
     mahou?.querySelector('img')?.dispatchEvent(new Event('error'));
     expect(mahou?.querySelector('.cap-thumb--placeholder')).not.toBeNull();
 
-    expect(el.querySelector('.collection-count')?.textContent).toBe(t('collection.count', { count: '1,284' }));
-    expect(countLabel({ items: [], total: 1, done: true })).toBe(t('collection.countOne'));
+    expect(el.querySelector('.collection-heading')?.textContent).toBe(
+      t('collection.gridHeading', { label: t('collection.gridAll'), count: '1,284' }),
+    );
+    expect(countLabel({ items: [], total: 1, done: true })).toBe('1');
     expect(countLabel({ items: [], total: null, done: false })).toBe(t('collection.countMore', { count: '0' }));
-    expect(countLabel({ items: [], total: null, done: true })).toBe(t('collection.count', { count: '0' }));
+    expect(countLabel({ items: [], total: null, done: true })).toBe('0');
   });
 
   it('[T-app-033] shows the empty state with a ＋ that opens /new; a filtered empty list says nothing matches', async () => {
@@ -129,7 +132,9 @@ describe('collection screen', () => {
     expect(plus?.hasAttribute('data-link')).toBe(true);
     expect(plus?.getAttribute('aria-label')).toBe(t('collection.add'));
     expect(el.querySelector<HTMLElement>('.load-more')?.hidden).toBe(true);
-    expect(el.querySelector('.collection-count')?.textContent).toBe(t('collection.count', { count: '0' }));
+    expect(el.querySelector('.collection-heading')?.textContent).toBe(
+      t('collection.gridHeading', { label: t('collection.gridAll'), count: '0' }),
+    );
 
     el.querySelector<HTMLButtonElement>('[data-chip="needsReview"]')?.click();
     await flush();
@@ -140,8 +145,8 @@ describe('collection screen', () => {
   it('[T-app-034] wires search (300 ms debounce), chips and sort to the query; recently added shows only unfiltered', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const respond: Responder = (p) => {
-      if (p.get('limit') === '3')
-        return wirePage([wireCap(7, { brand: 'Newest' }), wireCap(8), wireCap(9), wireCap(10)]);
+      if (p.get('limit') === String(RECENT_SIZE))
+        return wirePage([wireCap(7, { brand: 'Newest' }), wireCap(8), wireCap(9), wireCap(10)], { total: 20 });
       return wirePage([wireCap(1, { country: 'BE' }), wireCap(2, { country: 'BE' }), wireCap(3, { country: 'ES' })]);
     };
     const { api, paths } = capsApi(respond);
@@ -152,12 +157,12 @@ describe('collection screen', () => {
     document.body.append(el);
     await vi.advanceTimersByTimeAsync(0);
 
-    // Recently added: first 3 of sort=newest, shown above the grid while nothing is filtered.
+    // Recently added: the newest of sort=newest, shown above the grid while nothing is filtered (20 caps > 12).
     const recent = el.querySelector<HTMLElement>('.collection-recent');
-    expect(paths).toContain('/caps?sort=newest&limit=3');
+    expect(paths).toContain(`/caps?sort=newest&limit=${String(RECENT_SIZE)}`);
     expect(recent?.hidden).toBe(false);
-    expect(recent?.querySelectorAll('.cap-tile')).toHaveLength(3);
-    expect(recent?.querySelector('.cap-title')?.textContent).toBe('Newest');
+    expect(recent?.querySelectorAll('.cap-thumb-tile')).toHaveLength(4);
+    expect(recent?.querySelector('.cap-brand')?.textContent).toBe('Newest');
 
     // Chips: All selected; country chips from the loaded page (most frequent first).
     const chipKeys = () => [...el.querySelectorAll<HTMLElement>('.chip')].map((c) => c.dataset.chip);
@@ -253,7 +258,7 @@ describe('collection screen', () => {
     );
     let failNext = false;
     const { el, paths, show } = await mount((p) => {
-      if (p.get('limit') === '3') return wirePage([]);
+      if (p.get('limit') === String(RECENT_SIZE)) return wirePage([]);
       if (failNext) {
         failNext = false;
         throw new Error('offline');
@@ -264,7 +269,9 @@ describe('collection screen', () => {
       return wirePage([wireCap(4)]);
     });
     const loadMore = el.querySelector<HTMLButtonElement>('.load-more');
-    expect(el.querySelector('.collection-count')?.textContent).toBe(t('collection.countMore', { count: '2' }));
+    expect(el.querySelector('.collection-heading')?.textContent).toBe(
+      t('collection.gridHeading', { label: t('collection.gridAll'), count: t('collection.countMore', { count: '2' }) }),
+    );
     expect(loadMore?.hidden).toBe(false);
 
     // Sentinel in view → next page; the overlapping cap is not duplicated.
@@ -290,7 +297,9 @@ describe('collection screen', () => {
     await flush();
     expect(grid(el)).toHaveLength(4);
     expect(loadMore?.hidden).toBe(true);
-    expect(el.querySelector('.collection-count')?.textContent).toBe(t('collection.count', { count: '4' }));
+    expect(el.querySelector('.collection-heading')?.textContent).toBe(
+      t('collection.gridHeading', { label: t('collection.gridAll'), count: '4' }),
+    );
 
     // Pull-to-refresh (native): a long pull from the top reloads from the first page; a short one does nothing.
     const touch = (type: string, y: number) => {
@@ -348,5 +357,93 @@ describe('collection screen', () => {
 
     // The old (detached) screen unsubscribes from scroll on its next event.
     window.dispatchEvent(new Event('scroll'));
+  });
+
+  describe('recently added row and grid heading (CAP-115)', () => {
+    const caps = (n: number, from = 1) => Array.from({ length: n }, (_, i) => wireCap(from + i));
+    /** The grid answers `gridCaps`; the newest-first page answers its first RECENT_SIZE with `total`. */
+    const collection =
+      (gridCaps: Record<string, unknown>[], total: number | undefined): Responder =>
+      (p) =>
+        p.get('limit') === String(RECENT_SIZE)
+          ? wirePage([...gridCaps].reverse().slice(0, RECENT_SIZE), total === undefined ? {} : { total })
+          : wirePage(gridCaps, total === undefined ? {} : { total });
+    const strip = (el: HTMLElement) => el.querySelector<HTMLElement>('.collection-recent');
+
+    it('[T-app-219] with 12 caps or fewer (or an unknown total) no recently added row is rendered', async () => {
+      for (const n of [1, 12]) {
+        const { el } = await mount(collection(caps(n), n));
+        await vi.waitFor(() => expect(grid(el)).toHaveLength(n));
+        expect(strip(el)?.hidden).toBe(true);
+        expect(el.querySelectorAll('.cap-thumb-tile')).toHaveLength(0);
+        expect(el.querySelectorAll('.cap-tile')).toHaveLength(n); // each cap once, in the grid
+      }
+      // No total and only a few caps loaded: the size is unknown → no row.
+      const unknown = await mount((p) =>
+        p.get('limit') === String(RECENT_SIZE) ? wirePage(caps(3)) : wirePage(caps(3), { cursor: 'more' }),
+      );
+      await vi.waitFor(() => expect(grid(unknown.el)).toHaveLength(3));
+      expect(strip(unknown.el)?.hidden).toBe(true);
+    });
+
+    it('[T-app-220] with 13 caps the row is a separate small list of RECENT_SIZE thumbnails and the grid stays complete', async () => {
+      const all = caps(13);
+      const { el } = await mount(collection(all, 13));
+      await vi.waitFor(() => expect(strip(el)?.hidden).toBe(false));
+      const row = el.querySelector('.collection-recent ul.cap-strip');
+      expect(row).not.toBeNull();
+      expect(row?.getAttribute('aria-label')).toBe(t('collection.recent'));
+      expect(row?.querySelectorAll('li.cap-thumb-tile')).toHaveLength(RECENT_SIZE);
+      expect(row?.querySelector('.cap-tile, .cap-title, .cap-subtitle')).toBeNull(); // photo and brand only
+      expect(row?.querySelector('.cap-brand')?.textContent).toBe('Brand 13');
+      expect(row?.querySelector('a')?.getAttribute('href')).toBe(`/cap/${ulid(13)}`);
+      expect(row?.closest('.cap-grid')).toBeNull();
+      expect(grid(el)).toHaveLength(13);
+      // Without a total, a grid already holding more than 12 caps is enough to know.
+      const noTotal = await mount((p) =>
+        p.get('limit') === String(RECENT_SIZE) ? wirePage(caps(RECENT_SIZE)) : wirePage(caps(13), { cursor: 'more' }),
+      );
+      await vi.waitFor(() => expect(strip(noTotal.el)?.hidden).toBe(false));
+    });
+
+    it('[T-app-221] the grid heading reads "All · N" and follows the active filter', async () => {
+      const { el } = await mount((p) =>
+        p.get('limit') === String(RECENT_SIZE)
+          ? wirePage([wireCap(1)], { total: 1 })
+          : p.get('type') === 'beer'
+            ? wirePage(caps(3), { total: 3 })
+            : wirePage([wireCap(1)], { total: 1 }),
+      );
+      const heading = () => el.querySelector('.collection-heading')?.textContent;
+      await vi.waitFor(() =>
+        expect(heading()).toBe(t('collection.gridHeading', { label: t('collection.gridAll'), count: '1' })),
+      );
+      // Under its own heading, right above the grid; the old count line is gone.
+      expect(el.querySelector('.collection-heading')?.nextElementSibling?.classList.contains('cap-grid')).toBe(true);
+      expect(el.querySelector('.collection-count')).toBeNull();
+      el.querySelector<HTMLButtonElement>('[data-chip="type:beer"]')?.click();
+      await vi.waitFor(() =>
+        expect(heading()).toBe(t('collection.gridHeading', { label: t('capType.beer'), count: '3' })),
+      );
+
+      const base = { q: '', type: null, country: null, brand: null, needsReview: false, sort: 'brand' } as const;
+      expect(gridLabel(base)).toBe(t('collection.gridAll'));
+      expect(gridLabel({ ...base, brand: 'Mahou', needsReview: true })).toBe(
+        ['Mahou', t('collection.chipNeedsReview')].join(t('collection.gridJoin')),
+      );
+      expect(gridLabel({ ...base, q: ' A·3 ' })).toBe(t('collection.gridSearch', { q: 'A·3' }));
+    });
+
+    it('[T-app-222] a filtered collection shows no recently added row (regression)', async () => {
+      const { el, paths } = await mount(collection(caps(20), 20));
+      await vi.waitFor(() => expect(strip(el)?.hidden).toBe(false));
+      el.querySelector<HTMLButtonElement>('[data-chip="needsReview"]')?.click();
+      await flush();
+      expect(strip(el)?.hidden).toBe(true);
+      expect(el.querySelectorAll('.cap-thumb-tile')).toHaveLength(0);
+      el.querySelector<HTMLButtonElement>('[data-chip="all"]')?.click();
+      await vi.waitFor(() => expect(strip(el)?.hidden).toBe(false));
+      expect(paths.filter((p) => p.includes(`limit=${String(RECENT_SIZE)}`)).length).toBeGreaterThan(0);
+    });
   });
 });

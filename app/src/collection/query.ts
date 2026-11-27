@@ -9,8 +9,10 @@ export type Sort = (typeof SORTS)[number];
 
 /** Page size of the grid (openapi default 60, max 200). */
 export const PAGE_SIZE = 60;
-/** "Recently added" strip: first three of `sort=newest`. */
-export const RECENT_SIZE = 3;
+/** "Recently added" row: first eight of `sort=newest` (CAP-115). */
+export const RECENT_SIZE = 8;
+/** The row shows only past this many caps (SCREENS.md #1, CAP-115): below it the grid already shows them all. */
+export const RECENT_MIN_COLLECTION = 12;
 /** Country chips shown, computed from the loaded caps. */
 export const TOP_COUNTRIES = 4;
 
