@@ -247,12 +247,13 @@ body {
   flex-direction: column;
   gap: var(--space-3);
   width: 100%;
-  max-width: 420px;
+  /* 400 px = the widest Google Identity Services button, so Apple's and Google's match (CAP-111, SCREENS.md). */
+  max-width: 400px;
   margin: 0 auto;
 }
 
-/* Google's own button (CAP-111): an iframe of at most 400 px, centred under Apple's; the slot keeps its height while
-   it loads so the screen does not jump. */
+/* Google's own button (CAP-111): an iframe sized to the column, centred under Apple's; the slot keeps its height
+   while it loads so the screen does not jump. */
 .google-button {
   display: flex;
   justify-content: center;
