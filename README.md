@@ -192,7 +192,7 @@ npm test            # vitest, all workspaces, coverage ≥ 80 % enforced
 npm run lint        # eslint + prettier --check
 npm run typecheck   # tsc --noEmit per workspace
 npm run catalog     # regenerate TEST.md (test catalogue, every test has an id)
-npm run synth       # cdk synth without credentials
+npm run synth       # cdk synth of $CAP_INSTALLATION/$CAP_STAGE, no credentials (CI: the test fixture)
 npm run api:local   # local API on DynamoDB Local / in-memory, for the web dev server
 npm run dev -w @capcollector/app
 ```

@@ -38,7 +38,8 @@ Fill rather than leave blank, but show what is a guess:
 - iPhone only: an in-app native plugin (like the Sign in with Apple one, no new dependency) asks for "when in use"
   location with **reduced accuracy**, and reverse-geocodes it **on the device** with Apple's `CLGeocoder` (free, no
   API key, no server, nothing stored but the name). Result: `"<locality>, <province or region>"`, e.g.
-  "Segovia, Segovia"; the country is not repeated when it is the device's region.
+  "Cuéllar, Segovia"; a region equal to the locality is written once ("Segovia"), and the country is added only
+  when it differs from the device's region.
 - Asked once per form (and once per batch, reused for every cap of that batch), with a short timeout (≈ 3 s); a denied
   permission, a timeout or no result leaves the field empty. The permission is requested the first time a new cap's
   form opens, with a usage string that says why.
