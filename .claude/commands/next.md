@@ -45,4 +45,4 @@ Trabaja la siguiente historia del Kanban de CapCollector. Sigue los pasos en ord
    Pasa la historia a "In Review". No la pases a Done: lo hace el integrador al mergear. Si "Needs human: yes", añade la etiqueta `needs-human`.
 
 8. **Aparca tu worktree**: todo commiteado y empujado, luego `git switch --detach origin/main`. Así el integrador (u otra sesión) puede coger la rama, y tu siguiente `/next` arranca limpio.
-9. Resume al usuario en cinco líneas: historia, rama, PR, tests, desviaciones. Luego **pregunta si continúas con la siguiente** (WIP: no cojas otra si ya tienes una en In Review sin revisar).
+9. Resume al usuario en cinco líneas: historia, rama, PR, tests, desviaciones, y **termina sin preguntar** (decidido en CAP-117, 2026-11-27: con `/loop 10m` una pregunta deja la sesión parada). La siguiente ronda o el siguiente `/next` coge la próxima historia. WIP: puedes empezar otra aunque tengas una en In Review; solo espera si el arquitecto o el integrador te han pedido un cambio (entonces toca `/revise`).
