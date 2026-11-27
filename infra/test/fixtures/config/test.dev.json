@@ -1,7 +1,7 @@
 {
   "config_version": "2026-11-23",
   "region": "eu-west-1",
-  "app_origins": ["capacitor://localhost", "http://localhost:5173"],
+  "app_origins": ["capacitor://localhost", "https://localhost", "http://localhost:5173"],
   "domains": { "web": "caps.example.com", "api": "api.caps.example.com" },
   "ai": { "modelId": "eu.anthropic.claude-haiku-5-5", "dhashThreshold": 10 },
   "ops": { "budgetEur": 10, "logRetentionDays": 30, "backupRetentionDays": 35 },

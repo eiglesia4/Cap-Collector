@@ -158,6 +158,7 @@ exports[`CollectorsApi stack > [T-infra-018] snapshot: functions sized and logge
     "PATCH /exchange/requests/{requestId}": "NotImplemented CUSTOM",
     "POST /albums": "NotImplemented CUSTOM",
     "POST /auth/apple": "AuthApple NONE",
+    "POST /auth/google": "NotImplemented NONE",
     "POST /auth/refresh": "NotImplemented NONE",
     "POST /caps": "NotImplemented CUSTOM",
     "POST /exchange/requests": "NotImplemented CUSTOM",

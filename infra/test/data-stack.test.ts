@@ -1,5 +1,5 @@
 // CollectorsData stack (CAP-13): table, GSIs, TTL, PITR, buckets, removal policy per stage and exported outputs.
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../lib/app.js';
 import { CollectorsDataStack, IMAGES_IA_AFTER_DAYS } from '../lib/collectors-data-stack.js';
-import { loadInstallationConfig } from '../lib/config.js';
+import { CONFIG_DIR, loadInstallationConfig } from '../lib/config.js';
 import { FIXTURE_CONFIG_DIR } from './fixtures.js';
 
 const ENV_KEYS = ['CDK_DEFAULT_ACCOUNT', 'CAP_ACCOUNT_TEST_DEV', 'CAP_INSTALLATION', 'CAP_STAGE'];
@@ -209,7 +209,7 @@ describe('CollectorsData stack', () => {
     expect(() => loadInstallationConfig(target, dir)).toThrow(/"app_origins" must be a list/);
   });
 
-  it('[T-infra-042] app_origins accepts http(s) origins and exactly capacitor://localhost; API CORS is * without credentials, the bucket keeps the explicit list', () => {
+  it('[T-infra-042] app_origins accepts http(s) origins (Android https://localhost included) and exactly capacitor://localhost; API CORS is * without credentials, the bucket keeps the explicit list', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cap-config-'));
     const target = { installation: 'test', stage: 'dev' };
     const load = (app_origins: unknown) => {
@@ -226,8 +226,10 @@ describe('CollectorsData stack', () => {
       );
       return loadInstallationConfig(target, dir).app_origins;
     };
-    expect(load(['capacitor://localhost', 'http://localhost:5173'])).toEqual([
+    // CAP-109 (ADR-011 §5): https://localhost is the Android WebView origin (Capacitor's default androidScheme).
+    expect(load(['capacitor://localhost', 'https://localhost', 'http://localhost:5173'])).toEqual([
       'capacitor://localhost',
+      'https://localhost',
       'http://localhost:5173',
     ]);
     for (const bad of [
@@ -248,8 +250,12 @@ describe('CollectorsData stack', () => {
     // keeps app_origins + the web origin, explicit.
     expect(loadInstallationConfig(target, FIXTURE_CONFIG_DIR).app_origins).toEqual([
       'capacitor://localhost',
+      'https://localhost',
       'http://localhost:5173',
     ]);
+    // The committed template carries the iOS (capacitor://) and Android (https://localhost) app origins.
+    const example = JSON.parse(readFileSync(join(CONFIG_DIR, 'example.dev.json'), 'utf8')) as { app_origins: string[] };
+    expect(example.app_origins).toEqual(expect.arrayContaining(['capacitor://localhost', 'https://localhost']));
     const built = buildApp(new App({ context: { ...target, 'aws:cdk:bundling-stacks': [] } }), FIXTURE_CONFIG_DIR);
     Template.fromStack(built.api).hasResourceProperties('AWS::ApiGatewayV2::Api', {
       CorsConfiguration: {
@@ -264,7 +270,12 @@ describe('CollectorsData stack', () => {
       CorsConfiguration: {
         CorsRules: [
           Match.objectLike({
-            AllowedOrigins: ['capacitor://localhost', 'http://localhost:5173', 'https://caps.example.com'],
+            AllowedOrigins: [
+              'capacitor://localhost',
+              'https://localhost',
+              'http://localhost:5173',
+              'https://caps.example.com',
+            ],
           }),
         ],
       },

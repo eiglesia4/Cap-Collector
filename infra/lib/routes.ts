@@ -22,6 +22,10 @@ export type Grant = 'table' | 'images-put' | 'images-get' | 'bedrock';
 export const SECRET_ENV = {
   allowedAppleSubs: 'CAP_ALLOWED_APPLE_SUBS',
   appleClientIds: 'CAP_APPLE_CLIENT_IDS',
+  // CAP-109 (ADR-011 §1–2): the accepted `aud` of Google ID tokens, and the `googleSub=uid` map that is also the
+  // Google allow-list. `unset` disables Sign in with Google (the API refuses every Google sign-in); Apple keeps working.
+  googleClientIds: 'CAP_GOOGLE_CLIENT_IDS',
+  googleIdentities: 'CAP_GOOGLE_IDENTITIES',
   sessionSecret: 'CAP_SESSION_SECRET',
 } as const;
 export type SecretName = keyof typeof SECRET_ENV;
@@ -45,7 +49,7 @@ export type NotificationSettingName = (typeof NOTIFICATION_SETTINGS)[number];
 /** Every `/cap/<inst>/<stage>/*` SSM setting. The stacks never create them (CAP-60); the bootstrap script does. */
 export type SettingName = SecretName | CertificateSettingName | NotificationSettingName;
 
-/** All six settings, in the order `settings:bootstrap` / `settings:show` list them (CAP-60). */
+/** All eight settings, in the order `settings:bootstrap` / `settings:show` list them (CAP-60). */
 export const SETTINGS: readonly SettingName[] = [
   ...(Object.keys(SECRET_ENV) as SecretName[]),
   ...CERTIFICATE_SETTINGS,
@@ -81,7 +85,11 @@ export const WIRING: Readonly<Record<string, Wiring>> = {
 
   // CAP-19: refresh tokens live in the table (USER#/REFRESH#), so auth handlers need it too.
   'auth-apple': { grants: ['table'], secrets: ['allowedAppleSubs', 'appleClientIds', 'sessionSecret'] },
-  'auth-refresh': { grants: ['table'], secrets: ['allowedAppleSubs', 'sessionSecret'] },
+  // CAP-109 (ADR-011): auth-google mirrors auth-apple (table for refresh tokens, session secret, public route, outbound
+  // HTTPS to Google's JWKS without a VPC). auth-refresh also reads the Google map: it accepts the uids Google subs map
+  // to (`allowedUids`), so a Google-only installation can refresh (architect note on CAP-109, 2026-11-27).
+  'auth-google': { grants: ['table'], secrets: ['googleClientIds', 'googleIdentities', 'sessionSecret'] },
+  'auth-refresh': { grants: ['table'], secrets: ['allowedAppleSubs', 'googleIdentities', 'sessionSecret'] },
 
   'uploads-create': { grants: ['images-put'] },
 

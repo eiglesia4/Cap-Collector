@@ -22,7 +22,7 @@ npm run diff                       # from the repo root (builds shared first)
 npm run deploy                     # CollectorsData first, then CollectorsApi
 ```
 
-**Settings first (CAP-60):** the stacks only _read_ the six `/cap/<inst>/<stage>/*` SSM settings; a deploy fails
+**Settings first (CAP-60):** the stacks only _read_ the eight `/cap/<inst>/<stage>/*` SSM settings; a deploy fails
 with a clear "parameter not found" while one is missing. On a new target run `npm run settings:bootstrap -w
 @capcollector/infra` once (creates the missing ones as `unset`; see § Settings). The API must refuse `unset`: fill
 the auth ones before relying on Sign in with Apple (CAP-19), then run `npm run deploy` again so CloudFormation
@@ -32,6 +32,20 @@ resolves the new values:
 aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/allowed-apple-subs --value '<apple sub>'
 aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/apple-client-ids  --value '<bundle id>,<web service id>'
 aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/session-secret    --value "$(openssl rand -base64 48)"
+```
+
+**Sign in with Google (CAP-109, ADR-011):** optional. While `google-client-ids` and `google-identities` stay `unset`
+the API refuses every Google sign-in and Apple keeps working. **An existing target must run
+`npm run settings:bootstrap -w @capcollector/infra` once before its next deploy**, which creates the two as `unset`:
+otherwise CloudFormation fails with "parameter not found". To turn it on, create the OAuth clients in Google Cloud
+(consent screen in testing mode, a Web client and an Android client), then map your Google `sub` to your uid (your
+Apple `sub`; a Google-only installation maps the Google `sub` to itself). The first refused sign-in answers 403 with
+the `sub` in the body. None of these values are secrets. `auth-google` reads both settings; `auth-refresh` reads
+`google-identities` so a Google-mapped uid can refresh:
+
+```bash
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/google-client-ids --value '<web client id>,<android client id>'
+aws ssm put-parameter --overwrite --name /cap/<inst>/<stage>/google-identities --value '<google sub>=<uid>'
 ```
 
 **Alerts (CAP-40):** `CollectorsApi` creates the topic `cap-<inst>-<stage>-alerts` and an alarm when Bedrock is
@@ -66,8 +80,8 @@ No stack owns these parameters (CAP-60), so no deploy can reset or delete a valu
 
 ## Settings (CAP-60)
 
-The six settings — `allowed-apple-subs`, `apple-client-ids`, `session-secret`, `web-certificate-arn`,
-`api-certificate-arn`, `alert-email` under `/cap/<inst>/<stage>/` — are Edu's: created once, filled by hand, read by
+The eight settings — `allowed-apple-subs`, `apple-client-ids`, `google-client-ids`, `google-identities`,
+`session-secret`, `web-certificate-arn`, `api-certificate-arn`, `alert-email` under `/cap/<inst>/<stage>/` — are Edu's: created once, filled by hand, read by
 the stacks at deploy time (`AWS::SSM::Parameter::Value<String>` template parameters). Scripts (target from
 `CAP_INSTALLATION` / `CAP_STAGE`, profile from the environment; logic in [`lib/settings.ts`](lib/settings.ts)):
 
@@ -81,11 +95,11 @@ Values reach the AWS CLI through a private temp file (`$TMPDIR/cap-settings-*/in
 after each call, also on error), never through argv or stdin (CAP-67: the CLI cannot read `file:///dev/stdin` on
 macOS).
 
-**New target: bootstrap comes first, before the first `deploy`.** Every deploy reads all six settings, so on a target
+**New target: bootstrap comes first, before the first `deploy`.** Every deploy reads all eight settings, so on a target
 with none of them CloudFormation fails with "parameter not found":
 
 ```bash
-# 1. Create the six settings as `unset`.
+# 1. Create the eight settings as `unset`.
 npm run settings:bootstrap -w @capcollector/infra
 # 2. Fill the auth ones (and alert-email, certificates when ready) — Deploy above, Custom domains below.
 # 3. Check, then deploy.
