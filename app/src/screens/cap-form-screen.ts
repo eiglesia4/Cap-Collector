@@ -76,6 +76,7 @@ import {
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
 import { DEFAULT_CLOSURE, DEFAULT_MATERIAL, guessType, localDate, type Mark } from '../capture/defaults.js';
+import { appendNotes, NOTES_MAX, notesHeader } from '../exchange/append-notes.js';
 import { defaultPlace, rememberPlace } from '../capture/place.js';
 import { scanSource } from '../capture/duplicate.js';
 import { analyseBody, routeFor } from '../capture/flow.js';
@@ -128,8 +129,11 @@ export interface CapFormOptions {
   readonly prefill?: FormValues;
   /** Merged into `POST /caps` (CAP-42: `variantOf`, `source`, `textOnCap` of the scan). */
   readonly extra?: Readonly<Record<string, unknown>>;
-  /** Re-identify (CAP-43, mode `edit`): the AI's suggestions, each applied only when accepted, and their author. */
-  readonly ai?: { readonly suggestions: readonly Suggestion[]; readonly source: string };
+  /**
+   * Re-identify (CAP-43, mode `edit`): the AI's suggestions, each applied only when accepted, and their author; an
+   * external answer's notes (CAP-114) are offered the same way, appended to the cap's notes only when ticked.
+   */
+  readonly ai?: { readonly suggestions: readonly Suggestion[]; readonly source: string; readonly notes?: string };
   /** Starting notes (CAP-45: an external answer's notes and ignored fields; modes `ai-prefilled` / `empty`). */
   readonly notes?: string;
   /** Runs after a successful save, before leaving (CAP-45: mark the exchange request `reviewed`). */
@@ -289,7 +293,42 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   const reviewToggle = h('input', { attrs: { type: 'checkbox', id: 'cap-needs-review' } });
   reviewToggle.checked = initialFlag;
 
+  // CAP-114: an external answer's notes for a stored cap, offered unticked (nothing overwritten without a tick).
+  const aiNotes = mode === 'edit' && options.ai?.notes?.trim() ? options.ai : undefined;
+  const notesTick = h('input', { attrs: { type: 'checkbox', 'data-accept-notes': '' } });
+  const notesFit = h('p', { class: 'muted', attrs: { 'data-notes-fit': '' } });
+  /** The notes a save would write with the tick on, from the current notes and today's header. */
+  const mergedNotes = () =>
+    aiNotes?.notes === undefined
+      ? null
+      : appendNotes(values.notes, aiNotes.notes, notesHeader(aiNotes.source, localDate(clockOf(ctx))));
+  /** "Shortened to fit" / "no room" next to the tick, as the notes field changes. */
+  function renderNotesFit(): void {
+    if (!aiNotes) return;
+    const merged = mergedNotes();
+    notesTick.disabled = merged === null;
+    if (merged === null) notesTick.checked = false;
+    notesFit.textContent =
+      merged === null
+        ? t('form.aiNotesNoRoom', { max: NOTES_MAX })
+        : merged.truncated
+          ? t('form.aiNotesTruncated', { max: NOTES_MAX })
+          : '';
+    notesFit.hidden = notesFit.textContent === '';
+  }
+  const aiNotesBox =
+    aiNotes &&
+    h(
+      'div',
+      { class: 'ai-notes', attrs: { 'data-ai-notes': '' } },
+      h('span', { class: 'ai-suggests' }, t('form.aiNotes')),
+      h('p', { class: 'ai-notes__text' }, aiNotes.notes ?? ''),
+      h('label', { class: 'check' }, notesTick, t('form.aiNotesAdd')),
+      notesFit,
+    );
+
   const dirty = () =>
+    notesTick.checked ||
     reviewToggle.checked !== initialFlag ||
     !sameValues(values, initialValues) ||
     !sameImages(images, initialImages) ||
@@ -472,6 +511,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     area.addEventListener('input', () => {
       values[name] = area.value;
       changed(name);
+      if (name === 'notes') renderNotesFit();
     });
     return area;
   }
@@ -773,7 +813,9 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       showErrors();
       return;
     }
-    const result = validate(values, images, status);
+    // CAP-114: the ticked AI notes are appended to the notes typed in the form.
+    const merged = notesTick.checked ? mergedNotes() : null;
+    const result = validate(merged ? { ...values, notes: merged.text } : values, images, status);
     showErrors();
     if (!result.ok) {
       el.querySelector<HTMLElement>('.field--invalid input, .field--invalid select, .field--invalid textarea')?.focus();
@@ -792,7 +834,10 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
           return ctx.navigate(pathFor('capDetail', { id: cap.capId }));
         }
         // An accepted AI suggestion makes the AI the author of the change (architect rule, CAP-42).
-        if (options.ai?.suggestions.some((s) => s.field in patch && values[s.field] === s.value)) {
+        if (
+          options.ai?.suggestions.some((s) => s.field in patch && values[s.field] === s.value) ||
+          (options.ai && merged && 'notes' in patch)
+        ) {
           patch.source = options.ai.source;
         }
         saved = await ctx.api.request(`/caps/${encodeURIComponent(cap.capId)}`, {
@@ -1081,7 +1126,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
       field('acquiredWhere', textInput('acquiredWhere')),
       field('acquiredOn', textInput('acquiredOn', { type: 'date' })),
       field('tags', tagBox),
-      field('notes', textArea('notes')),
+      field('notes', textArea('notes'), aiNotesBox),
       h(
         'div',
         { class: 'field-row' },
@@ -1128,6 +1173,7 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
   );
   renderPhotos();
   renderHints();
+  renderNotesFit();
   // CAP-100: the place default arrives after the form opens; typing first wins. Started after the first render, and
   // on a microtask, so a test API or platform that rejects synchronously only loses the default.
   if (mode !== 'edit' && values.acquiredWhere === '') {

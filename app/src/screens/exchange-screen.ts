@@ -534,13 +534,15 @@ export function ExchangeView(
       if (targetCap !== undefined) {
         const cap = await ctx.api.request(`/caps/${encodeURIComponent(targetCap)}`, { schema: Cap });
         const suggestions = suggestionsFor(cap, answer.fields);
-        if (suggestions.length === 0) return say(continueStatus, 'exchange.nothingNew');
+        // CAP-114: the answer's notes (with ignored / unparseable values) are a suggestion of their own.
+        const notes = answer.notes?.trim() ? answer.notes : undefined;
+        if (suggestions.length === 0 && notes === undefined) return say(continueStatus, 'exchange.nothingNew');
         const requestId = request?.requestId;
         el.replaceChildren(
           CapForm(ctx, {
             mode: 'edit',
             cap,
-            ai: { suggestions, source },
+            ai: { suggestions, source, ...(notes !== undefined ? { notes } : {}) },
             onSaved: async () => void (await markRequest(ctx.api, requestId, { status: 'reviewed' })),
           }),
         );
