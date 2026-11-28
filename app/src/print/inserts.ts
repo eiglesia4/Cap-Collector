@@ -3,17 +3,24 @@
 // `qrcode` drawn as vector squares. Discs first — front pages (code large, brand, ISO country · year, grey cut circle
 // for a circle punch; page 1 carries the 20 mm calibration square) each followed by its back page (brand · variant,
 // producer, type / material, acquired on, a 12 mm QR `collectors://cap/<id>`, columns mirrored) — then one sheet
-// index page per sheet. `planInserts` is the pure page plan the tests read; `buildInsertsPdf` draws it.
+// index page per sheet. CAP-123 (physical-link.md § Inside labels): between the discs and the index, the inside labels
+// (Ø 25 mm cut, single-sided: type, brand, variant, country fitted inside a 21 mm circle), one page per sheet mirroring
+// its grid when it fits A4, else a dense flow with the pocket number. Page 1 carries the 20 mm calibration square when
+// it is a disc or label page. `planInserts` is the pure page plan the tests read; `buildInsertsPdf` draws it.
 import { formatLocationCode, type Album, type Cap } from '@capcollector/shared';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import QRCode from 'qrcode';
 
+import { countryName } from '../i18n/countries.js';
 import { locale, t } from '../i18n/i18n.js';
 import { MATERIAL_LABEL, TYPE_LABEL } from '../i18n/labels.js';
 import { APP_SCHEME } from '../router/deep-link.js';
 import {
   A4_PORTRAIT,
+  CALIBRATION_BAND_MM,
   CALIBRATION_MM,
+  LABEL_MM,
+  LABEL_TEXT_MM,
   MARGIN_MM,
   PT_PER_MM,
   QR_MM,
@@ -22,13 +29,24 @@ import {
   discDiameter,
   discGrid,
   indexGeometry,
+  labelGridFits,
+  labelGridSlot,
   layoutDiscs,
+  layoutLabelsFlow,
   type DiscGrid,
   type DiscSlot,
   type IndexGeometry,
+  type LabelSlot,
 } from './layout.js';
 
-export type PrintWhat = 'discs' | 'index' | 'both';
+/** What goes in the PDF (SCREENS.md #8, CAP-123): any combination, at least one for anything to print. */
+export interface PrintWhat {
+  readonly discs: boolean;
+  readonly labels: boolean;
+  readonly index: boolean;
+}
+
+export const PRINT_ALL: PrintWhat = { discs: true, labels: true, index: true };
 
 export interface IndexSheet {
   readonly sheet: number;
@@ -39,7 +57,7 @@ export interface IndexSheet {
 export interface InsertsInput {
   /** Needs `pocketMm` and `pitchMm` (the print screen asks for them first). */
   readonly album: Album;
-  /** Caps to print a disc for, in print order. */
+  /** Caps of the scope, in sheet / pocket order: a disc and / or an inside label each. */
   readonly discs: readonly Cap[];
   /** Sheets to print an index page for. */
   readonly sheets: readonly IndexSheet[];
@@ -50,6 +68,14 @@ export interface InsertsInput {
 export type PagePlan =
   | { readonly kind: 'front'; readonly calibration: boolean; readonly slots: readonly DiscSlot[] }
   | { readonly kind: 'back'; readonly slots: readonly DiscSlot[] }
+  | {
+      readonly kind: 'labels';
+      /** Grid: the page mirrors `sheet`; flow: dense, each label with its pocket number. */
+      readonly mode: 'grid' | 'flow';
+      readonly sheet?: number;
+      readonly calibration: boolean;
+      readonly slots: readonly LabelSlot[];
+    }
   | { readonly kind: 'index'; readonly sheet: number; readonly geometry: IndexGeometry };
 
 /** The QR payload of a disc: the app's deep link to the cap (CAP-33). */
@@ -62,12 +88,12 @@ function measurements(album: Album): { pocketMm: number; pitchMm: number } {
   return { pocketMm: album.pocketMm, pitchMm: album.pitchMm };
 }
 
-/** Pages in print order: front, back, front, back…, then the index pages. */
+/** Pages in print order: front, back, front, back…, then the inside labels, then the index pages. */
 export function planInserts(input: InsertsInput): { grid: DiscGrid | null; pages: PagePlan[] } {
   const { pocketMm, pitchMm } = measurements(input.album);
   const pages: PagePlan[] = [];
   let grid: DiscGrid | null = null;
-  if (input.what !== 'index' && input.discs.length > 0) {
+  if (input.what.discs && input.discs.length > 0) {
     grid = discGrid(discDiameter(pocketMm));
     const slots = layoutDiscs(input.discs.length, grid);
     const fronts = (slots.at(-1)?.sheet ?? 0) + 1;
@@ -78,7 +104,8 @@ export function planInserts(input: InsertsInput): { grid: DiscGrid | null; pages
       pages.push({ kind: 'back', slots: onSheet.map((s) => backSlot(s, g)) });
     }
   }
-  if (input.what !== 'discs') {
+  if (input.what.labels && input.discs.length > 0) pages.push(...planLabels(input, pages.length === 0));
+  if (input.what.index) {
     const cols = input.album.cols ?? 6;
     const rows = input.album.rows ?? 7;
     for (const { sheet } of [...input.sheets].sort((a, b) => a.sheet - b.sheet)) {
@@ -86,6 +113,205 @@ export function planInserts(input: InsertsInput): { grid: DiscGrid | null; pages
     }
   }
   return { grid, pages };
+}
+
+/** Inside-label pages: one per sheet in grid mode (blank where nothing of the scope sits), else a dense flow. */
+function planLabels(input: InsertsInput, calibrationFirst: boolean): PagePlan[] {
+  const cols = input.album.cols ?? 6;
+  const rows = input.album.rows ?? 7;
+  if (!labelGridFits(cols, rows)) {
+    return layoutLabelsFlow(input.discs.length, calibrationFirst).map((slots, i) => ({
+      kind: 'labels' as const,
+      mode: 'flow' as const,
+      calibration: calibrationFirst && i === 0,
+      slots: slots.map((slot) => {
+        const location = input.discs[slot.index]?.location;
+        return location?.kind === 'album' ? { ...slot, pocket: location.pocket } : slot;
+      }),
+    }));
+  }
+  const bySheet = new Map<number, { index: number; pocket: number }[]>();
+  input.discs.forEach((cap, index) => {
+    if (cap.location?.kind !== 'album') return;
+    const list = bySheet.get(cap.location.sheet) ?? [];
+    list.push({ index, pocket: cap.location.pocket });
+    bySheet.set(cap.location.sheet, list);
+  });
+  return [...bySheet.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([sheet, caps], i) => {
+      const calibration = calibrationFirst && i === 0;
+      return {
+        kind: 'labels' as const,
+        mode: 'grid' as const,
+        sheet,
+        calibration,
+        slots: caps.map(({ index, pocket }) => labelGridSlot(index, pocket, cols, calibration)),
+      };
+    });
+}
+
+// ── inside label text (pure: the tests measure with the real Helvetica) ──
+
+/** Text width in points at `size` (the built-in Helvetica / Helvetica-Bold in the PDF). */
+export type Measure = (text: string, size: number, bold: boolean) => number;
+
+export interface LabelText {
+  /** Type in the UI language, already in capitals (small caps). */
+  readonly type?: string;
+  readonly brand: string;
+  readonly variant?: string;
+  /** The localised country name, and the ISO code used when the name doesn't fit. */
+  readonly country?: { readonly name: string; readonly code: string };
+}
+
+export interface LabelLine {
+  readonly role: 'type' | 'brand' | 'variant' | 'country';
+  readonly text: string;
+  readonly size: number;
+  readonly bold: boolean;
+  /** Vertical offset of the line's centre from the label's centre, mm (down is positive). */
+  readonly dy: number;
+}
+
+export const LABEL_TYPE_PT = 5.5;
+export const LABEL_BRAND_MAX_PT = 9;
+export const LABEL_VARIANT_MAX_PT = 6;
+export const LABEL_COUNTRY_PT = 5.5;
+/** Nothing is drawn smaller (physical-link.md § Inside labels). */
+export const LABEL_MIN_PT = 5;
+const STEP_PT = 0.25;
+const TEXT_R = LABEL_TEXT_MM / 2;
+
+const lineHeight = (size: number) => (size * 1.2) / PT_PER_MM;
+
+/** Room for a line centred `dy` from the centre: the chord at its farther edge, in points. */
+function room(dy: number, size: number): number {
+  return Math.max(0, chord(TEXT_R, Math.abs(dy) + lineHeight(size) / 2) - 0.4) * PT_PER_MM;
+}
+
+/** Cut `text` and end it in "…" until it fits `max` points. */
+function ellipsize(text: string, size: number, bold: boolean, max: number, measure: Measure): string {
+  if (measure(text, size, bold) <= max) return text;
+  let cut = text;
+  while (cut.length > 0 && measure(`${cut.trimEnd()}…`, size, bold) > max) cut = cut.slice(0, -1);
+  return `${cut.trimEnd()}…`;
+}
+
+/** Centres of stacked lines of these heights, the block centred on 0. */
+function stack(heights: readonly number[]): number[] {
+  const total = heights.reduce((a, b) => a + b, 0);
+  let top = -total / 2;
+  return heights.map((h) => {
+    const centre = top + h / 2;
+    top += h;
+    return centre;
+  });
+}
+
+/** The largest size from `max` down to the minimum at which `text` fits at `dy`; null below the minimum. */
+function fitSize(text: string, max: number, bold: boolean, dy: number, measure: Measure): number | null {
+  for (let size = max; size >= LABEL_MIN_PT - 1e-9; size -= STEP_PT) {
+    if (measure(text, size, bold) <= room(dy, size)) return size;
+  }
+  return null;
+}
+
+/**
+ * The lines of an inside label (physical-link.md § Inside labels): type in small capitals, the brand bold at the
+ * largest size from 9 pt that fits in at most 2 lines inside the text circle's chords, the variant on 1 line from
+ * 6 pt, then the country name (or its ISO code). Nothing below 5 pt; still too long ends in "…". Missing fields are
+ * skipped and the block stays vertically centred.
+ */
+export function labelLines(text: LabelText, measure: Measure): LabelLine[] {
+  const words = text.brand.trim().split(/\s+/).filter(Boolean);
+  const brand = words.join(' ');
+  const splits = words.slice(1).map((_, i) => [words.slice(0, i + 1).join(' '), words.slice(i + 1).join(' ')]);
+
+  /** Line centres for `brandLines` brand lines at `size`, the optional lines at their nominal sizes. */
+  const centres = (size: number, brandLines: number) => {
+    const heights = [
+      ...(text.type ? [lineHeight(LABEL_TYPE_PT)] : []),
+      ...Array.from({ length: brandLines }, () => lineHeight(size)),
+      ...(text.variant ? [lineHeight(LABEL_VARIANT_MAX_PT)] : []),
+      ...(text.country ? [lineHeight(LABEL_COUNTRY_PT)] : []),
+    ];
+    const ys = stack(heights);
+    const first = text.type ? 1 : 0;
+    return { ys, brand: ys.slice(first, first + brandLines), after: ys.slice(first + brandLines) };
+  };
+  const fits = (line: string, size: number, dy: number) => measure(line, size, true) <= room(dy, size);
+
+  let brandSize = LABEL_MIN_PT;
+  let brandTexts: string[] | null = null;
+  for (let size = LABEL_BRAND_MAX_PT; size >= LABEL_MIN_PT - 1e-9 && brandTexts === null; size -= 0.5) {
+    const one = centres(size, 1);
+    if (fits(brand, size, one.brand[0] ?? 0)) {
+      brandTexts = [brand];
+      brandSize = size;
+      break;
+    }
+    const two = centres(size, 2);
+    const split = splits.find(
+      ([a, b]) => fits(a ?? '', size, two.brand[0] ?? 0) && fits(b ?? '', size, two.brand[1] ?? 0),
+    );
+    if (split) {
+      brandTexts = [split[0] ?? '', split[1] ?? ''];
+      brandSize = size;
+    }
+  }
+  if (brandTexts === null) {
+    // Still too long at 5 pt: as many words as fit on line 1, the rest on line 2 ending in "…".
+    brandSize = LABEL_MIN_PT;
+    const layout = centres(brandSize, words.length > 1 ? 2 : 1);
+    const max = (i: number) => room(layout.brand[i] ?? 0, brandSize);
+    if (words.length > 1) {
+      let n = 1;
+      while (n < words.length - 1 && fits(words.slice(0, n + 1).join(' '), brandSize, layout.brand[0] ?? 0)) n += 1;
+      brandTexts = [
+        ellipsize(words.slice(0, n).join(' '), brandSize, true, max(0), measure),
+        ellipsize(words.slice(n).join(' '), brandSize, true, max(1), measure),
+      ];
+    } else {
+      brandTexts = [ellipsize(brand, brandSize, true, max(0), measure)];
+    }
+  }
+
+  const layout = centres(brandSize, brandTexts.length);
+  const lines: LabelLine[] = [];
+  const add = (role: LabelLine['role'], value: string, maxSize: number, bold: boolean, dy: number) => {
+    const size = fitSize(value, maxSize, bold, dy, measure);
+    lines.push({
+      role,
+      text: size === null ? ellipsize(value, LABEL_MIN_PT, bold, room(dy, LABEL_MIN_PT), measure) : value,
+      size: size ?? LABEL_MIN_PT,
+      bold,
+      dy,
+    });
+  };
+  if (text.type) add('type', text.type, LABEL_TYPE_PT, false, layout.ys[0] ?? 0);
+  brandTexts.forEach((line, i) =>
+    lines.push({ role: 'brand', text: line, size: brandSize, bold: true, dy: layout.brand[i] ?? 0 }),
+  );
+  let next = 0;
+  if (text.variant) add('variant', text.variant, LABEL_VARIANT_MAX_PT, false, layout.after[next++] ?? 0);
+  if (text.country) {
+    const dy = layout.after[next] ?? 0;
+    const name = fitSize(text.country.name, LABEL_COUNTRY_PT, false, dy, measure);
+    if (name !== null) lines.push({ role: 'country', text: text.country.name, size: name, bold: false, dy });
+    else add('country', text.country.code, LABEL_COUNTRY_PT, false, dy);
+  }
+  return lines;
+}
+
+/** What an inside label shows for `cap`: type, brand, variant, country. Nothing else (no code, QR or year). */
+export function labelText(cap: Cap): LabelText {
+  return {
+    ...(cap.type ? { type: t(TYPE_LABEL[cap.type]).toLocaleUpperCase(locale()) } : {}),
+    brand: cap.brand,
+    ...(cap.variant ? { variant: cap.variant } : {}),
+    ...(cap.country ? { country: { name: countryName(cap.country), code: cap.country } } : {}),
+  };
 }
 
 // ── drawing ──
@@ -142,6 +368,20 @@ class Drawer {
       size: s,
       font,
       color: opts.color ?? INK,
+    });
+  }
+
+  /** `text` already fitted: centred on `cx`, its line centred on `cy`. */
+  line(text: string, cx: number, cy: number, size: number, bold: boolean, color = INK): void {
+    const font = bold ? this.bold : this.regular;
+    const value = drawable(font, text);
+    const width = font.widthOfTextAtSize(value, size);
+    this.page.drawText(value, {
+      x: cx * PT_PER_MM - width / 2,
+      y: this.y(cy) - font.heightAtSize(size) * 0.35,
+      size,
+      font,
+      color,
     });
   }
 
@@ -231,6 +471,16 @@ function drawBack(d: Drawer, cap: Cap, slot: DiscSlot, diameter: number): void {
   d.qr(qrPayload(cap.capId), cx, qrTop, QR_MM);
 }
 
+function drawLabel(d: Drawer, cap: Cap, slot: LabelSlot, measure: Measure): void {
+  const { cx, cy } = slot;
+  d.circle(cx, cy, LABEL_MM / 2);
+  for (const line of labelLines(labelText(cap), measure)) {
+    d.line(line.text, cx, cy + line.dy, line.size, line.bold, line.role === 'brand' ? INK : MUTED);
+  }
+  // Flow mode: the pocket number in 5 pt at the bottom edge, to match each label to its pocket.
+  if (slot.pocket !== undefined) d.line(String(slot.pocket), cx, cy + LABEL_MM / 2 - 1.2, LABEL_MIN_PT, false, MUTED);
+}
+
 function drawCalibration(d: Drawer): void {
   d.rect(MARGIN_MM, MARGIN_MM, CALIBRATION_MM, CALIBRATION_MM, undefined, INK);
   d.text(t('print.calibration'), MARGIN_MM + CALIBRATION_MM + 3, MARGIN_MM + CALIBRATION_MM / 2 + 1.5, 9);
@@ -294,12 +544,34 @@ export async function buildInsertsPdf(input: InsertsInput): Promise<Uint8Array> 
   doc.setCreator(t('app.name'));
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const measure: Measure = (text, size, isBold) => {
+    const font = isBold ? bold : regular;
+    return font.widthOfTextAtSize(drawable(font, text), size);
+  };
   for (const plan of pages) {
     const page = doc.addPage([A4_PORTRAIT.width * PT_PER_MM, A4_PORTRAIT.height * PT_PER_MM]);
     const d = new Drawer(page, regular, bold, A4_PORTRAIT.height);
     if (plan.kind === 'index') {
       const sheet = input.sheets.find((s) => s.sheet === plan.sheet);
       if (sheet) drawIndex(d, input, sheet, plan.geometry);
+      continue;
+    }
+    if (plan.kind === 'labels') {
+      if (plan.calibration) drawCalibration(d);
+      if (plan.mode === 'grid' && plan.sheet !== undefined) {
+        const top = MARGIN_MM + (plan.calibration ? CALIBRATION_BAND_MM : 0);
+        d.text(
+          t('print.labelsHeader', { letter: input.album.letter, sheet: String(plan.sheet) }),
+          MARGIN_MM,
+          top + 7,
+          12,
+          true,
+        );
+      }
+      for (const slot of plan.slots) {
+        const cap = input.discs[slot.index];
+        if (cap) drawLabel(d, cap, slot, measure);
+      }
       continue;
     }
     if (!grid) continue;

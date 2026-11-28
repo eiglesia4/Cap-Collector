@@ -4,15 +4,28 @@
 // screen (ask for pocket/pitch first, Generate → download / share, Mark as printed) and the deep link that waits for
 // sign-in.
 import { Cap } from '@capcollector/shared';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderApp, type AppHandle } from '../src/app';
 import type { ApiClient, RequestOptions } from '../src/api/client';
 import type { AppContext } from '../src/context';
+import { countryName } from '../src/i18n/countries';
 import { t } from '../src/i18n/i18n';
-import { buildInsertsPdf, planInserts, qrPayload, type InsertsInput } from '../src/print/inserts';
+import {
+  buildInsertsPdf,
+  LABEL_BRAND_MAX_PT,
+  LABEL_MIN_PT,
+  labelLines,
+  labelText,
+  planInserts,
+  PRINT_ALL,
+  qrPayload,
+  type InsertsInput,
+  type Measure,
+  type PagePlan,
+} from '../src/print/inserts';
 import {
   A4_PORTRAIT,
   PT_PER_MM,
@@ -21,13 +34,18 @@ import {
   discGrid,
   frontPages,
   indexGeometry,
+  LABEL_MM,
+  LABEL_PITCH_MM,
+  LABEL_TEXT_MM,
+  labelFlowGrid,
+  labelGridFits,
   layoutDiscs,
 } from '../src/print/layout';
 import { albumCaps, indexSheets, lastPrintKey, scopeCaps } from '../src/print/scope';
 import { deepLinkPath } from '../src/router/deep-link';
 import { matchRoute } from '../src/router/routes';
 import { AlbumSheetScreen } from '../src/screens/album-sheet-screen';
-import { PrintView } from '../src/screens/print-screen';
+import { PRINT_WHAT_KEY, PrintView } from '../src/screens/print-screen';
 import { ulid, wireCap, wirePage } from './support/caps';
 import { TEST_SESSION, fakeApi, fakePlatform, flush, memoryStore, shellContext } from './support/fakes';
 
@@ -102,15 +120,17 @@ describe('insert discs: layout and PDF', () => {
       album: album() as never,
       discs,
       sheets: [{ sheet: 1, caps: discs }],
-      what: 'both',
+      what: { discs: true, labels: false, index: true },
       printedOn: new Date(TS),
     };
     const { pages } = planInserts(input);
     expect(pages.map((p) => p.kind)).toEqual(['front', 'back', 'front', 'back', 'index']);
     expect(pages.map((p) => (p.kind === 'front' ? p.calibration : null))).toEqual([true, null, false, null, null]);
-    expect(planInserts({ ...input, what: 'discs' }).pages).toHaveLength(4);
-    expect(planInserts({ ...input, what: 'index' }).pages.map((p) => p.kind)).toEqual(['index']);
-    expect(planInserts({ ...input, discs: [], what: 'discs' }).pages).toEqual([]);
+    expect(planInserts({ ...input, what: { discs: true, labels: false, index: false } }).pages).toHaveLength(4);
+    expect(
+      planInserts({ ...input, what: { discs: false, labels: false, index: true } }).pages.map((p) => p.kind),
+    ).toEqual(['index']);
+    expect(planInserts({ ...input, discs: [], what: { discs: true, labels: false, index: false } }).pages).toEqual([]);
     expect(() => planInserts({ ...input, album: album({ pocketMm: undefined }) as never })).toThrow();
 
     // Real bytes: A4 portrait disc and index pages; brands outside WinAnsi do not break the build.
@@ -127,7 +147,9 @@ describe('insert discs: layout and PDF', () => {
       [210, 297],
     ]);
     expect(doc.getTitle()).toBe(t('print.pdfTitle', { letter: 'A' }));
-    await expect(buildInsertsPdf({ ...input, discs: [], what: 'discs' })).rejects.toThrow();
+    await expect(
+      buildInsertsPdf({ ...input, discs: [], what: { discs: true, labels: false, index: false } }),
+    ).rejects.toThrow();
   });
 
   it('[T-app-104] the sheet index grid has cols × rows cells at the pitch, as large as fits A4 portrait (≈ 88 % for 6 × 7 at 36 mm)', () => {
@@ -151,7 +173,7 @@ describe('insert discs: layout and PDF', () => {
         { sheet: 3, caps: [] },
         { sheet: 1, caps: [] },
       ],
-      what: 'index',
+      what: { discs: false, labels: false, index: true },
       printedOn: new Date(TS),
     });
     expect(plan.pages).toEqual([
@@ -275,10 +297,17 @@ describe('print screen', () => {
       input.checked = true;
       input.dispatchEvent(new Event('change'));
     };
+    const tick = (key: string, on: boolean) => {
+      const input = el.querySelector<HTMLInputElement>(`input[name="what"][value="${key}"]`);
+      if (!input) throw new Error(`missing what=${key}`);
+      input.checked = on;
+      input.dispatchEvent(new Event('change'));
+    };
     pick('scope', 'album');
-    pick('what', 'index');
+    tick('discs', false);
     expect(preview()).toBe(t('print.previewIndex', { count: 2 }));
-    pick('what', 'discs');
+    tick('discs', true);
+    tick('index', false);
     expect(preview()).toBe(t('print.previewDiscs', { count: 3, pages: 2 }));
 
     el.querySelector<HTMLButtonElement>('[data-action="generate"]')?.click();
@@ -370,5 +399,170 @@ describe('deep link resumes after sign-in', () => {
     handle = renderApp(root, restarted);
     await restarted.session.save(TEST_SESSION);
     expect(window.location.pathname).toBe('/');
+  });
+});
+
+// ── inside labels (CAP-123, physical-link.md § Inside labels) ──
+
+describe('inside labels (CAP-123)', () => {
+  const LABELS = { discs: false, labels: true, index: false };
+  const input = (discs: Cap[], extra: Partial<InsertsInput> = {}): InsertsInput => ({
+    album: album() as never,
+    discs,
+    sheets: [],
+    what: LABELS,
+    printedOn: new Date(TS),
+    ...extra,
+  });
+  async function helvetica(): Promise<Measure> {
+    const doc = await PDFDocument.create();
+    const regular = await doc.embedFont(StandardFonts.Helvetica);
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    return (text, size, isBold) => (isBold ? bold : regular).widthOfTextAtSize(text, size);
+  }
+
+  it('[T-app-249] a label is a 25 mm cut with a 21 mm text circle; a 6 × 7 album at 36 mm is in grid mode, one page per sheet, each label at its pocket', () => {
+    expect([LABEL_MM, LABEL_TEXT_MM, LABEL_PITCH_MM]).toEqual([25, 21, 28]);
+    expect(labelGridFits(6, 7)).toBe(true);
+    const caps = [placed(1, 3, 1), placed(2, 3, 17), placed(3, 4, 42)];
+    const { pages } = planInserts(input(caps));
+    expect(pages.map((p) => (p.kind === 'labels' ? [p.mode, p.sheet, p.calibration] : p.kind))).toEqual([
+      ['grid', 3, true],
+      ['grid', 4, false],
+    ]);
+    const [sheet3, sheet4] = pages as Extract<PagePlan, { kind: 'labels' }>[];
+    // Pocket 17 of a 6-column sheet: row 2, column 4 (0-based), 28 mm apart, the row block centred on A4.
+    const p17 = sheet3?.slots.find((s) => s.index === 1);
+    expect([p17?.row, p17?.col]).toEqual([2, 4]);
+    const p1 = sheet3?.slots.find((s) => s.index === 0);
+    expect((p17?.cx ?? 0) - (p1?.cx ?? 0)).toBeCloseTo(4 * 28);
+    expect((p17?.cy ?? 0) - (p1?.cy ?? 0)).toBeCloseTo(2 * 28);
+    expect(p1?.cx).toBeCloseTo((210 - (6 * 28 - 3)) / 2 + 12.5);
+    // The last pocket (42) of sheet 4, on a page without the calibration band, stays inside A4's margins.
+    const p42 = sheet4?.slots[0];
+    expect([p42?.row, p42?.col]).toEqual([6, 5]);
+    expect((p42?.cy ?? 0) + 12.5).toBeLessThanOrEqual(297 - 10);
+    expect((p42?.cx ?? 0) + 12.5).toBeLessThanOrEqual(210 - 10);
+  });
+
+  it('[T-app-250] grid mode leaves empty and out-of-scope pockets blank; "since last print" prints only the changed caps, each in place', () => {
+    const old = placed(1, 3, 1, { updatedAt: '2026-11-01T10:00:00.000Z' });
+    const changed = placed(2, 3, 17, { updatedAt: '2026-11-20T10:00:00.000Z' });
+    const inAlbum = albumCaps([old, changed], ALBUM);
+    const discs = scopeCaps(inAlbum, 'since', { sheet: 3, since: new Date('2026-11-10T00:00:00.000Z') });
+    const { pages } = planInserts(input(discs));
+    const page = pages[0] as Extract<PagePlan, { kind: 'labels' }>;
+    expect(pages).toHaveLength(1);
+    expect(page.slots).toHaveLength(1);
+    expect([page.slots[0]?.row, page.slots[0]?.col]).toEqual([2, 4]); // pocket 17, not packed into pocket 1
+    expect(page.slots.every((s) => s.pocket === undefined)).toBe(true); // grid mode prints no pocket number
+  });
+
+  it('[T-app-251] a 9 × 10 album does not fit A4 at 28 mm: labels flow densely in pocket order, each with its pocket number', () => {
+    expect(labelGridFits(9, 10)).toBe(false);
+    const big = album({ cols: 9, rows: 10 }) as never;
+    const caps = Array.from({ length: 60 }, (_, i) => placed(i + 1, 1 + Math.floor(i / 90), (i % 90) + 1));
+    const { pages } = planInserts(input(caps, { album: big }));
+    const labelPages = pages as Extract<PagePlan, { kind: 'labels' }>[];
+    expect(labelPages.every((p) => p.mode === 'flow')).toBe(true);
+    const { cols, rowsFirst } = labelFlowGrid();
+    expect(cols).toBe(6);
+    expect(labelPages[0]?.calibration).toBe(true);
+    expect(labelPages[0]?.slots).toHaveLength(cols * rowsFirst);
+    expect(labelPages.flatMap((p) => p.slots).map((s) => s.pocket)).toEqual(caps.map((_, i) => i + 1));
+    expect(labelPages.flatMap((p) => p.slots).map((s) => s.index)).toEqual(caps.map((_, i) => i));
+  });
+
+  it('[T-app-252] content: type in capitals, a long brand wraps to 2 lines and shrinks to 5 pt then ends in "…"; missing fields are skipped; no code, QR or year', async () => {
+    const measure = await helvetica();
+    const full = labelLines(
+      labelText(placed(1, 3, 17, { type: 'beer', brand: 'Mahou', variant: 'Clásica', country: 'ES', year: 1998 })),
+      measure,
+    );
+    expect(full.map((l) => [l.role, l.text])).toEqual([
+      ['type', t('capType.beer').toUpperCase()],
+      ['brand', 'Mahou'],
+      ['variant', 'Clásica'],
+      ['country', countryName('ES')],
+    ]);
+    expect(full.find((l) => l.role === 'brand')?.size).toBe(LABEL_BRAND_MAX_PT);
+    expect(full.map((l) => l.text).join(' ')).not.toMatch(/1998|A·3·17|collectors:/);
+    // Vertically centred: the block's middle is the label's centre.
+    const dys = full.map((l) => l.dy);
+    expect((Math.min(...dys) + Math.max(...dys)) / 2).toBeCloseTo(0, 0);
+
+    const two = labelLines({ brand: 'Cervecería Artesanal del Guadarrama' }, measure);
+    expect(two.filter((l) => l.role === 'brand')).toHaveLength(2);
+    expect(two[0]?.size).toBeLessThan(LABEL_BRAND_MAX_PT);
+    expect(two[0]?.size).toBeGreaterThanOrEqual(LABEL_MIN_PT);
+
+    const huge = labelLines(
+      { brand: 'Brauerei Zum Schlüssel Altbier Hausbrauerei Düsseldorf Spezialität Original', variant: 'X'.repeat(80) },
+      measure,
+    );
+    const brand = huge.filter((l) => l.role === 'brand');
+    expect(brand).toHaveLength(2);
+    expect(brand.every((l) => l.size === LABEL_MIN_PT)).toBe(true);
+    expect(brand[1]?.text.endsWith('…')).toBe(true);
+    expect(huge.find((l) => l.role === 'variant')?.text.endsWith('…')).toBe(true);
+    for (const line of huge) expect(line.size).toBeGreaterThanOrEqual(LABEL_MIN_PT);
+
+    const bare = labelLines(labelText(placed(2, 3, 1, { brand: 'Damm', country: undefined })), measure);
+    expect(bare.map((l) => l.role)).toEqual(['brand']);
+    expect(bare[0]?.dy).toBeCloseTo(0);
+  });
+
+  it('[T-app-253] combinations: labels only add the calibration square; all three print discs, labels, index in that order; none prints nothing', async () => {
+    const caps = [placed(1, 3, 1), placed(2, 3, 17)];
+    const only = planInserts(input(caps)).pages;
+    expect(only.map((p) => p.kind)).toEqual(['labels']);
+    expect(only[0]?.kind === 'labels' && only[0].calibration).toBe(true);
+    const all = planInserts(input(caps, { what: PRINT_ALL, sheets: [{ sheet: 3, caps }] })).pages;
+    expect(all.map((p) => p.kind)).toEqual(['front', 'back', 'labels', 'index']);
+    expect(all.map((p) => (p.kind === 'front' || p.kind === 'labels' ? p.calibration : null))).toEqual([
+      true,
+      null,
+      false,
+      null,
+    ]);
+    expect(planInserts(input(caps, { what: { discs: false, labels: false, index: false } })).pages).toEqual([]);
+    // Real bytes for labels only: one A4 page; glyphs outside WinAnsi don't break it.
+    const odd = [...caps, placed(3, 3, 2, { brand: 'Tsingtao 青岛', variant: 'Ž', type: 'beer' })];
+    const doc = await PDFDocument.load(await buildInsertsPdf(input(odd)));
+    expect(doc.getPageCount()).toBe(1);
+
+    // The screen: three checkboxes, remembered per device; none ticked disables Generate.
+    const screen = await printScreen();
+    const box = (key: string) => screen.el.querySelector<HTMLInputElement>(`input[type="checkbox"][value="${key}"]`);
+    expect([box('discs')?.checked, box('labels')?.checked, box('index')?.checked]).toEqual([true, false, true]);
+    for (const key of ['discs', 'index']) {
+      box(key)!.checked = false;
+      box(key)!.dispatchEvent(new Event('change'));
+    }
+    expect(screen.el.querySelector<HTMLButtonElement>('[data-action="generate"]')?.disabled).toBe(true);
+    expect(screen.el.querySelector('[data-preview]')?.textContent).toBe(t('print.whatNone'));
+    box('labels')!.checked = true;
+    box('labels')!.dispatchEvent(new Event('change'));
+    await settle();
+    expect(screen.store.data.get(PRINT_WHAT_KEY)).toBe(JSON.stringify(LABELS));
+    const again = await printScreen({ store: screen.store });
+    expect(again.el.querySelector<HTMLInputElement>('input[value="labels"]')?.checked).toBe(true);
+    expect(again.el.querySelector<HTMLInputElement>('input[value="discs"]')?.checked).toBe(false);
+  });
+
+  it('[T-app-254] labels only: the preview counts labels and pages, and the paper hint is plain paper, single-sided, at 100 %', async () => {
+    const store = memoryStore();
+    await store.set(PRINT_WHAT_KEY, JSON.stringify(LABELS));
+    const { el } = await printScreen({ store });
+    // This sheet (3) holds pockets 1 and 17: 2 labels on 1 page.
+    expect(el.querySelector('[data-preview]')?.textContent).toBe(t('print.previewLabels', { count: 2, pages: 1 }));
+    expect(el.querySelector('[data-paper]')?.textContent).toBe(t('print.paperHintLabels'));
+    const tick = (key: string) => {
+      const input = el.querySelector<HTMLInputElement>(`input[value="${key}"]`)!;
+      input.checked = true;
+      input.dispatchEvent(new Event('change'));
+    };
+    tick('discs');
+    expect(el.querySelector('[data-paper]')?.textContent).toBe(t('print.paperHint'));
   });
 });
