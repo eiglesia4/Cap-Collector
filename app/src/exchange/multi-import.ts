@@ -3,6 +3,8 @@
 // duplicate checks — inside the zip (the batch guard of ADR-009), dHash against the collection (`POST /scans/analyse`
 // with `useAi: false`: never Bedrock, ADR-004) and brand + variant (saved anyway, flagged). Nothing existing is
 // changed. Pure orchestration over injected effects (API, upload, codec, clock, place), like capture/batch.ts.
+// CAP-124: what the AI left empty gets features.md § Defaults when unsure through `newCapDefaults`, the same function
+// as the form (year, guessed type, steel / pry-off, place, today), and the cap's notes name the fields filled that way.
 //
 // Order: the image of the next pair is prepared (decode → WebP ≤ 1024 → dHash) while the current one is checked and
 // saved, so at most two pairs are in flight, but the checks and saves run one by one in zip order and the "repeated in
@@ -24,9 +26,9 @@ import {
 
 import type { ApiClient } from '../api/client.js';
 import { BATCH_DHASH_GUARD } from '../capture/batch.js';
-import { DEFAULT_CLOSURE, DEFAULT_MATERIAL, localDate } from '../capture/defaults.js';
+import { localDate, newCapDefaults, type DefaultField } from '../capture/defaults.js';
 import { CapPageSchema } from '../collection/cap-page.js';
-import { language } from '../i18n/i18n.js';
+import { language, t, type MessageKey } from '../i18n/i18n.js';
 import { dhash, hammingDistance } from '../images/dhash.js';
 import {
   encodeWithin,
@@ -329,6 +331,43 @@ async function brandVariantMatch(api: ImportDeps['api'], fields: PartialCapField
   );
 }
 
+/** How the multi-import notes line names each default (CAP-124); `acquiredOn` (today) is not named. */
+const DEFAULT_NAMES: Partial<Record<DefaultField, MessageKey>> = {
+  year: 'exchange.multi.default.year',
+  type: 'exchange.multi.default.type',
+  material: 'exchange.multi.default.material',
+  closure: 'exchange.multi.default.closure',
+  acquiredWhere: 'exchange.multi.default.place',
+};
+
+/**
+ * features.md § Defaults when unsure through the same `newCapDefaults` as the form (CAP-124): values the AI gave are
+ * kept; the fields filled are named in one notes line, since a saved cap shows no "default — check" marks.
+ */
+function withDefaults(
+  fields: PartialCapFields,
+  now: Date,
+  place: string | null,
+): { readonly values: PartialCapFields & { acquiredOn: string; acquiredWhere?: string }; readonly note?: string } {
+  const defaults = newCapDefaults(
+    {
+      ...(fields.year !== undefined ? { year: fields.year } : {}),
+      ...(fields.material !== undefined ? { material: fields.material } : {}),
+      ...(fields.closure !== undefined ? { closure: fields.closure } : {}),
+      ...(fields.type !== undefined ? { type: fields.type } : {}),
+    },
+    { now, place, text: [fields.brand, fields.producer, fields.description, fields.textOnCap].join(' ') },
+  );
+  const values = { ...fields, ...defaults.values, acquiredOn: defaults.values.acquiredOn ?? localDate(now) };
+  const names = defaults.filled.flatMap((f) => {
+    const key = DEFAULT_NAMES[f];
+    return key ? [t(key)] : [];
+  });
+  return names.length === 0
+    ? { values }
+    : { values, note: t('exchange.multi.defaultsNote', { fields: names.join(', ') }) };
+}
+
 /** The `POST /caps` body (exchange.md § Multi-import step 8; features.md § Defaults when unsure). */
 async function capBody(
   answer: ReadAnswer,
@@ -339,18 +378,15 @@ async function capBody(
 ): Promise<CapInput> {
   const { fields, response } = answer;
   const brandConfidence = response.confidence.brand;
-  const place = await deps.place;
-  const notes = [answer.notes, possible ? deps.possibleDuplicateNote(possible) : undefined]
+  const now = deps.now();
+  const { values, note } = withDefaults(fields, now, await deps.place);
+  const notes = [answer.notes, possible ? deps.possibleDuplicateNote(possible) : undefined, note]
     .filter((n): n is string => n !== undefined && n.trim() !== '')
     .join('\n');
   return {
-    ...fields,
+    ...values,
     // SPEC-GAP CAP-121: `brand` is required; an AI that names none gets the prompt's "Unknown" (plan Q3).
     brand: fields.brand ?? UNKNOWN_BRAND,
-    material: fields.material ?? DEFAULT_MATERIAL,
-    closure: fields.closure ?? DEFAULT_CLOSURE,
-    acquiredOn: localDate(deps.now()),
-    ...(place ? { acquiredWhere: place } : {}),
     ...(notes !== '' ? { notes: notes.slice(0, 2000) } : {}),
     images: { top: ref },
     dhash: photo.dhash,

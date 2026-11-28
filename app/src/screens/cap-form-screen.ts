@@ -75,7 +75,7 @@ import {
   type ValueField,
 } from '../cap/form-model.js';
 import type { CaptureSession } from '../capture/context.js';
-import { DEFAULT_CLOSURE, DEFAULT_MATERIAL, guessType, localDate, type Mark } from '../capture/defaults.js';
+import { guessType, localDate, newCapDefaults, type Mark } from '../capture/defaults.js';
 import { appendNotes, NOTES_MAX, notesHeader } from '../exchange/append-notes.js';
 import { defaultPlace, rememberPlace } from '../capture/place.js';
 import { scanSource } from '../capture/duplicate.js';
@@ -245,22 +245,26 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
     } else if (marks.delete('type')) v.type = '';
   };
   const seeded: FormValues = { ...baseValues, tags: [...baseValues.tags] };
-  const thisYear = String(clockOf(ctx).getFullYear());
   if (mode !== 'edit') {
-    if (seeded.acquiredOn === '') seeded.acquiredOn = localDate(clockOf(ctx));
-    if (seeded.year === '') {
-      seeded.year = thisYear;
-      marks.set('year', 'default');
-    }
-    if (seeded.material === '') {
-      seeded.material = DEFAULT_MATERIAL;
-      marks.set('material', 'default');
-    }
-    if (seeded.closure === '') {
-      seeded.closure = DEFAULT_CLOSURE;
-      marks.set('closure', 'default');
-    }
-    guess(seeded);
+    // CAP-124: the same defaults as every other capture path (multi-import included); the place arrives later.
+    const given = (v: string) => (v === '' ? undefined : v);
+    const defaults = newCapDefaults(
+      {
+        ...(seeded.acquiredOn !== '' ? { acquiredOn: seeded.acquiredOn } : {}),
+        ...(seeded.year !== '' ? { year: Number(seeded.year) } : {}),
+        ...(given(seeded.material) ? { material: seeded.material as Material } : {}),
+        ...(given(seeded.closure) ? { closure: seeded.closure as Closure } : {}),
+        ...(given(seeded.type) ? { type: seeded.type as CapType } : {}),
+      },
+      { now: clockOf(ctx), text: [seeded.brand, seeded.producer, seeded.description, textOnCap ?? ''].join(' ') },
+    );
+    const { values: filled } = defaults;
+    if (filled.acquiredOn !== undefined) seeded.acquiredOn = filled.acquiredOn;
+    if (filled.year !== undefined) seeded.year = String(filled.year);
+    if (filled.material !== undefined) seeded.material = filled.material;
+    if (filled.closure !== undefined) seeded.closure = filled.closure;
+    if (filled.type !== undefined) seeded.type = filled.type;
+    for (const [field, mark] of defaults.marks) if (field !== 'acquiredWhere') marks.set(field, mark);
   }
   const initialValues: FormValues = !cap && options.notes !== undefined ? { ...seeded, notes: options.notes } : seeded;
   const initialImages: FormImages = cap ? imagesFromCap(cap.images) : scan ? imagesFromScan(scan) : {};
@@ -946,16 +950,24 @@ export function CapForm(ctx: AppContext, options: CapFormOptions): HTMLElement {
         setValue(field as AiField, value);
         if (value !== '') marks.delete(field as AiField);
       }
-      // CAP-98: the AI's new answer may leave material / closure / type empty again: default and guess as at the start.
-      for (const [name, value] of [
-        ['material', DEFAULT_MATERIAL],
-        ['closure', DEFAULT_CLOSURE],
-        ['year', thisYear],
-      ] as const) {
-        if (!touched.has(name) && values[name] === '') {
-          setValue(name, value);
-          marks.set(name, 'default');
-        }
+      // CAP-98: the AI's new answer may leave material / closure / year empty again: the same defaults as at the start
+      // (CAP-124 `newCapDefaults`) for the fields the user has not touched; `type` is re-guessed below.
+      const kept = (name: 'material' | 'closure' | 'year') => touched.has(name) || values[name] !== '';
+      const again = newCapDefaults(
+        {
+          ...(kept('material') ? { material: values.material as Material } : {}),
+          ...(kept('closure') ? { closure: values.closure as Closure } : {}),
+          ...(kept('year') ? { year: Number(values.year) } : {}),
+          type: 'other',
+          acquiredOn: values.acquiredOn,
+        },
+        { now: clockOf(ctx), text: '' },
+      );
+      for (const name of ['material', 'closure', 'year'] as const) {
+        const value = again.values[name];
+        if (value === undefined) continue;
+        setValue(name, String(value));
+        marks.set(name, 'default');
       }
       if (!touched.has('type')) reguess();
       unsure = unsureFields(response.confidence);

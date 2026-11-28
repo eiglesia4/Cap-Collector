@@ -1,6 +1,8 @@
-// Defaults when unsure (CAP-98, features.md § Defaults when unsure, decided with Edu 2026-11-23): what a new cap's form
-// fills in rather than leaving blank. `acquiredOn` = today (not marked), crown caps steel + pry-off (marked "default —
-// check"), and `type` guessed from the cap's text (marked "guessed — check"). `year` is never defaulted. DOM-free.
+// Defaults when unsure (CAP-98, features.md § Defaults when unsure, decided with Edu 2026-11-23): what a new cap gets
+// rather than a blank. `acquiredOn` = today (not marked), `year` = the current year, crown caps steel + pry-off and the
+// device's place (marked "default — check"), and `type` guessed from the cap's text (marked "guessed — check").
+// CAP-124: one function, `newCapDefaults`, for every capture path — the form (built-in AI review, single exchange,
+// Manual entry, batch) and multi-import — so they never drift. Editing an existing cap never gets defaults. DOM-free.
 import type { CapType, Closure, Material } from '@capcollector/shared';
 
 export const DEFAULT_MATERIAL: Material = 'steel';
@@ -63,4 +65,57 @@ export function guessType(text: string): CapType | undefined {
     }
   }
   return undefined;
+}
+
+/** The fields a new cap may get by default (CAP-124). */
+export type DefaultField = 'acquiredOn' | 'year' | 'type' | 'material' | 'closure' | 'acquiredWhere';
+
+/** What is known of a new cap; a missing key is an empty field. */
+export interface NewCapFields {
+  readonly acquiredOn?: string;
+  readonly year?: number;
+  readonly material?: Material;
+  readonly closure?: Closure;
+  readonly type?: CapType;
+  readonly acquiredWhere?: string;
+}
+
+export interface DefaultsInput {
+  readonly now: Date;
+  /** The cap's text the type is guessed from: brand, producer, description, text on the cap. */
+  readonly text: string;
+  /** The device's place (features.md § Place from GPS), when known. */
+  readonly place?: string | null;
+}
+
+export interface FilledDefaults {
+  /** Only the fields that were empty and got a value. */
+  readonly values: { -readonly [K in keyof NewCapFields]: NewCapFields[K] };
+  /** How each filled field got its value (`acquiredOn` is filled but never marked). */
+  readonly marks: ReadonlyMap<DefaultField, Mark>;
+  /** The filled fields, in the order above. */
+  readonly filled: readonly DefaultField[];
+}
+
+/**
+ * features.md § Defaults when unsure for a new cap: fills only what is empty, never a value given (by the AI or the
+ * user), and says how each one was filled. `type` stays empty when the text names nothing.
+ */
+export function newCapDefaults(given: NewCapFields, input: DefaultsInput): FilledDefaults {
+  const values: FilledDefaults['values'] = {};
+  const marks = new Map<DefaultField, Mark>();
+  const filled: DefaultField[] = [];
+  const fill = <K extends DefaultField>(field: K, value: NewCapFields[K] | undefined, mark?: Mark) => {
+    if (given[field] !== undefined || value === undefined) return;
+    values[field] = value;
+    filled.push(field);
+    if (mark) marks.set(field, mark);
+  };
+  fill('acquiredOn', localDate(input.now));
+  fill('year', input.now.getFullYear(), 'default');
+  fill('type', given.type === undefined ? guessType(input.text) : undefined, 'guessed');
+  fill('material', DEFAULT_MATERIAL, 'default');
+  fill('closure', DEFAULT_CLOSURE, 'default');
+  fill('acquiredWhere', input.place ? input.place : undefined, 'default');
+  return { values, marks, filled };
 }
