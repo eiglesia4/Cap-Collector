@@ -62,7 +62,9 @@ interface Call {
 }
 
 /** The Import screen with a fake API: `dupBrand` is "already in collection" by dHash; `stored` answers ?brand=. */
-async function setup(options: { dupBrand?: string; stored?: Record<string, unknown>[]; failCapsFor?: string } = {}) {
+async function setup(
+  options: { dupBrand?: string; stored?: Record<string, unknown>[]; failCapsFor?: string; noPlace?: boolean } = {},
+) {
   const calls: Call[] = [];
   let saved = 100;
   const answer = (path: string, method: string, body: unknown): unknown => {
@@ -98,7 +100,7 @@ async function setup(options: { dupBrand?: string; stored?: Record<string, unkno
     return parsed.data;
   });
   const platform = fakePlatform('web');
-  await platform.store.set(LAST_PLACE_KEY, 'Segovia');
+  if (!options.noPlace) await platform.store.set(LAST_PLACE_KEY, 'Segovia');
   const ctx: AppContext = {
     ...(await shellContext({ api: fakeApi({ request: request as ApiClient['request'] }), platform })),
     navigate: vi.fn(),
@@ -232,7 +234,7 @@ describe('multi-import (CAP-121)', () => {
     );
   });
 
-  it('[T-app-241] six pairs → six rows; the saved body is needsReview, external:anthropic, with the defaults and no guessed year', async () => {
+  it('[T-app-241] six pairs → six rows; the saved body is needsReview, external:anthropic, with the defaults (CAP-124: year too)', async () => {
     const env = await setup();
     await env.upload([zipFile()]);
     expect(env.el.querySelectorAll('[data-row]')).toHaveLength(6);
@@ -252,11 +254,11 @@ describe('multi-import (CAP-121)', () => {
       closure: 'pry-off',
       acquiredOn: '2026-11-28',
       acquiredWhere: 'Segovia',
-      notes: 'Red rim',
+      year: 2026, // CAP-124: the current year when the AI gave none
+      notes: `Red rim\n${t('exchange.multi.defaultsNote', { fields: 'year, material, closure, place' })}`,
       images: { top: { key: expect.stringMatching(/^u1\//) } },
       dhash: expect.stringMatching(/^[0-9a-f]{16}$/),
     });
-    expect(grimbergen).not.toHaveProperty('year');
     expect(grimbergen).not.toHaveProperty('location');
     const bodies = env.posts().map((p) => p.body as Record<string, unknown>);
     expect(bodies[1]).toMatchObject({ brand: 'La Cibeles', year: 2019 });
@@ -327,7 +329,11 @@ describe('multi-import (CAP-121)', () => {
     expect(new URL(query, 'https://x').searchParams.get('brand')).toBe('Grimbergen');
     const grimbergen = env.posts()[0]?.body as { notes: string };
     expect(grimbergen.notes).toBe(
-      `Red rim\n${t('exchange.multi.possibleNote', { title: 'GRIMBERGEN · double ambree', id: ulid(9).slice(-6) })}`,
+      [
+        'Red rim',
+        t('exchange.multi.possibleNote', { title: 'GRIMBERGEN · double ambree', id: ulid(9).slice(-6) }),
+        t('exchange.multi.defaultsNote', { fields: 'year, material, closure, place' }),
+      ].join('\n'),
     );
     const row = env.row('Grimbergen_Double-Ambree');
     expect(row?.dataset.rowStatus).toBe('possibleDuplicate');
@@ -416,5 +422,60 @@ describe('multi-import (CAP-121)', () => {
       t('exchange.multi.reason.saveFailed'),
     );
     expect(env.el.querySelector('[data-count="imported"]')?.textContent).toBe('5');
+  });
+});
+
+describe('multi-import defaults when unsure (CAP-124)', () => {
+  const answer = (fields: Record<string, unknown>) => ({
+    provider: 'Anthropic',
+    model: 'claude-test-model',
+    fields: {
+      brand: 'Marca',
+      variant: null,
+      producer: null,
+      country: null,
+      type: null,
+      material: null,
+      closure: null,
+      year: null,
+      description: null,
+      textOnCap: null,
+      ...fields,
+    },
+    confidence: { brand: 0.8 },
+    notes: null,
+  });
+  const one = (fields: Record<string, unknown>) =>
+    zipFile(zipSync({ 'Cap.png': capPng(1), 'Cap.json': strToU8(JSON.stringify(answer(fields))) }));
+  const saved = async (env: Awaited<ReturnType<typeof setup>>, fields: Record<string, unknown>) => {
+    await env.upload([one(fields)]);
+    return env.posts()[0]?.body as Record<string, unknown>;
+  };
+
+  it('[T-app-255] an AI year of null saves the current year, and the notes line names "año"', async () => {
+    setLanguage('es');
+    const body = await saved(await setup({ noPlace: true }), { type: 'beer', material: 'steel', closure: 'pry-off' });
+    expect(body.year).toBe(NOW.getFullYear());
+    expect(body.notes).toBe(t('exchange.multi.defaultsNote', { fields: 'año' }));
+    expect(body.notes).toBe('Valores por defecto al importar: año.');
+    expect(CapInput.safeParse(body).success).toBe(true);
+  });
+
+  it('[T-app-256] an AI type of null is guessed from the text ("Cervecera X" → beer); with no match it stays empty', async () => {
+    const beer = await saved(await setup({ noPlace: true }), { producer: 'Cervecera X', year: 2001 });
+    expect(beer.type).toBe('beer');
+    expect(beer.notes).toBe(t('exchange.multi.defaultsNote', { fields: 'type, material, closure' }));
+    const none = await saved(await setup({ noPlace: true }), { brand: 'Zeta', year: 2001 });
+    expect(none).not.toHaveProperty('type');
+    expect(none.notes).toBe(t('exchange.multi.defaultsNote', { fields: 'material, closure' }));
+  });
+
+  it('[T-app-257] a full AI answer is saved as given, with no defaults notes line', async () => {
+    const full = { type: 'cider', material: 'aluminium', closure: 'twist-off', year: 1987, producer: 'Cervecera X' };
+    const body = await saved(await setup({ noPlace: true }), full);
+    expect(body).toMatchObject(full);
+    expect(body).not.toHaveProperty('notes');
+    expect(body).not.toHaveProperty('acquiredWhere');
+    expect(body.acquiredOn).toBe('2026-11-28'); // today, as every new cap (not named in the notes line)
   });
 });
