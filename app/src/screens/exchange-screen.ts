@@ -13,6 +13,7 @@ import { newUlid } from '../capture/ulid.js';
 import { CapPageSchema } from '../collection/cap-page.js';
 import { capTitle } from '../components/cap-tile.js';
 import { ScreenHeader } from '../components/screen-header.js';
+import { MultiImportSection } from './multi-import-section.js';
 import type { AppContext, Screen } from '../context.js';
 import {
   externalSource,
@@ -31,7 +32,7 @@ import { batchZip, bundleItems, jsonText, promptText, singleZip, type BundleItem
 import { continueToReview, markRequest, type ReviewPhotos } from '../exchange/continue.js';
 import { capSubject, scanSubject } from '../exchange/subjects.js';
 import { t, type MessageKey } from '../i18n/i18n.js';
-import { resizeToWebp, type CapPhoto } from '../images/resize.js';
+import { resizeToWebp, type CapPhoto, type RasterCodec } from '../images/resize.js';
 import type { StoredPhotoOptions } from '../images/stored.js';
 import { uploadImage, type PutFn } from '../images/upload.js';
 import { pathFor } from '../router/routes.js';
@@ -46,6 +47,8 @@ export interface ExchangeOptions extends StoredPhotoOptions {
   readonly copy?: (text: string) => Promise<boolean>;
   /** Mac/web download of a built bundle. */
   readonly download?: (file: File) => void;
+  /** Multi-import decoder / encoder (CAP-121); tests inject one. */
+  readonly codec?: RasterCodec;
 }
 
 /** Caps per `needsReview` batch / pick list (openapi.yaml `GET /caps` max limit). */
@@ -686,6 +689,8 @@ export function ExchangeView(
       t('exchange.title'),
       h('a', { class: 'header-action', attrs: { href: pathFor('collection'), 'data-link': true } }, t('common.close')),
     ),
+    // SCREENS.md § Multi-import (CAP-121): two parts, "Una chapa" (the exchange flow of ADR-007) and "Varias chapas".
+    h('h2', { class: 'import-part', attrs: { 'data-part-title': 'one' } }, t('exchange.partOne')),
     requestSection,
     uploadSection,
     h(
@@ -694,6 +699,14 @@ export function ExchangeView(
       h('h2', { class: 'section-title' }, t('exchange.pendingTitle')),
       pendingList,
     ),
+    h('h2', { class: 'import-part', attrs: { 'data-part-title': 'many' } }, t('exchange.partMany')),
+    MultiImportSection(ctx, {
+      copy,
+      newId,
+      now,
+      ...(options.put ? { put: options.put } : {}),
+      ...(options.codec ? { codec: options.codec } : {}),
+    }),
   );
   renderPick();
   renderFor();
