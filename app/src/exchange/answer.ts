@@ -138,7 +138,8 @@ function chooseJson(contents: UploadContents): { name: string; value: unknown } 
   );
 }
 
-function notesFrom(
+/** The answer's notes plus its ignored and unparseable values, one line each (also used by multi-import, CAP-121). */
+export function notesFrom(
   response: ExchangeResponse,
   ignored: readonly string[],
   problems: readonly string[],
