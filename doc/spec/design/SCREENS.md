@@ -15,11 +15,11 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 | 6 | Cap detail | photos, chips, quantity/forTrade, fields, variants, history, location |
 | 7 | Album sheet | 6 × 7 grid mirroring the physical sheet; move / swap / sheet photo check; print |
 | 8 | A4 pocket inserts | print template with calibration square and reverse-side sample |
-| 9 | Exchange | download request bundle (photo + JSON) for an external AI, upload its answer, pending list, backup export/import |
+| 9 | Import (was "Exchange"; renamed 2026-11-28, ADR-012 §6) | **One cap:** download a request bundle (photo + JSON) for an external AI, upload its answer, pending list. **Several caps:** § Multi-import. Backup export/import |
 | — | Wishlist, Stats, Settings | phase 2 / simple lists |
 
 ## Navigation logic
-- Bottom tab bar: **Collection · Scan · Wishlist · Stats** (Albums, Exchange and Settings behind "⋯" on Collection).
+- Bottom tab bar: **Collection · Scan · Wishlist · Stats** (Albums, Import and Settings behind "⋯" on Collection).
 - Capture flow (2 → 3/4/5 → 6) runs as a full-screen modal over the tabs.
   Retake / Cancel on 3/4/5 → Scan; Cancel on Scan → where the user came from (Collection, or the album sheet for a
   pocket scan; ADR-010 §3); Discard → Collection; Save → new cap's Detail.
@@ -61,6 +61,24 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
   Abandon asks for confirmation; saved caps stay saved.
 - **Summary** at the end: added n · already in collection n (updated / discarded) · manual n · skipped n
   (with "Review skipped"), plus a button **Plan albums** (§ Initial layout) when there are caps without a location.
+
+## Multi-import (ADR-012, decided 2026-11-28)
+The UI says **Import / Importar**, never "Exchange / Intercambio". The route `/exchange` and the code names stay.
+Import has two sections: **Una chapa** (the exchange flow of ADR-007) and **Varias chapas**.
+- **Step 1, ask:**
+  - The prompt is in a read-only box with **Copiar prompt**, in the UI language (`multiImportInstructions`).
+  - The empty template has **Copiar plantilla** (`MULTI_IMPORT_TEMPLATE`).
+  - A **photo format** card: "Chapas boca arriba · fondo liso de color contrastado · separadas un dedo · foto
+    desde arriba llenando el encuadre · luz uniforme sin sombras duras · hasta 50".
+  - One line: "Pega el prompt y la plantilla en tu IA, adjunta la foto y pídele el zip."
+- **Step 2, upload:** a drop zone (web) or **Elegir zip** (iOS/Android). Loose images and JSONs are accepted too.
+  While it runs: "Importando 3 de 6", with Cancel (which stops after the current cap; saved caps stay).
+- **Step 3, summary**, on the same screen:
+  - the counts **Importadas · Ya en la colección · Repetidas en el zip · Posibles duplicados · Con errores**;
+  - one row per file: thumbnail, "Brand · Variant" (or the file name), a status chip, a link to the cap when there
+    is one, and the reason when it failed;
+  - buttons: **Ver por revisar** (Collection with the "Por revisar" chip on), **Reintentar fallidas** and
+    **Importar otro zip**.
 
 ## Visual system (proposal)
 - Ground `#FAFAF7`, ink `#1B1A17`, accent copper `#B8651B`, muted `#5C5A55`, line `#DEDBD2`.

@@ -33,15 +33,68 @@ const LANGUAGE_NAME: Record<UiLanguage, string> = { es: 'Spanish', en: 'English'
 export function exchangeInstructions(language: UiLanguage = 'en'): string {
   return (
     'You are helping identify a bottle cap. Look at the attached photo(s). Fill the `response` object below and give ' +
-    'a confidence 0–1 per field. Give your best guess for every field you can reasonably infer: a low confidence is ' +
-    'better than null. Infer `type` from the brand, producer or text (a brewery → beer, a cider maker → cider, a ' +
-    'winery → wine). Crown caps are usually steel and pry-off unless the photo shows otherwise. Use null only when ' +
-    'there is no basis at all, and for `year` unless a year is printed or the design clearly dates it. Keep brand, ' +
-    'variant and textOnCap exactly as printed, and producer as the company names itself; never translate them. The ' +
-    'enum fields take the codes listed in the schema. Country is ISO 3166-1 alpha-2. Write `description` in ' +
-    `${LANGUAGE_NAME[language]}. Return ONLY the JSON of \`response\`.`
+    `a confidence 0–1 per field. ${fieldRules(language)} Return ONLY the JSON of \`response\`.`
   );
 }
+
+/** The field rules shared by the single-cap and the multi-import prompts (v0.4/v0.5 rules; v0.6 split them out). */
+function fieldRules(language: UiLanguage): string {
+  return (
+    'Give your best guess for every field you can reasonably infer: a low confidence is better than null. Infer `type` ' +
+    'from the brand, producer or text (a brewery → beer, a cider maker → cider, a winery → wine). Crown caps are ' +
+    'usually steel and pry-off unless the photo shows otherwise. Use null only when there is no basis at all, and for ' +
+    '`year` unless a year is printed or the design clearly dates it. Keep brand, variant and textOnCap exactly as ' +
+    'printed, and producer as the company names itself; never translate them. The enum fields take the codes listed ' +
+    'in the schema. Country is ISO 3166-1 alpha-2. Write `description` in ' +
+    `${LANGUAGE_NAME[language]}.`
+  );
+}
+
+/**
+ * v0.6 (CAP-119, ADR-012, decided with the owner on 2026-11-28): the prompt for a multi-import. One tray photo in; a
+ * zip of cut-out caps (about 2 mm of transparent margin), each with a `response` JSON of the same base name, out. The
+ * app shows it with `MULTI_IMPORT_TEMPLATE` and the photo-format card (SCREENS.md § Multi-import).
+ */
+export function multiImportInstructions(language: UiLanguage = 'en'): string {
+  const { maxCaps } = MULTI_IMPORT_LIMITS;
+  return (
+    'You are helping catalogue bottle caps. The attached photo shows several caps. For every cap in the photo:\n' +
+    '1. Cut it out into its own image file: one cap per file, square, the cap centred, with a margin of about 2 mm ' +
+    "(about 7 % of the cap's diameter) of transparent background all round the rim. Remove the background and the " +
+    "cap's shadow, and don't cut into the rim. PNG or WebP, at least 400 px across, never upscaled.\n" +
+    '2. Name the file `<brand>_<variant>` as printed: spaces become hyphens, ASCII letters, digits and hyphens only ' +
+    '(drop accents). Use `Unknown` when no brand can be read, leave out `_<variant>` when there is none, and add ' +
+    '`-2`, `-3`… when two names would clash.\n' +
+    '3. Fill a copy of the empty `response` template below for that cap and save it as a JSON file with the same name ' +
+    `(\`<name>.json\`). Give a confidence 0–1 for brand, variant and year. ${fieldRules(language)} Set \`provider\` ` +
+    'and `model` to who you are. Put anything worth knowing that fits no field in `notes`, in English.\n' +
+    `Return ONE zip file with all the image and JSON pairs and nothing else (at most ${maxCaps} caps). Don't add ` +
+    'fields to the template, and use the same `response` shape for every cap.'
+  );
+}
+
+/** v0.6 (ADR-012 §5): what one multi-import zip may hold; over a limit it is rejected before any image is decoded. */
+export const MULTI_IMPORT_LIMITS = { maxCaps: 50, maxZipBytes: 50 * 1024 * 1024 } as const;
+
+/** v0.6 (ADR-012 §4): the empty `response` the owner pastes next to the prompt. No `requestId`, no `known`. */
+export const MULTI_IMPORT_TEMPLATE: ExchangeResponse = {
+  provider: null,
+  model: null,
+  fields: {
+    brand: null,
+    variant: null,
+    producer: null,
+    country: null,
+    type: null,
+    material: null,
+    closure: null,
+    year: null,
+    description: null,
+    textOnCap: null,
+  },
+  confidence: { brand: null, variant: null, year: null },
+  notes: null,
+};
 
 /** The English instructions (pre-v0.4 callers and exchange bundles without a language). */
 export const EXCHANGE_INSTRUCTIONS = exchangeInstructions('en');

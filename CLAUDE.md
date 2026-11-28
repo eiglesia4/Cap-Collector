@@ -14,7 +14,7 @@ Orden de precedencia (si dos documentos se contradicen, gana el de arriba):
 
 1. `shared/src/**` (zod + tipos TS) y `doc/spec/openapi.yaml` — los contratos app ↔ api (los publica el arquitecto en EP-01; hoy `shared/` está vacío y no hay OpenAPI).
 2. `doc/spec/specs/data-model.md` — tabla única de DynamoDB: PK/SK, GSIs, enums. **Nunca inventes claves.**
-3. `doc/spec/decisions/ADR-*.md` — decisiones de arquitectura (ADR-001 Capacitor · 002 serverless · 003 revisión con tres salidas · 004 dHash antes que IA · 005 álbum·hoja·bolsillo · 006 borrado lógico e historial · 007 intercambio con IA externa · 008 decisiones cerradas de V0 · 009 captura por lotes · 010 WebP en WebKit y comprobación de recorte · 011 Google y Android).
+3. `doc/spec/decisions/ADR-*.md` — decisiones de arquitectura (ADR-001 Capacitor · 002 serverless · 003 revisión con tres salidas · 004 dHash antes que IA · 005 álbum·hoja·bolsillo · 006 borrado lógico e historial · 007 intercambio con IA externa · 008 decisiones cerradas de V0 · 009 captura por lotes · 010 WebP en WebKit y comprobación de recorte · 011 Google y Android · 012 importación múltiple).
 4. `doc/spec/specs/{features,exchange,physical-link}.md` y `doc/spec/design/SCREENS.md` — funcionalidad, formato `capcollector.exchange`, álbum físico, pantallas y navegación.
 5. `doc/spec/CONVENTIONS.md` — vocabulario, identificadores, reglas de coste.
 6. `doc/spec/method.md` — cómo trabajan el arquitecto, los agentes de desarrollo y el integrador (este fichero es su resumen operativo).
@@ -27,12 +27,12 @@ Versión viva, si existe en esta máquina: `$CAP_DOCS` (lo exporta `.envrc` apun
 - **Captura** (ADR-003/004): foto → recorte → **dHash de 64 bits en el cliente** → Lambda compara con todos los hashes guardados (Hamming ≤ umbral) → si hay casi-coincidencia, «Already in collection» **sin llamar a la IA**; si no, Bedrock (visión, clase Haiku) → segunda comprobación por `brand + variant` normalizados. Toda captura termina en una de tres pantallas antes de guardar: **AI review · Already in collection · Manual entry** (un mismo formulario, modos `ai-prefilled | empty | edit`).
 - **API** (`api/`): Lambda (Node 22, TS) detrás de API Gateway HTTP API; un handler por ruta, `lib/` compartida; URLs prefirmadas para subir imágenes WebP ≤ 1024 px; auth con Sign in with Apple + PKCE (sin Cognito).
 - **Datos** (`infra/`, stack `CollectorsData`): S3 (imágenes + web) y **DynamoDB de tabla única** on-demand; historial append-only `HIST#<ts>`; borrado lógico con tombstones; GSI de ubicación `LOC#<albumId>#<sheet>` y de marca `BRAND#<normalised>`.
-- **Intercambio** (ADR-007): paquete `request.zip` (fotos + `request.json`, `format = capcollector.exchange`, `version` entero) para cualquier IA externa a mano; la respuesta subida se valida y entra en la misma revisión con `source = external:<provider>`.
+- **Importar** (antes «Intercambio»; ADR-007, ADR-012): paquete `request.zip` (fotos + `request.json`, `format = capcollector.exchange`, `version` entero) para cualquier IA externa a mano; la respuesta subida se valida y entra en la misma revisión con `source = external:<provider>`. La **importación múltiple** (ADR-012) recibe un zip de chapas recortadas + JSON por chapa y guarda cada una como `needsReview`, tras el dHash y sin IA.
 - **Físico** (ADR-005): `location = { kind: album|box|frame, album, sheet?, pocket? }`, código `A·3·17`, hoja 6 × 7, tarjetas insertables en PDF generadas en cliente.
 
 ## Invariantes que no se negocian
 
-- Nada se guarda sin pasar por una de las tres pantallas de revisión; nada de un registro existente se sobrescribe sin un tick explícito.
+- Nada se guarda sin pasar por una de las tres pantallas de revisión, salvo la importación múltiple (ADR-012), que guarda como `needsReview` después de las comprobaciones de duplicado; nada de un registro existente se sobrescribe sin un tick explícito.
 - La IA (Bedrock) se llama **solo** si la comprobación local de dHash no encuentra casi-coincidencia.
 - Todo cambio en un registro escribe historial (quién/qué/cuándo/`source`). Borrado = tombstone, nunca físico.
 - `capId` es ULID y nunca se reutiliza. El importador de exchange acepta **todas** las versiones emitidas.
