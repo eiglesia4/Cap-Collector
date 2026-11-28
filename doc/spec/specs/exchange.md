@@ -64,6 +64,53 @@ reviewed | expired`) so the screen can list what is still out. Expire after 30 d
 A multi-cap request zips one folder per cap plus `requests.json` (array). The answer may come
 back as one JSON array or one file per cap; each item is matched by `requestId`.
 
+## Multi-import (ADR-012, 2026-11-28)
+One tray photo goes to an external AI, which returns a zip of cut-out caps. Each cap is saved at once as `needsReview`.
+It is not tied to a pending request: no `EXCHANGE#` item and no `requestId`.
+
+**Ask** (Import → "Varias chapas"):
+- **The prompt:** `multiImportInstructions(language)` from `shared`. It has the field rules of `exchangeInstructions`,
+  plus:
+  - one cap per image, square and centred, with about **2 mm (≈ 7 % of the diameter)** of transparent margin around
+    the rim;
+  - no background and no shadow;
+  - PNG or WebP, at least 400 px across, never upscaled.
+- **The template:** `MULTI_IMPORT_TEMPLATE`, the bare `response` object with every value null. It has no `known` and
+  no `requestId`.
+- **The photo:** the owner attaches one tray photo, with the same guidance as batch mode (ADR-009).
+
+**Answer zip:**
+```
+<anything>.zip
+├── Grimbergen_Double-Ambree.png     # <brand>_<variant>, spaces → "-", ASCII only; "Unknown" without a brand;
+├── Grimbergen_Double-Ambree.json    #   no "_<variant>" without a variant; "-2", "-3" … on a name clash
+├── La-Cibeles.png
+├── La-Cibeles.json
+└── …
+```
+- **Pairing:** a pair is an image (`.png`, `.webp`, `.jpg`, `.jpeg`) and a `.json` with the same base name, compared
+  case-insensitively, anywhere in the zip. `__MACOSX/` and dotfiles are ignored. An orphan image or an orphan JSON is
+  a failed row; it never aborts the import.
+- **JSON:** each one is the bare `response` (or a whole exchange document) and goes through `parseExchangeUpload` and
+  `normaliseResponseFields`, as in § Flow 3. Unknown fields go to `notes`.
+- **Limits:** `MULTI_IMPORT_LIMITS`, 50 pairs and 50 MB. Over a limit, the zip is rejected before any image is decoded.
+- **Per pair:**
+  1. decode the image;
+  2. flatten a copy for the dHash only (ADR-012 §3);
+  3. WebP ≤ 1024, alpha kept;
+  4. dHash;
+  5. in-zip guard (12);
+  6. `POST /uploads`, then `POST /scans/analyse` with `useAi: false`;
+  7. brand + variant check (`GET /caps?brand=`);
+  8. `POST /caps` with `status: needsReview`, `source: external:<provider>` (`external:unknown` when the provider is
+     missing), `aiModel`, `aiConfidence` = the brand confidence, and the defaults of features.md § Defaults when unsure.
+- **Outcome of each row:**
+  - **imported**;
+  - **already in collection** (dHash): not saved;
+  - **repeated in zip**: not saved;
+  - **possible duplicate** (brand + variant): saved and flagged;
+  - **failed**, with the reason.
+
 ## Backup (`capcollector.backup` v1)
 Defined in CAP-80 (2026-11-21). Settings → "Export backup" writes a copy of the user's data that the user keeps. It is independent of AWS Backup.
 ```

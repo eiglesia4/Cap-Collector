@@ -40,6 +40,9 @@ import {
   capSk,
   cellToPocket,
   emptyExchangeResponse,
+  MULTI_IMPORT_LIMITS,
+  MULTI_IMPORT_TEMPLATE,
+  multiImportInstructions,
   exchangeSk,
   exchangeTtl,
   formatLocationCode,
@@ -343,7 +346,6 @@ describe('shared contracts v0.4 (CAP-95)', () => {
 
 describe('shared contracts v0.5 (CAP-107)', () => {
   it('[T-shared-010] v0.5: POST /auth/google (public) with GoogleSignInRequest { idToken, codeVerifier }, version 0.5.0', () => {
-    expect(CONTRACTS_VERSION).toBe('0.5.0');
     const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
     expect(GoogleSignInRequest.safeParse({ idToken: 't', codeVerifier: verifier }).success).toBe(true);
     expect(GoogleSignInRequest.safeParse({ idToken: 't', codeVerifier: 'short' }).success).toBe(false);
@@ -354,5 +356,29 @@ describe('shared contracts v0.5 (CAP-107)', () => {
       handler: 'auth-google',
       auth: false,
     });
+  });
+});
+
+describe('shared contracts v0.6 (CAP-119)', () => {
+  it('[T-shared-011] v0.6: multi-import prompt (2 mm margin, file naming, one zip, shared field rules), empty template, limits, version 0.6.0', () => {
+    expect(CONTRACTS_VERSION).toBe('0.6.0');
+    for (const language of ['es', 'en'] as const) {
+      const text = multiImportInstructions(language);
+      expect(text).toContain('about 2 mm');
+      expect(text).toContain('`<brand>_<variant>`');
+      expect(text).toContain('`Unknown`');
+      expect(text).toContain('ONE zip');
+      expect(text).toContain(`at most ${MULTI_IMPORT_LIMITS.maxCaps} caps`);
+      // The field rules are the single-cap ones, so both prompts stay in step.
+      expect(text).toContain('a brewery → beer');
+      expect(exchangeInstructions(language)).toContain('a brewery → beer');
+    }
+    expect(multiImportInstructions('es')).toContain('Write `description` in Spanish.');
+    expect(exchangeInstructions('en')).toContain('Return ONLY the JSON of `response`.');
+    // The template is empty: no requestId, no known, every value null, and the upload parser accepts it.
+    expect(MULTI_IMPORT_TEMPLATE).toEqual(emptyExchangeResponse());
+    expect(Object.keys(MULTI_IMPORT_TEMPLATE)).not.toContain('known');
+    expect(parseExchangeUpload(MULTI_IMPORT_TEMPLATE).kind).toBe('response');
+    expect(MULTI_IMPORT_LIMITS).toEqual({ maxCaps: 50, maxZipBytes: 50 * 1024 * 1024 });
   });
 });

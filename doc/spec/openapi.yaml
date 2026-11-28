@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CapCollector API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Contract between `app/` and `api/` (CAP-12 v0.1 → CAP-26 v0.2). Owned by the architect; changes are new versions.
     Request/response bodies are the zod schemas of `@capcollector/shared` — the `components.schemas` below name
@@ -12,6 +12,7 @@ info:
     v0.3 (CAP-76): `brand` filter on `GET /caps`, `SheetPocket.thumbUrl` (both backward-compatible; no new routes).
     v0.4 (CAP-95): optional `AnalyseRequest.language`, language-aware AI instructions (no new routes).
     v0.5 (CAP-107, ADR-011): `POST /auth/google` (`GoogleSignInRequest`), same `Session` as `/auth/apple`.
+    v0.6 (CAP-119, ADR-012): no route change; `shared` adds the multi-import prompt, template and limits (exchange.md § Multi-import).
     v0.2 (CAP-26): `security: []` markers, `/auth/apple` and `/auth/refresh` bodies, `/uploads` body without `capId`,
     `Cap.imageUrls`, `Location.albumId`, `CapPatch` semantics (no defaults, `null` clears), sort rules, examples.
 servers:
