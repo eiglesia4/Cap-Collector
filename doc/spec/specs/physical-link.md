@@ -24,6 +24,28 @@ at a glance moves to the app's sheet view and the printed sheet index (below).
 - Scopes: this sheet · caps changed since last print (per-album timestamp, set by "mark as printed") · whole album.
 - Alternative without cutting: 9 mm label-printer tape (code + brand) stuck on the sheet frame.
 
+## Inside labels (Ø 25 mm, decided 2026-11-28)
+A small paper disc **cut out and placed inside the cap**, so the cap carries its own identity once it is taken out of
+the album. It is single-sided and printed from the same Print screen, with the same scopes as the discs.
+- **Size:** Ø **25 mm** (a common 25 mm / 1" circle punch), with a grey cut circle. The text stays inside a 21 mm
+  circle, 2 mm inside the cut line, so a slightly off cut never clips it.
+- **Content**, centred, in the UI language. Four lines, all optional except the brand:
+  1. type: small capitals, e.g. "CERVEZA";
+  2. brand: bold, the largest size that fits, at most 2 lines;
+  3. variant: 1 line, smaller;
+  4. country: the localised country name, or the ISO code when the name doesn't fit.
+- **Text fitting:** the minimum size is 5 pt, and anything longer still ends in "…". Nothing else is printed: no
+  album code (a cap can move pockets, so a printed code would go stale), no QR and no year.
+- **Matching labels to caps:**
+  - When the album's grid fits A4 at a 28 mm pitch (25 mm + 3 mm gutter, inside 10 mm margins; 6 × 7 fits at
+    168 × 196 mm), the labels are laid out as **one page per sheet**, mirroring the sheet's `cols × rows`. A pocket
+    out of scope, or an empty one, is left blank. The page header reads "Album A · Sheet 3 · inside labels". The owner
+    finds each label at its pocket's position.
+  - When the grid doesn't fit, the labels flow densely in pocket order, and each one adds the pocket number in 5 pt
+    at the bottom edge.
+- **Paper:** plain 80–120 g, single-sided, at **100 %**. The calibration square is on page 1 when the labels are
+  printed without the discs.
+
 ## Sheet index
 One A4 **portrait** page per sheet, kept in the binder's front pocket: the `cols × rows` grid in the physical
 sheet's orientation, each cell with pocket number, code, brand and year; empty cells blank; header

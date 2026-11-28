@@ -14,7 +14,7 @@ Live, tappable mockups (Claude Design canvas): https://claude.ai/artifact/GRR9uy
 | 5 | Manual entry | empty form, AI brand suggestions, "save flagged needs review" |
 | 6 | Cap detail | photos, chips, quantity/forTrade, fields, variants, history, location |
 | 7 | Album sheet | 6 × 7 grid mirroring the physical sheet; move / swap / sheet photo check; print |
-| 8 | A4 pocket inserts | print template with calibration square and reverse-side sample |
+| 8 | A4 pocket inserts | print template with calibration square and reverse-side sample. "What to print" has three checkboxes, any combination (at least one): **Discs** (under the cap, double-sided) · **Inside labels Ø 25 mm** (go inside the cap; physical-link.md § Inside labels) · **Sheet index**. The preview counts each; the paper hint follows the choice (160 g double-sided for discs; plain paper single-sided for labels only) |
 | 9 | Import (was "Exchange"; renamed 2026-11-28, ADR-012 §6) | **One cap:** download a request bundle (photo + JSON) for an external AI, upload its answer, pending list. **Several caps:** § Multi-import. Backup export/import |
 | — | Wishlist, Stats, Settings | phase 2 / simple lists |
 
