@@ -4,7 +4,9 @@
 // gutters centred on A4 portrait, the 20 mm calibration square in a band at the top of page 1 only; each back page
 // mirrors its front's columns so a duplex (long-edge) or second pass lands every back on its front. Sheet index
 // (physical-link.md § Sheet index): one A4 portrait page per sheet, the `cols × rows` grid in the physical sheet's
-// orientation, as large as fits inside the margins (≈ 88 % at 36 mm pitch), proportions kept.
+// orientation, as large as fits inside the margins (≈ 88 % at 36 mm pitch), proportions kept. Inside labels
+// (CAP-123, physical-link.md § Inside labels): Ø 25 mm cut, text inside a 21 mm circle, 28 mm pitch; one page per
+// sheet mirroring its grid when that fits A4, else a dense flow in pocket order.
 
 /** Points per millimetre (PDF user space is 1/72 in). */
 export const PT_PER_MM = 72 / 25.4;
@@ -152,4 +154,95 @@ export function indexGeometry(cols: number, rows: number, pitchMm: number): Inde
     x0: (width - cols * cell) / 2,
     y0: MARGIN_MM + INDEX_HEADER_MM + (availH - rows * cell) / 2,
   };
+}
+
+// ── Inside labels (CAP-123, physical-link.md § Inside labels) ──
+
+/** Cut circle of an inside label (a common 25 mm / 1" punch). */
+export const LABEL_MM = 25;
+/** The text stays inside this circle, 2 mm within the cut line. */
+export const LABEL_TEXT_MM = 21;
+/** Label pitch: 25 mm + a 3 mm gutter. */
+export const LABEL_PITCH_MM = LABEL_MM + GUTTER_MM;
+/** Header band of a grid-mode labels page ("Album A · Sheet 3 · inside labels"). */
+export const LABEL_HEADER_MM = 12;
+
+const LABEL_AREA = { width: A4_PORTRAIT.width - 2 * MARGIN_MM, height: A4_PORTRAIT.height - 2 * MARGIN_MM };
+
+/**
+ * Grid mode (one page per sheet, mirroring it) when `cols × 28 ≤ 190` and `rows × 28 + header ≤ 277`. The header
+ * counted is the worst case, the page carrying the calibration band too, so every sheet page has the same geometry.
+ */
+export function labelGridFits(cols: number, rows: number): boolean {
+  return (
+    cols * LABEL_PITCH_MM <= LABEL_AREA.width &&
+    rows * LABEL_PITCH_MM + LABEL_HEADER_MM + CALIBRATION_BAND_MM <= LABEL_AREA.height
+  );
+}
+
+export interface LabelSlot {
+  /** Index of the cap in the labels list. */
+  readonly index: number;
+  readonly col: number;
+  readonly row: number;
+  /** Centre, mm from the top-left corner. */
+  readonly cx: number;
+  readonly cy: number;
+  /** Flow mode: the pocket number printed at the label's bottom edge. */
+  readonly pocket?: number;
+}
+
+/** Centre of column 0 for `cols` labels, the row block centred on the page like the discs. */
+function labelX0(cols: number): number {
+  return (A4_PORTRAIT.width - (cols * LABEL_PITCH_MM - GUTTER_MM)) / 2 + LABEL_MM / 2;
+}
+
+/** Grid mode: the label of `pocket` (1-based, row-major as on the sheet) at its row and column. */
+export function labelGridSlot(index: number, pocket: number, cols: number, calibration: boolean): LabelSlot {
+  const col = (pocket - 1) % cols;
+  const row = Math.floor((pocket - 1) / cols);
+  const top = MARGIN_MM + (calibration ? CALIBRATION_BAND_MM : 0) + LABEL_HEADER_MM;
+  return {
+    index,
+    col,
+    row,
+    cx: labelX0(cols) + col * LABEL_PITCH_MM,
+    cy: top + LABEL_MM / 2 + row * LABEL_PITCH_MM,
+  };
+}
+
+/** Flow mode: columns and rows of the dense layout (page 1 loses the calibration band when it carries it). */
+export function labelFlowGrid(): { cols: number; rowsFirst: number; rowsOther: number } {
+  const per = (span: number) => Math.floor((span + GUTTER_MM) / LABEL_PITCH_MM);
+  return {
+    cols: per(LABEL_AREA.width),
+    rowsFirst: per(LABEL_AREA.height - CALIBRATION_BAND_MM),
+    rowsOther: per(LABEL_AREA.height),
+  };
+}
+
+/** Flow mode: `count` labels row-major, page by page; the first page is shorter when it carries the calibration. */
+export function layoutLabelsFlow(count: number, calibrationFirst: boolean): LabelSlot[][] {
+  const { cols, rowsFirst, rowsOther } = labelFlowGrid();
+  const pages: LabelSlot[][] = [];
+  let index = 0;
+  while (index < count) {
+    const first = pages.length === 0 && calibrationFirst;
+    const rows = first ? rowsFirst : rowsOther;
+    const top = MARGIN_MM + (first ? CALIBRATION_BAND_MM : 0);
+    const slots: LabelSlot[] = [];
+    for (let i = 0; i < cols * rows && index < count; i++, index++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      slots.push({
+        index,
+        col,
+        row,
+        cx: labelX0(cols) + col * LABEL_PITCH_MM,
+        cy: top + LABEL_MM / 2 + row * LABEL_PITCH_MM,
+      });
+    }
+    pages.push(slots);
+  }
+  return pages;
 }

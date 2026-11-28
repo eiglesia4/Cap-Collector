@@ -1,7 +1,8 @@
 // Print inserts (CAP-54; SCREENS.md #8 "A4 pocket inserts"; physical-link.md § Insert discs and § Sheet index,
 // amended 2026-11-09): `/albums/:albumId/print?sheet=<n>`, reached from the album sheet. Without the album's pocket and
 // pitch it asks for them first (suggested 33 / 36 mm, saved with `PATCH /albums/{id}`). Then: scope (this sheet ·
-// since last print · whole album), what to print (discs · sheet index · both), the count preview, **Generate** — the
+// since last print · whole album), what to print (three checkboxes since CAP-123: discs · inside labels Ø 25 mm · sheet
+// index, any combination, remembered per device), the count preview, **Generate** — the
 // PDF built on the client (print/inserts.ts) goes to the share sheet on the iPhone, a download on the Mac — and
 // "Mark as printed" (the per-album timestamp of "since last print"). `?sheets=1,2` (CAP-75, after an initial layout)
 // adds the "these sheets" scope, selected by default.
@@ -12,6 +13,7 @@ import { fetchAllCaps } from '../collection/all-caps.js';
 import type { AppContext, Screen } from '../context.js';
 import { locale, t, type MessageKey } from '../i18n/i18n.js';
 import { buildInsertsPdf, planInserts, type PrintWhat } from '../print/inserts.js';
+import type { KeyValueStore } from '../platform/platform.js';
 import { discDiameter, SUGGESTED_PITCH_MM, SUGGESTED_POCKET_MM } from '../print/layout.js';
 import { albumCaps, indexSheets, markPrinted, readLastPrint, scopeCaps, type PrintScope } from '../print/scope.js';
 import { h } from '../ui/dom.js';
@@ -35,6 +37,24 @@ function browserDownload(file: File): void {
 }
 
 const dateFormat = () => new Intl.DateTimeFormat(locale('date'), { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Device key of the last "What to print" choice (CAP-123). */
+export const PRINT_WHAT_KEY = 'print.what';
+/** Before any choice: discs and sheet index, as the old default "both". */
+export const DEFAULT_WHAT: PrintWhat = { discs: true, labels: false, index: true };
+
+/** The remembered choice, or the default when there is none (or it can't be read). Never rejects. */
+export async function readWhat(store: KeyValueStore): Promise<PrintWhat> {
+  try {
+    const raw: unknown = JSON.parse((await store.get(PRINT_WHAT_KEY)) ?? 'null');
+    if (typeof raw !== 'object' || raw === null) return DEFAULT_WHAT;
+    const flags = raw as Record<string, unknown>;
+    const what = { discs: flags.discs === true, labels: flags.labels === true, index: flags.index === true };
+    return what.discs || what.labels || what.index ? what : DEFAULT_WHAT;
+  } catch {
+    return DEFAULT_WHAT;
+  }
+}
 
 /** The ask-first form: pocket and pitch in mm, suggested from Edu's COMPART measurement. */
 function MeasureForm(ctx: AppContext, album: Album, saved: (album: Album) => void): HTMLElement {
@@ -125,16 +145,16 @@ export function PrintView(
     );
   }
 
-  function render(album: Album, caps: readonly Cap[], lastPrint: Date | null): void {
+  function render(album: Album, caps: readonly Cap[], lastPrint: Date | null, remembered: PrintWhat): void {
     if (album.kind !== 'album') return failed('print.notAlbum');
     if (album.pocketMm === undefined || album.pitchMm === undefined) {
-      body.replaceChildren(MeasureForm(ctx, album, (next) => render(next, caps, lastPrint)));
+      body.replaceChildren(MeasureForm(ctx, album, (next) => render(next, caps, lastPrint, remembered)));
       return;
     }
     const sheets = sheetCount(album);
     const planned = (options.sheets ?? []).filter((n) => n <= sheets);
     let scope: PrintScope = planned.length > 0 ? 'sheets' : 'sheet';
-    let what: PrintWhat = 'both';
+    let what: PrintWhat = remembered;
     let sheet = Math.min(Math.max(1, startSheet), sheets);
     let since = lastPrint;
     const inAlbum = albumCaps(caps, album);
@@ -184,11 +204,17 @@ export function PrintView(
       const { discs, index } = selection();
       const plan = planInserts({ album, discs, sheets: index, what, printedOn: now() });
       const discPages = plan.pages.filter((p) => p.kind === 'front').length;
+      const labelPages = plan.pages.filter((p) => p.kind === 'labels').length;
       const indexPages = plan.pages.filter((p) => p.kind === 'index').length;
       const parts: string[] = [];
-      if (what !== 'index') parts.push(t('print.previewDiscs', { count: discs.length, pages: discPages * 2 }));
-      if (what !== 'discs') parts.push(t('print.previewIndex', { count: indexPages }));
-      preview.textContent = parts.join(t('collection.separator'));
+      if (what.discs) parts.push(t('print.previewDiscs', { count: discs.length, pages: discPages * 2 }));
+      if (what.labels) parts.push(t('print.previewLabels', { count: discs.length, pages: labelPages }));
+      if (what.index) parts.push(t('print.previewIndex', { count: indexPages }));
+      preview.textContent = parts.length > 0 ? parts.join(t('collection.separator')) : t('print.whatNone');
+      // The paper follows the choice: card for the double-sided discs, plain paper otherwise.
+      paper.textContent = t(
+        what.discs ? 'print.paperHint' : what.labels ? 'print.paperHintLabels' : 'print.paperHintIndex',
+      );
       generate.disabled = plan.pages.length === 0;
     }
 
@@ -214,6 +240,18 @@ export function PrintView(
         update();
       }
     }
+
+    const paper = h('p', { class: 'muted field-hint', attrs: { 'data-paper': '' } });
+    const checkbox = (key: keyof PrintWhat, label: string) => {
+      const input = h('input', { attrs: { type: 'checkbox', name: 'what', value: key, 'data-what': key } });
+      input.checked = what[key];
+      input.addEventListener('change', () => {
+        what = { ...what, [key]: input.checked };
+        void ctx.platform.store.set(PRINT_WHAT_KEY, JSON.stringify(what)).catch(() => undefined);
+        update();
+      });
+      return h('label', { class: 'check' }, input, label);
+    };
 
     const radio = <T extends string>(
       name: string,
@@ -282,12 +320,12 @@ export function PrintView(
         'fieldset',
         { class: 'print-options' },
         h('legend', {}, t('print.what')),
-        radio('what', 'discs', what, t('print.what.discs'), (v) => (what = v)),
-        radio('what', 'index', what, t('print.what.index'), (v) => (what = v)),
-        radio('what', 'both', what, t('print.what.both'), (v) => (what = v)),
+        checkbox('discs', t('print.what.discs')),
+        checkbox('labels', t('print.what.labels')),
+        checkbox('index', t('print.what.index')),
       ),
       preview,
-      h('p', { class: 'muted field-hint' }, t('print.paperHint')),
+      paper,
       generate,
       status,
       mark,
@@ -304,7 +342,11 @@ export function PrintView(
       ]);
       const album = albums.find((a) => a.albumId === albumId);
       if (!album) return failed('sheet.notFound');
-      render(album, caps, await readLastPrint(ctx.platform.store, album.albumId));
+      const [lastPrint, remembered] = await Promise.all([
+        readLastPrint(ctx.platform.store, album.albumId),
+        readWhat(ctx.platform.store),
+      ]);
+      render(album, caps, lastPrint, remembered);
     } catch {
       failed('print.loadFailed');
     }

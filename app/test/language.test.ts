@@ -171,7 +171,7 @@ describe('UI language (CAP-97)', () => {
       album: album as never,
       discs: [cap],
       sheets: [{ sheet: 1, caps: [cap] }],
-      what: 'both' as const,
+      what: { discs: true, labels: false, index: true } as const,
       printedOn: new Date(TS),
     };
     setLanguage('es');
