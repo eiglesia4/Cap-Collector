@@ -123,6 +123,7 @@ one section per milestone tag (`v0.1.0-v0`, `v0.2.0-v1`, …), closed by the int
 
 #### Changed
 
+- CAP-124: one set of "defaults when unsure" for every capture path. `capture/defaults.ts` `newCapDefaults` fills only empty fields (today, current year, guessed type, steel / pry-off, place); the form and multi-import both use it, so multi-import now also fills year and type, and adds a notes line naming the defaults used (T-app-255…260).
 - CAP-120: the external-AI screen is now called "Import" / "Importar" instead of "Exchange" / "Intercambio" (screen heading, Collection ⋯). The route, file names, i18n keys and `capcollector.exchange` format are unchanged (T-app-237…239).
 - CAP-115: the Collection's "recently added" row shows only without filters and past 12 caps: 8 small thumbnails in a horizontal row on its own band. The grid gets a heading ("All · N", or the active filters) that replaces the count line, so a small collection no longer shows the same cap twice (T-app-219…222).
 - CAP-105: the owner's target config (`infra/config/<inst>.<stage>.json`) is no longer tracked; `infra/config/.gitignore` keeps only `example.dev.json`. `CAP_CONFIG_DIR` overrides the config directory, a missing config points to the template, and infra tests and CI synth use the neutral fixture `infra/test/fixtures/config/test.dev.json`. A grep guard keeps owner details out of `infra/` (T-infra-056…058).
